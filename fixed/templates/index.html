@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Тендерный монитор</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #06060B;
+  --surf:      #0D0D15;
+  --surf2:     #13131E;
+  --surf3:     #1A1A28;
+  --border:    #1E1E2E;
+  --border2:   #2A2A3E;
+  --text:      #E8E8F4;
+  --dim:       #6060A0;
+  --dimmer:    #30305A;
+
+  --go:        #22C55E;
+  --go-bg:     rgba(34,197,94,.08);
+  --go-bdr:    rgba(34,197,94,.2);
+  --caution:   #F59E0B;
+  --caution-bg:rgba(245,158,11,.08);
+  --caution-bdr:rgba(245,158,11,.2);
+  --nogo:      #EF4444;
+  --nogo-bg:   rgba(239,68,68,.08);
+  --nogo-bdr:  rgba(239,68,68,.2);
+
+  --accent:    #818CF8;
+  --mono:      'IBM Plex Mono', monospace;
+  --display:   'Bebas Neue', sans-serif;
+}
+
+html { background: var(--bg); color: var(--text); font-family: var(--mono); min-height: 100%; }
+body { min-height: 100vh; }
+
+/* ── Scanline texture ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.03) 2px, rgba(0,0,0,.03) 4px);
+  pointer-events: none; z-index: 0;
+}
+
+/* ── Header ── */
+.header {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(6,6,11,.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border2);
+  padding: 0 2rem;
+}
+
+.header-inner {
+  max-width: 1400px; margin: 0 auto;
+  display: flex; align-items: center; gap: 2rem;
+  height: 56px;
+}
+
+.logo {
+  font-family: var(--display);
+  font-size: 1.5rem;
+  letter-spacing: .08em;
+  color: var(--text);
+  white-space: nowrap;
+}
+.logo span { color: var(--accent); }
+
+.stats-bar {
+  display: flex; gap: 1rem; align-items: center;
+  flex: 1;
+  overflow-x: auto;
+}
+
+.stat-chip {
+  display: flex; align-items: center; gap: .4rem;
+  font-size: .7rem; font-weight: 500;
+  padding: .25rem .6rem;
+  border-radius: 4px;
+  border: 1px solid var(--border2);
+  background: var(--surf2);
+  white-space: nowrap;
+  color: var(--dim);
+}
+.stat-chip .val { color: var(--text); font-size: .8rem; font-weight: 600; }
+.stat-chip.go-chip   { border-color: var(--go-bdr);      background: var(--go-bg);      color: var(--go); }
+.stat-chip.caut-chip { border-color: var(--caution-bdr); background: var(--caution-bg); color: var(--caution); }
+.stat-chip.nogo-chip { border-color: var(--nogo-bdr);    background: var(--nogo-bg);    color: var(--nogo); }
+
+/* ── Tabs ── */
+.tabs-wrap {
+  background: var(--surf);
+  border-bottom: 1px solid var(--border);
+  padding: 0 2rem;
+}
+.tabs {
+  max-width: 1400px; margin: 0 auto;
+  display: flex; gap: 0;
+}
+.tab {
+  font-family: var(--mono); font-size: .75rem; font-weight: 500;
+  padding: .75rem 1.25rem;
+  border: none; background: none;
+  color: var(--dim); cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color .15s, border-color .15s;
+  display: flex; align-items: center; gap: .5rem;
+  letter-spacing: .04em;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.tab .cnt {
+  font-size: .65rem; padding: .1rem .35rem;
+  border-radius: 99px; background: var(--surf3);
+}
+.tab.active.tab-go      { color: var(--go);      border-bottom-color: var(--go);      }
+.tab.active.tab-go .cnt { background: var(--go-bg); }
+.tab.active.tab-caut    { color: var(--caution);  border-bottom-color: var(--caution); }
+.tab.active.tab-nogo    { color: var(--nogo);     border-bottom-color: var(--nogo);    }
+
+/* ── Main ── */
+.main {
+  max-width: 1400px; margin: 0 auto;
+  padding: 1.5rem 2rem 4rem;
+  position: relative; z-index: 1;
+}
+
+/* ── Section header ── */
+.section-hdr {
+  display: flex; align-items: center; gap: .75rem;
+  margin-bottom: 1rem;
+}
+.section-hdr h2 {
+  font-family: var(--display);
+  font-size: 1.1rem; letter-spacing: .08em;
+  color: var(--dim);
+}
+.section-hdr .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-go     { background: var(--go); }
+.dot-caution{ background: var(--caution); }
+.dot-nogo   { background: var(--nogo); }
+.dot-all    { background: var(--accent); }
+
+/* ── Table ── */
+.tbl-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 2.5rem;
+}
+
+table {
+  width: 100%; border-collapse: collapse;
+  font-size: .8rem;
+}
+
+thead th {
+  font-family: var(--mono); font-size: .65rem; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--dimmer);
+  padding: .6rem .9rem;
+  text-align: left;
+  background: var(--surf);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+thead th:first-child { border-radius: 8px 0 0 0; }
+thead th:last-child  { border-radius: 0 8px 0 0; }
+
+tbody tr {
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background .12s;
+}
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--surf2); }
+tbody tr:hover td { color: var(--text); }
+
+tbody td {
+  padding: .65rem .9rem;
+  color: var(--text);
+  vertical-align: middle;
+}
+
+/* ── Score cell ── */
+.score-cell { white-space: nowrap; }
+.score-num {
+  font-family: var(--display);
+  font-size: 1.4rem;
+  line-height: 1;
+  display: block;
+  letter-spacing: .02em;
+}
+.score-max {
+  font-size: .6rem;
+  color: var(--dim);
+  vertical-align: super;
+  margin-left: 1px;
+}
+
+/* ── Decision badge ── */
+.badge {
+  display: inline-block;
+  font-size: .6rem; font-weight: 600;
+  letter-spacing: .1em;
+  padding: .2rem .5rem;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.badge-go     { background: var(--go-bg);      color: var(--go);      border: 1px solid var(--go-bdr); }
+.badge-caution{ background: var(--caution-bg); color: var(--caution); border: 1px solid var(--caution-bdr); }
+.badge-nogo   { background: var(--nogo-bg);    color: var(--nogo);    border: 1px solid var(--nogo-bdr); }
+.badge-unknown{ background: var(--surf3);       color: var(--dim);     border: 1px solid var(--border2); }
+
+/* ── Title cell ── */
+.title-cell { max-width: 320px; }
+.title-main {
+  display: block;
+  font-size: .8rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 300px;
+  color: var(--text);
+}
+.title-customer {
+  display: block;
+  font-size: .68rem;
+  color: var(--dim);
+  margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 300px;
+}
+
+/* ── Filter mini-scores ── */
+.filter-bars {
+  display: flex; gap: 3px; align-items: flex-end;
+  height: 28px;
+}
+.fbar {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 2px;
+}
+.fbar-block {
+  width: 16px;
+  border-radius: 2px;
+  transition: opacity .15s;
+}
+.fbar-label {
+  font-size: .5rem;
+  color: var(--dimmer);
+  line-height: 1;
+}
+tr:hover .fbar-label { color: var(--dim); }
+
+/* ── Price / date cells ── */
+.price-cell { white-space: nowrap; font-weight: 500; }
+.law-cell   { white-space: nowrap; }
+.law-44  { color: var(--accent); }
+.law-223 { color: #34D399; }
+.date-cell  { white-space: nowrap; color: var(--dim); }
+
+/* ── Empty state ── */
+.empty {
+  padding: 3rem; text-align: center;
+  color: var(--dimmer); font-size: .8rem;
+}
+
+/* ── Avg score ring ── */
+.avg-ring {
+  display: flex; flex-direction: column; align-items: center;
+  margin-left: auto;
+}
+.avg-val {
+  font-family: var(--display); font-size: 2rem;
+  color: var(--text); line-height: 1;
+}
+.avg-lbl { font-size: .6rem; color: var(--dim); margin-top: 2px; }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .header-inner { gap: 1rem; }
+  .stats-bar     { display: none; }
+  .main          { padding: 1rem; }
+  thead th.hide-sm, tbody td.hide-sm { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────────── -->
+<header class="header">
+  <div class="header-inner">
+    <div class="logo">ТЕНДЕР<span>·</span>МОНИТОР</div>
+    <div class="stats-bar">
+      <div class="stat-chip">
+        <span>всего</span><span class="val">{{ stats.total }}</span>
+      </div>
+      <div class="stat-chip go-chip">
+        <span>GO</span><span class="val">{{ stats.filter_go }}</span>
+      </div>
+      <div class="stat-chip caut-chip">
+        <span>CAUTION</span><span class="val">{{ stats.filter_caution }}</span>
+      </div>
+      <div class="stat-chip nogo-chip">
+        <span>NO-GO</span><span class="val">{{ stats.filter_nogo }}</span>
+      </div>
+      {% if stats.avg_filter_score %}
+      <div class="stat-chip">
+        <span>ср. балл</span><span class="val">{{ "%.1f"|format(stats.avg_filter_score) }}/40</span>
+      </div>
+      {% endif %}
+      {% if stats.price_range.avg %}
+      <div class="stat-chip">
+        <span>ср. НМЦК</span><span class="val">{{ stats.price_range.avg | fmt_price }}</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</header>
+
+<!-- ── Tabs ───────────────────────────────────────────────────────────── -->
+<nav class="tabs-wrap">
+  <div class="tabs">
+    <button class="tab {% if active == 'ALL' %}active{% endif %}" onclick="showTab('ALL')">
+      ВСЕ <span class="cnt">{{ all_tenders|length }}</span>
+    </button>
+    <button class="tab tab-go {% if active == 'GO' %}active{% endif %}" onclick="showTab('GO')">
+      GO <span class="cnt">{{ groups.GO|length }}</span>
+    </button>
+    <button class="tab tab-caut {% if active == 'CAUTION' %}active{% endif %}" onclick="showTab('CAUTION')">
+      CAUTION <span class="cnt">{{ groups.CAUTION|length }}</span>
+    </button>
+    <button class="tab tab-nogo {% if active == 'NO-GO' %}active{% endif %}" onclick="showTab('NO-GO')">
+      NO-GO <span class="cnt">{{ groups['NO-GO']|length }}</span>
+    </button>
+  </div>
+</nav>
+
+<!-- ── Content ────────────────────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- Macro for a tender table -->
+  {% macro render_table(tenders, tab_id) %}
+  <div id="tab-{{ tab_id }}" class="tab-panel" style="display:none">
+    {% if not tenders %}
+    <div class="empty">— Нет тендеров в этой категории —</div>
+    {% else %}
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:32px">#</th>
+            <th style="width:72px">БАЛЛ</th>
+            <th style="width:80px">РЕШЕНИЕ</th>
+            <th>НАЗВАНИЕ / ЗАКАЗЧИК</th>
+            <th class="hide-sm">ФИЛЬТРЫ</th>
+            <th class="hide-sm">НМЦК</th>
+            <th class="hide-sm">ЗАКОН</th>
+            <th class="hide-sm">СРОК</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in tenders %}
+          {% set dec = t.filter_decision or '' %}
+          {% set dc  = dec | decision_class %}
+          <tr onclick="location.href='/tender/{{ t.purchase_number }}'">
+
+            <td style="color:var(--dimmer);font-size:.65rem">{{ loop.index }}</td>
+
+            <!-- Score -->
+            <td class="score-cell">
+              {% if t.filter_total is not none %}
+              {% set pct = (t.filter_total / 40 * 100)|int %}
+              {% set sc_color = '#22C55E' if pct >= 80 else ('#F59E0B' if pct >= 55 else '#EF4444') %}
+              <span class="score-num" style="color:{{ sc_color }}">
+                {{ t.filter_total }}<span class="score-max">/40</span>
+              </span>
+              {% else %}
+              <span style="color:var(--dimmer); font-size:.7rem">—</span>
+              {% endif %}
+            </td>
+
+            <!-- Decision -->
+            <td>
+              {% if dec %}
+              <span class="badge badge-{{ dc }}">{{ dec }}</span>
+              {% else %}
+              <span class="badge badge-unknown">—</span>
+              {% endif %}
+              {% if t.llm_verdict %}
+              <div style="font-size:.6rem;color:var(--dim);margin-top:3px">{{ t.llm_verdict }}</div>
+              {% endif %}
+            </td>
+
+            <!-- Title -->
+            <td class="title-cell">
+              <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
+              <span class="title-customer" title="{{ t.customer }}">{{ t.customer or '' }}</span>
+            </td>
+
+            <!-- Filter mini bars -->
+            <td class="hide-sm">
+              {% set fs = t.get('filter_scores', []) %}
+              {% if fs %}
+              <div class="filter-bars">
+                {% for f in fs %}
+                {% set h = (f.score / 5 * 22)|int %}
+                {% set c = f.score | score_color %}
+                <div class="fbar" title="Ф{{ f.filter_number }} {{ f.filter_name }}: {{ f.score }}/5">
+                  <div class="fbar-block" style="height:{{ h }}px;background:{{ c }};opacity:.85"></div>
+                  <div class="fbar-label">{{ f.filter_number }}</div>
+                </div>
+                {% endfor %}
+              </div>
+              {% else %}
+              <span style="color:var(--dimmer);font-size:.65rem">нет данных</span>
+              {% endif %}
+            </td>
+
+            <!-- Price -->
+            <td class="price-cell hide-sm">{{ t.price | fmt_price }}</td>
+
+            <!-- Law -->
+            <td class="law-cell hide-sm">
+              {% if t.law_type == '44-ФЗ' %}
+              <span class="law-44">44-ФЗ</span>
+              {% elif t.law_type == '223-ФЗ' %}
+              <span class="law-223">223-ФЗ</span>
+              {% else %}
+              <span style="color:var(--dimmer)">{{ t.law_type or '—' }}</span>
+              {% endif %}
+            </td>
+
+            <!-- Deadline -->
+            <td class="date-cell hide-sm">{{ t.deadline | fmt_date }}</td>
+
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+  {% endmacro %}
+
+  <!-- ALL tab -->
+  <div id="tab-ALL" class="tab-panel">
+    <div class="section-hdr">
+      <div class="dot dot-all"></div>
+      <h2>ВСЕ ТЕНДЕРЫ — {{ all_tenders|length }}</h2>
+    </div>
+    {% if not all_tenders %}
+    <div class="empty">— Нет данных. Запусти монитор: <code>python main.py --once</code> —</div>
+    {% else %}
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:32px">#</th>
+            <th style="width:72px">БАЛЛ</th>
+            <th style="width:80px">РЕШЕНИЕ</th>
+            <th>НАЗВАНИЕ / ЗАКАЗЧИК</th>
+            <th class="hide-sm">ФИЛЬТРЫ</th>
+            <th class="hide-sm">НМЦК</th>
+            <th class="hide-sm">ЗАКОН</th>
+            <th class="hide-sm">СРОК</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in all_tenders %}
+          {% set dec = t.filter_decision or '' %}
+          {% set dc  = dec | decision_class %}
+          <tr onclick="location.href='/tender/{{ t.purchase_number }}'">
+            <td style="color:var(--dimmer);font-size:.65rem">{{ loop.index }}</td>
+            <td class="score-cell">
+              {% if t.filter_total is not none %}
+              {% set sc_color = '#22C55E' if t.filter_total >= 33 else ('#F59E0B' if t.filter_total >= 24 else '#EF4444') %}
+              <span class="score-num" style="color:{{ sc_color }}">
+                {{ t.filter_total }}<span class="score-max">/40</span>
+              </span>
+              {% else %}
+              <span style="color:var(--dimmer);font-size:.7rem">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if dec %}<span class="badge badge-{{ dc }}">{{ dec }}</span>{% else %}<span class="badge badge-unknown">—</span>{% endif %}
+              {% if t.llm_verdict %}<div style="font-size:.6rem;color:var(--dim);margin-top:3px">{{ t.llm_verdict }}</div>{% endif %}
+            </td>
+            <td class="title-cell">
+              <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
+              <span class="title-customer">{{ t.customer or '' }}</span>
+            </td>
+            <td class="hide-sm">
+              {% if t.get('filter_scores') %}
+              <div class="filter-bars">
+                {% for f in t.filter_scores %}
+                {% set h = (f.score / 5 * 22)|int %}
+                <div class="fbar" title="Ф{{ f.filter_number }}: {{ f.score }}/5">
+                  <div class="fbar-block" style="height:{{ h }}px;background:{{ f.score | score_color }};opacity:.85"></div>
+                  <div class="fbar-label">{{ f.filter_number }}</div>
+                </div>
+                {% endfor %}
+              </div>
+              {% else %}
+              <span style="color:var(--dimmer);font-size:.65rem">—</span>
+              {% endif %}
+            </td>
+            <td class="price-cell hide-sm">{{ t.price | fmt_price }}</td>
+            <td class="law-cell hide-sm">
+              {% if t.law_type == '44-ФЗ' %}<span class="law-44">44-ФЗ</span>
+              {% elif t.law_type == '223-ФЗ' %}<span class="law-223">223-ФЗ</span>
+              {% else %}<span style="color:var(--dimmer)">{{ t.law_type or '—' }}</span>{% endif %}
+            </td>
+            <td class="date-cell hide-sm">{{ t.deadline | fmt_date }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- GO -->
+  <div id="tab-GO" class="tab-panel" style="display:none">
+    <div class="section-hdr">
+      <div class="dot dot-go"></div>
+      <h2>GO — {{ groups.GO|length }} тендеров</h2>
+    </div>
+    {% if not groups.GO %}
+    <div class="empty">— Нет тендеров GO —</div>
+    {% else %}
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th style="width:32px">#</th><th style="width:72px">БАЛЛ</th>
+          <th>НАЗВАНИЕ / ЗАКАЗЧИК</th><th class="hide-sm">ФИЛЬТРЫ</th>
+          <th class="hide-sm">НМЦК</th><th class="hide-sm">ЗАКОН</th><th class="hide-sm">СРОК</th>
+        </tr></thead>
+        <tbody>
+          {% for t in groups.GO %}
+          <tr onclick="location.href='/tender/{{ t.purchase_number }}'">
+            <td style="color:var(--dimmer);font-size:.65rem">{{ loop.index }}</td>
+            <td class="score-cell">
+              <span class="score-num" style="color:var(--go)">{{ t.filter_total or '—' }}<span class="score-max">/40</span></span>
+            </td>
+            <td class="title-cell">
+              <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
+              <span class="title-customer">{{ t.customer or '' }}</span>
+            </td>
+            <td class="hide-sm">
+              {% if t.get('filter_scores') %}
+              <div class="filter-bars">
+                {% for f in t.filter_scores %}
+                <div class="fbar" title="Ф{{ f.filter_number }}: {{ f.score }}/5">
+                  <div class="fbar-block" style="height:{{ (f.score/5*22)|int }}px;background:{{ f.score|score_color }};opacity:.85"></div>
+                  <div class="fbar-label">{{ f.filter_number }}</div>
+                </div>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </td>
+            <td class="price-cell hide-sm">{{ t.price | fmt_price }}</td>
+            <td class="law-cell hide-sm">{% if t.law_type == '44-ФЗ' %}<span class="law-44">44-ФЗ</span>{% elif t.law_type == '223-ФЗ' %}<span class="law-223">223-ФЗ</span>{% else %}{{ t.law_type or '—' }}{% endif %}</td>
+            <td class="date-cell hide-sm">{{ t.deadline | fmt_date }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- CAUTION -->
+  <div id="tab-CAUTION" class="tab-panel" style="display:none">
+    <div class="section-hdr">
+      <div class="dot dot-caution"></div>
+      <h2>CAUTION — {{ groups.CAUTION|length }} тендеров</h2>
+    </div>
+    {% if not groups.CAUTION %}
+    <div class="empty">— Нет тендеров CAUTION —</div>
+    {% else %}
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th style="width:32px">#</th><th style="width:72px">БАЛЛ</th>
+          <th>НАЗВАНИЕ / ЗАКАЗЧИК</th><th class="hide-sm">ФИЛЬТРЫ</th>
+          <th class="hide-sm">НМЦК</th><th class="hide-sm">ЗАКОН</th><th class="hide-sm">СРОК</th>
+        </tr></thead>
+        <tbody>
+          {% for t in groups.CAUTION %}
+          <tr onclick="location.href='/tender/{{ t.purchase_number }}'">
+            <td style="color:var(--dimmer);font-size:.65rem">{{ loop.index }}</td>
+            <td class="score-cell">
+              <span class="score-num" style="color:var(--caution)">{{ t.filter_total or '—' }}<span class="score-max">/40</span></span>
+            </td>
+            <td class="title-cell">
+              <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
+              <span class="title-customer">{{ t.customer or '' }}</span>
+            </td>
+            <td class="hide-sm">
+              {% if t.get('filter_scores') %}
+              <div class="filter-bars">
+                {% for f in t.filter_scores %}
+                <div class="fbar" title="Ф{{ f.filter_number }}: {{ f.score }}/5">
+                  <div class="fbar-block" style="height:{{ (f.score/5*22)|int }}px;background:{{ f.score|score_color }};opacity:.85"></div>
+                  <div class="fbar-label">{{ f.filter_number }}</div>
+                </div>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </td>
+            <td class="price-cell hide-sm">{{ t.price | fmt_price }}</td>
+            <td class="law-cell hide-sm">{% if t.law_type == '44-ФЗ' %}<span class="law-44">44-ФЗ</span>{% elif t.law_type == '223-ФЗ' %}<span class="law-223">223-ФЗ</span>{% else %}{{ t.law_type or '—' }}{% endif %}</td>
+            <td class="date-cell hide-sm">{{ t.deadline | fmt_date }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- NO-GO -->
+  <div id="tab-NO-GO" class="tab-panel" style="display:none">
+    <div class="section-hdr">
+      <div class="dot dot-nogo"></div>
+      <h2>NO-GO — {{ groups['NO-GO']|length }} тендеров</h2>
+    </div>
+    {% if not groups['NO-GO'] %}
+    <div class="empty">— Нет тендеров NO-GO —</div>
+    {% else %}
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th style="width:32px">#</th><th style="width:72px">БАЛЛ</th>
+          <th>НАЗВАНИЕ / ЗАКАЗЧИК</th><th class="hide-sm">СТОП-ФАКТОРЫ</th>
+          <th class="hide-sm">НМЦК</th><th class="hide-sm">ЗАКОН</th>
+        </tr></thead>
+        <tbody>
+          {% for t in groups['NO-GO'] %}
+          <tr onclick="location.href='/tender/{{ t.purchase_number }}'">
+            <td style="color:var(--dimmer);font-size:.65rem">{{ loop.index }}</td>
+            <td class="score-cell">
+              <span class="score-num" style="color:var(--nogo)">{{ t.filter_total or '—' }}<span class="score-max">/40</span></span>
+            </td>
+            <td class="title-cell">
+              <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
+              <span class="title-customer">{{ t.customer or '' }}</span>
+            </td>
+            <td class="hide-sm" style="max-width:280px">
+              {% set stops = t.filter_stop | parse_stop %}
+              {% for s in stops[:2] %}
+              <div style="font-size:.65rem;color:var(--nogo);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:270px" title="{{ s }}">{{ s }}</div>
+              {% else %}
+              <span style="color:var(--dimmer);font-size:.65rem">—</span>
+              {% endfor %}
+            </td>
+            <td class="price-cell hide-sm">{{ t.price | fmt_price }}</td>
+            <td class="law-cell hide-sm">{% if t.law_type == '44-ФЗ' %}<span class="law-44">44-ФЗ</span>{% elif t.law_type == '223-ФЗ' %}<span class="law-223">223-ФЗ</span>{% else %}{{ t.law_type or '—' }}{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+</main>
+
+<script>
+const ACTIVE_INIT = '{{ active }}';
+
+function showTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+
+  const panel = document.getElementById('tab-' + name);
+  if (panel) panel.style.display = '';
+
+  const btn = document.querySelector(`[onclick="showTab('${name}')"]`);
+  if (btn) {
+    btn.classList.add('active');
+    // Fix active class suffix
+    if (name === 'GO')      btn.classList.add('tab-go');
+    if (name === 'CAUTION') btn.classList.add('tab-caut');
+    if (name === 'NO-GO')   btn.classList.add('tab-nogo');
+  }
+
+  // Update URL without reload
+  const url = name === 'ALL' ? '/' : `/?decision=${name}`;
+  history.replaceState(null, '', url);
+}
+
+// Init active tab
+document.addEventListener('DOMContentLoaded', () => showTab(ACTIVE_INIT));
+</script>
+</body>
+</html>
