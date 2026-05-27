@@ -39,6 +39,14 @@ PG_USER      = os.getenv("PG_USER",     "postgres")
 PG_PASSWORD  = os.getenv("PG_PASSWORD", "")
 PG_POOL_MIN  = int(os.getenv("PG_POOL_MIN", "1"))
 PG_POOL_MAX  = int(os.getenv("PG_POOL_MAX", "5"))
+PG_CONNECT_TIMEOUT       = int(os.getenv("PG_CONNECT_TIMEOUT", "10"))
+PG_STATEMENT_TIMEOUT_MS  = int(os.getenv("PG_STATEMENT_TIMEOUT_MS", "120000"))
+PG_IDLE_TX_TIMEOUT_MS    = int(os.getenv("PG_IDLE_TX_TIMEOUT_MS", "120000"))
+PG_KEEPALIVES_IDLE       = int(os.getenv("PG_KEEPALIVES_IDLE", "30"))
+PG_KEEPALIVES_INTERVAL   = int(os.getenv("PG_KEEPALIVES_INTERVAL", "10"))
+PG_KEEPALIVES_COUNT      = int(os.getenv("PG_KEEPALIVES_COUNT", "3"))
+PG_RETRY_ATTEMPTS        = int(os.getenv("PG_RETRY_ATTEMPTS", "3"))
+PG_RETRY_DELAY           = float(os.getenv("PG_RETRY_DELAY", "1.5"))
 
 # --- Telegram ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN")
@@ -66,6 +74,7 @@ REGIONS = [x.strip() for x in os.getenv("REGIONS", "").split(",") if x.strip()]
 # --- Расписание ---
 SCHEDULE_HOURS = int(os.getenv("SCHEDULE_HOURS", "3"))
 SEARCH_PAGES   = int(os.getenv("SEARCH_PAGES",   "2"))
+BACKFILL_SEARCH_PAGES = int(os.getenv("BACKFILL_SEARCH_PAGES", "20"))
 REQUEST_DELAY  = float(os.getenv("REQUEST_DELAY", "3.0"))
 
 # Фильтр по дате публикации.
@@ -200,3 +209,88 @@ PRICE_BONUS_RANGES = [
     (300_000,   800_000, 3, "Цена 300–800 тыс."),
     (800_000, 2_000_000, 2, "Цена 800 тыс. – 2 млн"),
 ]
+
+# ============================================================
+# OKPD2 — коды для параллельного поиска
+# ============================================================
+# Параллельный канал: ловит тендеры, в названии которых
+# нет наших ключевых слов, но код деятельности — ИТ.
+#
+# Документация кодов:
+#   62.01   — разработка программного обеспечения
+#   62.02   — консультирование в области ИТ
+#   62.02.1 — деятельность в области планирования ИТ-инфраструктуры
+#   62.09   — прочая деятельность в области ИТ
+#   63.11   — обработка данных, хостинг
+
+OKPD2_SEARCH_ENABLED = os.getenv("OKPD2_SEARCH_ENABLED", "1") != "0"
+
+OKPD2_CODES = [
+    "62.01",    # разработка ПО
+    "62.02",    # консультирование в ИТ
+    "62.09",    # прочая ИТ-деятельность
+    "63.11",    # хостинг / обработка данных
+]
+
+# ============================================================
+# CHANGE DETECTOR
+# ============================================================
+CHANGE_CHECK_HOURS = int(os.getenv("CHANGE_CHECK_HOURS", "6"))
+CHANGE_MIN_SCORE   = int(os.getenv("CHANGE_MIN_SCORE",   "20"))
+
+# ============================================================
+# CUSTOMER SCORER
+# ============================================================
+CUSTOMER_SCORE_LIMIT   = int(os.getenv("CUSTOMER_SCORE_LIMIT",   "30"))
+CUSTOMER_REFRESH_DAYS  = int(os.getenv("CUSTOMER_REFRESH_DAYS",  "7"))
+
+# ============================================================
+# WINNER ANALYTICS
+# ============================================================
+WINNER_ANALYTICS_PAGES = int(os.getenv("WINNER_ANALYTICS_PAGES", "3"))
+
+
+# ============================================================
+# RUNTIME SETTINGS — читаем из БД, с откатом на env vars
+# ============================================================
+
+def get_runtime(key: str, default=None):
+    """
+    Читает настройку из таблицы settings (редактируется через веб-интерфейс).
+    Порядок приоритетов: БД → переменная окружения → default.
+
+    Использовать в коде который вызывается при каждом запуске задачи
+    (не при импорте модуля), например в начале run_stage1().
+    """
+    import json as _json
+    try:
+        from database import get_setting as _gs
+        val = _gs(key)
+        if val is not None:
+            # Автокасты по типу default
+            if isinstance(default, bool):
+                return val.strip() not in ("0", "false", "no", "")
+            if isinstance(default, int):
+                return int(val)
+            if isinstance(default, float):
+                return float(val)
+            if isinstance(default, list):
+                return _json.loads(val)
+            return val
+    except Exception:
+        pass
+    env_val = os.getenv(key)
+    if env_val is not None:
+        if isinstance(default, bool):
+            return env_val.strip() not in ("0", "false", "no", "")
+        if isinstance(default, int):
+            return int(env_val)
+        if isinstance(default, float):
+            return float(env_val)
+        if isinstance(default, list):
+            try:
+                return _json.loads(env_val)
+            except Exception:
+                return [s.strip() for s in env_val.split(",") if s.strip()]
+        return env_val
+    return default

@@ -14,10 +14,11 @@ import json
 import logging
 import os
 import re
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, Iterator, Optional
+from typing import Any, Callable, Iterator, Optional, TypeVar
 
 import psycopg2
 import psycopg2.extras
@@ -27,6 +28,7 @@ import config
 
 logger = logging.getLogger(__name__)
 _pool: Optional[ThreadedConnectionPool] = None
+T = TypeVar("T")
 
 
 def _build_dsn() -> str:
@@ -43,8 +45,63 @@ def _build_dsn() -> str:
     )
 
 
+def _connect_kwargs() -> dict[str, Any]:
+    statement_timeout_ms = int(getattr(config, "PG_STATEMENT_TIMEOUT_MS", os.getenv("PG_STATEMENT_TIMEOUT_MS", "120000")))
+    idle_timeout_ms = int(getattr(config, "PG_IDLE_TX_TIMEOUT_MS", os.getenv("PG_IDLE_TX_TIMEOUT_MS", "120000")))
+    return {
+        "connect_timeout": int(getattr(config, "PG_CONNECT_TIMEOUT", os.getenv("PG_CONNECT_TIMEOUT", "10"))),
+        "keepalives": 1,
+        "keepalives_idle": int(getattr(config, "PG_KEEPALIVES_IDLE", os.getenv("PG_KEEPALIVES_IDLE", "30"))),
+        "keepalives_interval": int(getattr(config, "PG_KEEPALIVES_INTERVAL", os.getenv("PG_KEEPALIVES_INTERVAL", "10"))),
+        "keepalives_count": int(getattr(config, "PG_KEEPALIVES_COUNT", os.getenv("PG_KEEPALIVES_COUNT", "3"))),
+        "application_name": "torg-monitor",
+        "options": f"-c statement_timeout={statement_timeout_ms} -c idle_in_transaction_session_timeout={idle_timeout_ms}",
+    }
+
+
 def _pool_limits() -> tuple[int, int]:
     return int(getattr(config, "PG_POOL_MIN", 1)), int(getattr(config, "PG_POOL_MAX", 5))
+
+
+def _reset_pool() -> None:
+    global _pool
+    if _pool is not None:
+        try:
+            _pool.closeall()
+        except Exception as exc:
+            logger.debug("Не удалось закрыть старый пул PostgreSQL: %s", exc)
+        _pool = None
+    connect_db()
+
+
+def _db_retry_attempts() -> int:
+    return max(1, int(getattr(config, "PG_RETRY_ATTEMPTS", os.getenv("PG_RETRY_ATTEMPTS", "3"))))
+
+
+def _db_retry_delay() -> float:
+    return max(0.0, float(getattr(config, "PG_RETRY_DELAY", os.getenv("PG_RETRY_DELAY", "1.5"))))
+
+
+def _with_db_retries(label: str, func: Callable[[], T]) -> T:
+    attempts = _db_retry_attempts()
+    delay = _db_retry_delay()
+    for attempt in range(1, attempts + 1):
+        try:
+            return func()
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as exc:
+            if attempt >= attempts:
+                raise
+            logger.warning(
+                "PostgreSQL временно недоступен (%s), попытка %d/%d: %s",
+                label,
+                attempt,
+                attempts,
+                exc,
+            )
+            _reset_pool()
+            if delay:
+                time.sleep(delay * attempt)
+    raise RuntimeError("Недостижимая ветка retry PostgreSQL")
 
 
 @contextmanager
@@ -53,14 +110,23 @@ def _conn() -> Iterator[psycopg2.extensions.connection]:
     if _pool is None:
         raise RuntimeError("PostgreSQL не инициализирован: сначала вызови init_db()")
     conn = _pool.getconn()
+    discard = False
+    if conn.closed:
+        _pool.putconn(conn, close=True)
+        conn = _pool.getconn()
     try:
         yield conn
         conn.commit()
     except Exception:
-        conn.rollback()
+        discard = bool(conn.closed)
+        if not conn.closed:
+            try:
+                conn.rollback()
+            except (psycopg2.Error, psycopg2.InterfaceError):
+                discard = True
         raise
     finally:
-        _pool.putconn(conn)
+        _pool.putconn(conn, close=discard or bool(conn.closed))
 
 
 def _now() -> datetime:
@@ -232,6 +298,47 @@ CREATE TABLE IF NOT EXISTS tender_changes (
 );
 """
 
+DDL_CUSTOMERS = """
+CREATE TABLE IF NOT EXISTS customers (
+    inn                   TEXT PRIMARY KEY,
+    name                  TEXT,
+    total_contracts       INTEGER DEFAULT 0,
+    terminated_contracts  INTEGER DEFAULT 0,
+    avg_drop_pct          NUMERIC(6,2),
+    avg_participants      NUMERIC(5,2),
+    repeat_winner_inn     TEXT,
+    repeat_winner_name    TEXT,
+    repeat_winner_share   NUMERIC(5,2),
+    monopoly_flag         BOOLEAN DEFAULT FALSE,
+    arbitration_count     INTEGER DEFAULT 0,
+    last_arbitration_date DATE,
+    reliability_score     SMALLINT DEFAULT 3,
+    notes                 TEXT,
+    raw_json              JSONB,
+    updated_at            TIMESTAMPTZ DEFAULT NOW()
+);
+"""
+
+DDL_PRICE_CORRIDORS = """
+CREATE TABLE IF NOT EXISTS price_corridors (
+    category         TEXT    NOT NULL,
+    law_type         TEXT    NOT NULL DEFAULT 'all',
+    sample_count     INTEGER DEFAULT 0,
+    avg_drop_pct     NUMERIC(6,2),
+    p25_drop_pct     NUMERIC(6,2),
+    p50_drop_pct     NUMERIC(6,2),
+    p75_drop_pct     NUMERIC(6,2),
+    min_drop_pct     NUMERIC(6,2),
+    max_drop_pct     NUMERIC(6,2),
+    avg_participants NUMERIC(5,2),
+    updated_at       TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (category, law_type)
+);
+CREATE INDEX IF NOT EXISTS idx_customers_name        ON customers(name);
+CREATE INDEX IF NOT EXISTS idx_customers_reliability ON customers(reliability_score);
+CREATE INDEX IF NOT EXISTS idx_customers_monopoly    ON customers(monopoly_flag);
+"""
+
 DDL_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_tenders_primary_score ON tenders(primary_score DESC);
 CREATE INDEX IF NOT EXISTS idx_tenders_detail_score ON tenders(detail_score DESC NULLS LAST);
@@ -267,22 +374,93 @@ END $$;
 """
 
 
-def init_db() -> None:
-    """Создаёт чистую PostgreSQL-схему, если таблиц ещё нет."""
+DDL_SETTINGS = """
+CREATE TABLE IF NOT EXISTS settings (
+    key         TEXT PRIMARY KEY,
+    value       TEXT NOT NULL,
+    description TEXT,
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+"""
+
+DDL_MIGRATIONS = """
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     TEXT PRIMARY KEY,
+    applied_at  TIMESTAMPTZ DEFAULT NOW()
+);
+"""
+
+SCHEMA_VERSION = "v4"   # bump при добавлении новых таблиц
+
+
+def connect_db() -> None:
+    """
+    Открывает пул соединений. Не выполняет DDL.
+    Вызывается при каждом старте web_app и main.py.
+    """
     global _pool
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     config.DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
     if _pool is None:
         pool_min, pool_max = _pool_limits()
-        _pool = ThreadedConnectionPool(pool_min, pool_max, _build_dsn())
-        logger.info("PostgreSQL pool создан: %d–%d", pool_min, pool_max)
+        _pool = ThreadedConnectionPool(pool_min, pool_max, _build_dsn(), **_connect_kwargs())
+        logger.info("PostgreSQL pool создан: %d–%d соединений", pool_min, pool_max)
 
+
+def check_db() -> None:
+    """
+    Проверяет, что схема инициализирована (таблица schema_migrations существует
+    и содержит текущую версию). Если нет — завершает процесс с понятной ошибкой.
+
+    Вызывается при каждом старте после connect_db().
+    """
+    connect_db()
+    try:
+        with _conn() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT version FROM schema_migrations WHERE version = %s",
+                (SCHEMA_VERSION,),
+            )
+            row = cur.fetchone()
+        if not row:
+            raise SystemExit(
+                f"\n❌ БД не инициализирована или устарела (нужна {SCHEMA_VERSION}).\n"
+                f"   Запусти один раз: python init_db.py\n"
+            )
+        logger.debug("Схема БД OK: %s", SCHEMA_VERSION)
+    except Exception as exc:
+        if isinstance(exc, SystemExit):
+            raise
+        # Таблица schema_migrations не существует вообще
+        raise SystemExit(
+            f"\n❌ БД не инициализирована.\n"
+            f"   Запусти один раз: python init_db.py\n"
+            f"   Детали: {exc}\n"
+        ) from exc
+
+
+def init_db() -> None:
+    """
+    ТОЛЬКО ДЛЯ init_db.py — создаёт всю схему и регистрирует версию.
+    НЕ вызывать при обычном старте приложения.
+    """
+    connect_db()
     with _conn() as conn:
         cur = conn.cursor()
-        for ddl in (DDL_TENDERS, DDL_FILTER_SCORES, DDL_RUNS, DDL_DECISIONS, DDL_TENDER_CHANGES, DDL_INDEXES, DDL_TRIGGER):
+        for ddl in (
+            DDL_MIGRATIONS, DDL_SETTINGS,
+            DDL_TENDERS, DDL_FILTER_SCORES, DDL_RUNS, DDL_DECISIONS,
+            DDL_TENDER_CHANGES, DDL_CUSTOMERS, DDL_PRICE_CORRIDORS,
+            DDL_INDEXES, DDL_TRIGGER,
+        ):
             cur.execute(ddl)
-    logger.info("PostgreSQL БД инициализирована")
+        cur.execute(
+            "INSERT INTO schema_migrations (version) VALUES (%s) ON CONFLICT DO NOTHING",
+            (SCHEMA_VERSION,),
+        )
+    logger.info("PostgreSQL схема создана: %s", SCHEMA_VERSION)
 
 
 def close_db() -> None:
@@ -293,20 +471,22 @@ def close_db() -> None:
 
 
 def reset_db() -> None:
-    """Полный сброс PostgreSQL-таблиц проекта. Использовать только осознанно."""
-    global _pool
-    if _pool is None:
-        pool_min, pool_max = _pool_limits()
-        _pool = ThreadedConnectionPool(pool_min, pool_max, _build_dsn())
+    """
+    Полный сброс всех таблиц проекта и пересоздание схемы.
+    Использовать только осознанно — все данные будут удалены.
+    """
+    connect_db()   # открываем пул если ещё не открыт
     with _conn() as conn:
         cur = conn.cursor()
-        cur.execute("DROP TABLE IF EXISTS filter_scores CASCADE")
-        cur.execute("DROP TABLE IF EXISTS decisions CASCADE")
-        cur.execute("DROP TABLE IF EXISTS tender_changes CASCADE")
-        cur.execute("DROP TABLE IF EXISTS runs CASCADE")
-        cur.execute("DROP TABLE IF EXISTS tenders CASCADE")
+        for tbl in [
+            "filter_scores", "decisions", "tender_changes", "runs",
+            "customers", "price_corridors", "settings",
+            "schema_migrations", "tenders",
+        ]:
+            cur.execute(f"DROP TABLE IF EXISTS {tbl} CASCADE")
         cur.execute("DROP FUNCTION IF EXISTS set_tenders_updated_at() CASCADE")
-    init_db()
+    logger.info("Все таблицы удалены")
+    init_db()   # пересоздаём схему и регистрируем версию
 
 
 def compute_tender_hash(tender: dict[str, Any]) -> str:
@@ -354,6 +534,18 @@ def _record_change(cur, purchase_number: str, change_type: str, old_value: Any, 
 
 
 def upsert_primary(
+    tender: dict[str, Any],
+    primary_score: int,
+    primary_reasons: list[str],
+    matched_keywords: list[str],
+) -> str:
+    return _with_db_retries(
+        "upsert_primary",
+        lambda: _upsert_primary_once(tender, primary_score, primary_reasons, matched_keywords),
+    )
+
+
+def _upsert_primary_once(
     tender: dict[str, Any],
     primary_score: int,
     primary_reasons: list[str],
@@ -520,6 +712,20 @@ def save_detail(
     document_text: str = "",
     notified: bool = False,
 ) -> None:
+    _with_db_retries(
+        "save_detail",
+        lambda: _save_detail_once(tender, detail_score, detail_reasons, llm_analysis, document_text, notified),
+    )
+
+
+def _save_detail_once(
+    tender: dict[str, Any],
+    detail_score: int,
+    detail_reasons: list[str],
+    llm_analysis: str = "",
+    document_text: str = "",
+    notified: bool = False,
+) -> None:
     now = _now()
     filter_decision_in_tender = tender.get("filter_decision", "")
     status = (
@@ -669,6 +875,10 @@ def set_decision(purchase_number: str, decision: str, comment: str = "") -> None
 
 
 def log_run(mode: str, started_at: str, found: int = 0, processed: int = 0, notified: int = 0, errors: str = "") -> None:
+    _with_db_retries("log_run", lambda: _log_run_once(mode, started_at, found, processed, notified, errors))
+
+
+def _log_run_once(mode: str, started_at: str, found: int = 0, processed: int = 0, notified: int = 0, errors: str = "") -> None:
     with _conn() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -678,6 +888,28 @@ def log_run(mode: str, started_at: str, found: int = 0, processed: int = 0, noti
             """,
             (mode, started_at, found, processed, notified, errors),
         )
+
+
+def was_stage_completed_today(mode: str) -> bool:
+    return _with_db_retries("was_stage_completed_today", lambda: _was_stage_completed_today_once(mode))
+
+
+def _was_stage_completed_today_once(mode: str) -> bool:
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT 1
+            FROM runs
+            WHERE mode = %s
+              AND created_at >= date_trunc('day', now())
+              AND COALESCE(errors, '') = ''
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (mode,),
+        )
+        return cur.fetchone() is not None
 
 
 def get_stats() -> dict[str, int]:
@@ -859,12 +1091,17 @@ def get_stats_extended() -> dict[str, Any]:
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM tenders")
         total = cur.fetchone()[0]
+
         cur.execute("SELECT COUNT(*) FROM tenders WHERE notified_at IS NOT NULL")
         sent = cur.fetchone()[0]
+
+        cur.execute("SELECT COUNT(*) FROM tenders WHERE detail_checked_at IS NOT NULL")
+        detailed = cur.fetchone()[0]
+
         cur.execute("SELECT COUNT(*) FROM tenders WHERE decision = 'pending' AND notified_at IS NOT NULL")
         pending = cur.fetchone()[0]
-        cur.execute(
-            """
+
+        cur.execute("""
             SELECT
                 COUNT(*) FILTER (WHERE filter_decision = 'GO')      AS go_count,
                 COUNT(*) FILTER (WHERE filter_decision = 'CAUTION') AS caution_count,
@@ -872,34 +1109,63 @@ def get_stats_extended() -> dict[str, Any]:
                 COUNT(*) FILTER (WHERE filter_decision IS NULL)     AS unscored,
                 ROUND(AVG(filter_total), 1)                         AS avg_score
             FROM tenders
-            """
-        )
+        """)
         go_c, caution_c, nogo_c, unscored_c, avg_score = cur.fetchone()
-        cur.execute(
-            """
+
+        cur.execute("""
             SELECT customer, COUNT(*) AS cnt
             FROM tenders
             WHERE customer IS NOT NULL AND customer <> ''
-            GROUP BY customer
-            ORDER BY cnt DESC
-            LIMIT 5
-            """
-        )
+            GROUP BY customer ORDER BY cnt DESC LIMIT 5
+        """)
         top_customers = [{"customer": r[0], "count": int(r[1])} for r in cur.fetchall()]
+
         cur.execute("SELECT MIN(price), MAX(price), ROUND(AVG(price), 0) FROM tenders WHERE price > 0")
         pmin, pmax, pavg = cur.fetchone()
 
+        # Заказчики и коридоры — для контрольной панели
+        try:
+            cur.execute("SELECT COUNT(*) FROM customers")
+            n_customers = cur.fetchone()[0]
+        except Exception:
+            n_customers = 0
+
+        try:
+            cur.execute("SELECT COUNT(*) FROM price_corridors")
+            n_corridors = cur.fetchone()[0]
+        except Exception:
+            n_corridors = 0
+
+        # Кандидаты для Stage2
+        try:
+            cur.execute("""
+                SELECT COUNT(*) FROM tenders
+                WHERE primary_score >= (SELECT COALESCE(value::int, 24) FROM settings WHERE key='MIN_PRIMARY_SCORE_FOR_DETAIL' LIMIT 1)
+                  AND detail_checked_at IS NULL
+            """)
+            primary_candidates = cur.fetchone()[0]
+        except Exception:
+            primary_candidates = 0
+
     return _to_jsonable({
-        "total": total,
-        "sent": sent,
-        "pending": pending,
-        "filter_go": go_c or 0,
-        "filter_caution": caution_c or 0,
-        "filter_nogo": nogo_c or 0,
-        "filter_unscored": unscored_c or 0,
-        "avg_filter_score": avg_score or 0,
-        "top_customers": top_customers,
-        "price_range": {"min": pmin, "max": pmax, "avg": pavg},
+        "total":             total,
+        "sent":              sent,
+        "detailed":          detailed,
+        "pending":           pending,
+        "primary_candidates":primary_candidates,
+        # Псевдонимы для совместимости с шаблонами (index.html и control.html)
+        "go":                go_c      or 0,
+        "caution":           caution_c or 0,
+        "nogo":              nogo_c    or 0,
+        "filter_go":         go_c      or 0,
+        "filter_caution":    caution_c or 0,
+        "filter_nogo":       nogo_c    or 0,
+        "filter_unscored":   unscored_c or 0,
+        "avg_filter_score":  avg_score  or 0,
+        "customers":         n_customers,
+        "corridors":         n_corridors,
+        "top_customers":     top_customers,
+        "price_range":       {"min": pmin, "max": pmax, "avg": pavg},
     })
 
 
@@ -920,48 +1186,392 @@ def get_tender(purchase_number: str) -> Optional[dict[str, Any]]:
 
 # Совместимость с черновиком database_pg.py: если позже появится filter_engine.py,
 # можно будет записывать отдельные 8 фильтров без изменения web_app.
-def save_filter_result(filter_result: Any) -> None:
+def save_filter_result(filter_result: Any, stage: str = "stage1") -> None:
+    _with_db_retries("save_filter_result", lambda: _save_filter_result_once(filter_result, stage))
+
+
+def _save_filter_result_once(filter_result: Any, stage: str = "stage1") -> None:
+    """
+    Сохраняет результаты фильтрации.
+
+    stage="stage1" — Stage1 НЕ перезаписывает оценки фильтров, если Stage2 уже прошёл
+                      и контент тендера не изменился (needs_detail_refresh = FALSE).
+                      Это защищает детальные оценки от затирания поверхностными.
+
+    stage="stage2" — всегда записывает (Stage2 главнее Stage1).
+    """
     pnum = getattr(filter_result, "purchase_number", "")
     if not pnum:
         return
+
     stop_factors = getattr(filter_result, "stop_factors", []) or []
+
     with _conn() as conn:
         cur = conn.cursor()
-        cur.execute(
-            """
-            UPDATE tenders SET filter_total = %s, filter_decision = %s, filter_stop = %s
-            WHERE purchase_number = %s
-            """,
-            (
-                getattr(filter_result, "total_score", None),
-                getattr(filter_result, "decision", None),
-                " | ".join(stop_factors),
-                pnum,
-            ),
-        )
-        for f in getattr(filter_result, "filters", []) or []:
+
+        if stage == "stage1":
+            # Обновляем filter_total/decision только если Stage2 ещё не прошёл
+            # или если контент изменился (needs_detail_refresh = TRUE).
             cur.execute(
                 """
-                INSERT INTO filter_scores (purchase_number, filter_number, filter_name, score, signals, stop_factor)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (purchase_number, filter_number) DO UPDATE SET
-                    filter_name = EXCLUDED.filter_name,
-                    score = EXCLUDED.score,
-                    signals = EXCLUDED.signals,
-                    stop_factor = EXCLUDED.stop_factor
+                UPDATE tenders
+                SET    filter_total    = %s,
+                       filter_decision = %s,
+                       filter_stop     = %s
+                WHERE  purchase_number = %s
+                  AND  (detail_checked_at IS NULL OR needs_detail_refresh = TRUE)
                 """,
                 (
+                    getattr(filter_result, "total_score", None),
+                    getattr(filter_result, "decision", None),
+                    " | ".join(stop_factors),
                     pnum,
-                    getattr(f, "number", 0),
-                    getattr(f, "name", ""),
-                    getattr(f, "score", 0),
-                    " | ".join(getattr(f, "signals", []) or []),
-                    bool(getattr(f, "stop_factor", False)),
                 ),
             )
+        else:
+            # Stage2 — пишем всегда
+            cur.execute(
+                """
+                UPDATE tenders
+                SET    filter_total    = %s,
+                       filter_decision = %s,
+                       filter_stop     = %s
+                WHERE  purchase_number = %s
+                """,
+                (
+                    getattr(filter_result, "total_score", None),
+                    getattr(filter_result, "decision", None),
+                    " | ".join(stop_factors),
+                    pnum,
+                ),
+            )
+
+        for f in getattr(filter_result, "filters", []) or []:
+            if stage == "stage1":
+                # Stage1: INSERT только если записи ещё нет.
+                # Если Stage2 уже поставил оценку — не трогаем.
+                cur.execute(
+                    """
+                    INSERT INTO filter_scores
+                        (purchase_number, filter_number, filter_name, score, signals, stop_factor)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (purchase_number, filter_number) DO NOTHING
+                    """,
+                    (
+                        pnum,
+                        getattr(f, "number", 0),
+                        getattr(f, "name", ""),
+                        getattr(f, "score", 0),
+                        " | ".join(getattr(f, "signals", []) or []),
+                        bool(getattr(f, "stop_factor", False)),
+                    ),
+                )
+            else:
+                # Stage2: всегда перезаписываем (детальный анализ точнее)
+                cur.execute(
+                    """
+                    INSERT INTO filter_scores
+                        (purchase_number, filter_number, filter_name, score, signals, stop_factor)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (purchase_number, filter_number) DO UPDATE SET
+                        filter_name = EXCLUDED.filter_name,
+                        score       = EXCLUDED.score,
+                        signals     = EXCLUDED.signals,
+                        stop_factor = EXCLUDED.stop_factor
+                    """,
+                    (
+                        pnum,
+                        getattr(f, "number", 0),
+                        getattr(f, "name", ""),
+                        getattr(f, "score", 0),
+                        " | ".join(getattr(f, "signals", []) or []),
+                        bool(getattr(f, "stop_factor", False)),
+                    ),
+                )
 
 
 def save_llm_verdict(purchase_number: str, llm_verdict: str) -> None:
     with _conn() as conn:
         cur = conn.cursor()
         cur.execute("UPDATE tenders SET llm_verdict = %s WHERE purchase_number = %s", (llm_verdict, purchase_number))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CUSTOMERS — профили заказчиков
+# ══════════════════════════════════════════════════════════════════════════════
+
+def upsert_customer(data: dict[str, Any]) -> None:
+    """Создаёт или обновляет профиль заказчика. data обязан содержать 'inn'."""
+    inn = data.get("inn")
+    if not inn:
+        return
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO customers (
+                inn, name, total_contracts, terminated_contracts,
+                avg_drop_pct, avg_participants,
+                repeat_winner_inn, repeat_winner_name, repeat_winner_share,
+                monopoly_flag, arbitration_count, last_arbitration_date,
+                reliability_score, notes, raw_json, updated_at
+            ) VALUES (
+                %(inn)s, %(name)s, %(total_contracts)s, %(terminated_contracts)s,
+                %(avg_drop_pct)s, %(avg_participants)s,
+                %(repeat_winner_inn)s, %(repeat_winner_name)s, %(repeat_winner_share)s,
+                %(monopoly_flag)s, %(arbitration_count)s, %(last_arbitration_date)s,
+                %(reliability_score)s, %(notes)s, %(raw_json)s, NOW()
+            )
+            ON CONFLICT (inn) DO UPDATE SET
+                name                  = COALESCE(EXCLUDED.name, customers.name),
+                total_contracts       = EXCLUDED.total_contracts,
+                terminated_contracts  = EXCLUDED.terminated_contracts,
+                avg_drop_pct          = EXCLUDED.avg_drop_pct,
+                avg_participants      = EXCLUDED.avg_participants,
+                repeat_winner_inn     = EXCLUDED.repeat_winner_inn,
+                repeat_winner_name    = EXCLUDED.repeat_winner_name,
+                repeat_winner_share   = EXCLUDED.repeat_winner_share,
+                monopoly_flag         = EXCLUDED.monopoly_flag,
+                arbitration_count     = EXCLUDED.arbitration_count,
+                last_arbitration_date = COALESCE(EXCLUDED.last_arbitration_date, customers.last_arbitration_date),
+                reliability_score     = EXCLUDED.reliability_score,
+                notes                 = COALESCE(EXCLUDED.notes, customers.notes),
+                raw_json              = EXCLUDED.raw_json,
+                updated_at            = NOW()
+        """, {
+            "inn":                   inn,
+            "name":                  data.get("name"),
+            "total_contracts":       data.get("total_contracts", 0),
+            "terminated_contracts":  data.get("terminated_contracts", 0),
+            "avg_drop_pct":          data.get("avg_drop_pct"),
+            "avg_participants":      data.get("avg_participants"),
+            "repeat_winner_inn":     data.get("repeat_winner_inn"),
+            "repeat_winner_name":    data.get("repeat_winner_name"),
+            "repeat_winner_share":   data.get("repeat_winner_share"),
+            "monopoly_flag":         data.get("monopoly_flag", False),
+            "arbitration_count":     data.get("arbitration_count", 0),
+            "last_arbitration_date": data.get("last_arbitration_date"),
+            "reliability_score":     data.get("reliability_score", 3),
+            "notes":                 data.get("notes"),
+            "raw_json":              json.dumps(data.get("raw_json") or {}, ensure_ascii=False),
+        })
+
+
+def get_customer(inn: str) -> Optional[dict[str, Any]]:
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM customers WHERE inn = %s", (inn,))
+        row = cur.fetchone()
+    return _to_jsonable(dict(row)) if row else None
+
+
+def get_customers_list(limit: int = 100, only_risky: bool = False) -> list[dict[str, Any]]:
+    where = "WHERE monopoly_flag = TRUE OR reliability_score <= 2" if only_risky else ""
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            f"SELECT * FROM customers {where} ORDER BY reliability_score ASC, total_contracts DESC LIMIT %s",
+            (limit,),
+        )
+        return [_to_jsonable(dict(r)) for r in cur.fetchall()]
+
+
+def get_customer_inns_to_score(limit: int = 50) -> list[str]:
+    """ИНН заказчиков из наших тендеров, у которых ещё нет профиля в customers."""
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DISTINCT t.customer_inn
+            FROM tenders t
+            LEFT JOIN customers c ON c.inn = t.customer_inn
+            WHERE t.customer_inn IS NOT NULL
+              AND t.customer_inn <> ''
+              AND c.inn IS NULL
+            ORDER BY t.customer_inn
+            LIMIT %s
+        """, (limit,))
+        return [r[0] for r in cur.fetchall()]
+
+
+def get_stale_customer_inns(days: int = 7, limit: int = 30) -> list[str]:
+    """ИНН заказчиков, чей профиль устарел (обновлялся более N дней назад)."""
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT inn FROM customers
+            WHERE updated_at < NOW() - INTERVAL '%s days'
+            ORDER BY updated_at ASC
+            LIMIT %s
+        """, (days, limit))
+        return [r[0] for r in cur.fetchall()]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PRICE CORRIDORS — ценовые коридоры по категориям
+# ══════════════════════════════════════════════════════════════════════════════
+
+def upsert_price_corridor(data: dict[str, Any]) -> None:
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO price_corridors (
+                category, law_type, sample_count,
+                avg_drop_pct, p25_drop_pct, p50_drop_pct, p75_drop_pct,
+                min_drop_pct, max_drop_pct, avg_participants, updated_at
+            ) VALUES (
+                %(category)s, %(law_type)s, %(sample_count)s,
+                %(avg_drop_pct)s, %(p25_drop_pct)s, %(p50_drop_pct)s, %(p75_drop_pct)s,
+                %(min_drop_pct)s, %(max_drop_pct)s, %(avg_participants)s, NOW()
+            )
+            ON CONFLICT (category, law_type) DO UPDATE SET
+                sample_count     = EXCLUDED.sample_count,
+                avg_drop_pct     = EXCLUDED.avg_drop_pct,
+                p25_drop_pct     = EXCLUDED.p25_drop_pct,
+                p50_drop_pct     = EXCLUDED.p50_drop_pct,
+                p75_drop_pct     = EXCLUDED.p75_drop_pct,
+                min_drop_pct     = EXCLUDED.min_drop_pct,
+                max_drop_pct     = EXCLUDED.max_drop_pct,
+                avg_participants = EXCLUDED.avg_participants,
+                updated_at       = NOW()
+        """, data)
+
+
+def get_price_corridor(category: str, law_type: str = "all") -> Optional[dict[str, Any]]:
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT * FROM price_corridors WHERE category = %s AND law_type = %s",
+            (category, law_type),
+        )
+        row = cur.fetchone()
+        if not row:
+            cur.execute(
+                "SELECT * FROM price_corridors WHERE category = %s ORDER BY sample_count DESC LIMIT 1",
+                (category,),
+            )
+            row = cur.fetchone()
+    return _to_jsonable(dict(row)) if row else None
+
+
+def get_all_price_corridors() -> list[dict[str, Any]]:
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT * FROM price_corridors ORDER BY category, law_type"
+        )
+        return [_to_jsonable(dict(r)) for r in cur.fetchall()]
+
+
+def rebuild_corridors_from_results() -> int:
+    """
+    Пересчитывает price_corridors из данных о результатах,
+    уже сохранённых в таблице tenders (Stage3).
+    Возвращает количество обновлённых записей.
+    """
+    import json as _json
+    from winner_analytics import classify_category
+
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT title, law_type, price, final_price, price_drop_percent, participants_count
+            FROM tenders
+            WHERE final_price IS NOT NULL
+              AND price_drop_percent IS NOT NULL
+              AND price_drop_percent BETWEEN 0 AND 60
+        """)
+        rows = cur.fetchall()
+
+    if not rows:
+        return 0
+
+    from collections import defaultdict
+    import statistics
+
+    buckets: dict[tuple, list] = defaultdict(list)
+    for r in rows:
+        cat = classify_category(r["title"] or "")
+        law = r["law_type"] or "all"
+        drop = float(r["price_drop_percent"])
+        parts = r["participants_count"] or 0
+        buckets[(cat, law)].append((drop, parts))
+        buckets[(cat, "all")].append((drop, parts))
+
+    count = 0
+    for (cat, law), items in buckets.items():
+        drops = sorted(v[0] for v in items)
+        parts = [v[1] for v in items if v[1] > 0]
+        n = len(drops)
+        if n < 3:
+            continue
+
+        def pct(lst, p):
+            idx = max(0, int(len(lst) * p / 100) - 1)
+            return round(lst[idx], 2)
+
+        upsert_price_corridor({
+            "category":         cat,
+            "law_type":         law,
+            "sample_count":     n,
+            "avg_drop_pct":     round(statistics.mean(drops), 2),
+            "p25_drop_pct":     pct(drops, 25),
+            "p50_drop_pct":     pct(drops, 50),
+            "p75_drop_pct":     pct(drops, 75),
+            "min_drop_pct":     round(min(drops), 2),
+            "max_drop_pct":     round(max(drops), 2),
+            "avg_participants": round(statistics.mean(parts), 1) if parts else None,
+        })
+        count += 1
+
+    return count
+
+
+# нужен для rebuild_corridors_from_results
+import json
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SETTINGS — runtime-настройки, редактируемые через веб-интерфейс
+# ══════════════════════════════════════════════════════════════════════════════
+
+def get_setting(key: str, default: str | None = None) -> str | None:
+    """Возвращает значение из таблицы settings или default."""
+    try:
+        with _conn() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT value FROM settings WHERE key = %s", (key,))
+            row = cur.fetchone()
+        return row[0] if row else default
+    except Exception:
+        return default
+
+
+def set_setting(key: str, value: str, description: str = "") -> None:
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO settings (key, value, description)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (key) DO UPDATE SET
+                value      = EXCLUDED.value,
+                description = COALESCE(NULLIF(EXCLUDED.description,''), settings.description),
+                updated_at  = NOW()
+            """,
+            (key, str(value), description),
+        )
+
+
+def get_all_settings() -> dict[str, str]:
+    try:
+        with _conn() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT key, value FROM settings ORDER BY key")
+            return {row[0]: row[1] for row in cur.fetchall()}
+    except Exception:
+        return {}
+
+
+def upsert_settings_bulk(data: dict[str, str]) -> None:
+    """Сохраняет несколько настроек за один вызов."""
+    for key, value in data.items():
+        set_setting(key, value)

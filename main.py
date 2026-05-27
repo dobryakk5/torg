@@ -34,7 +34,12 @@ import database as db
 from document_processor import collect_document_text, download_documents, extract_financial_terms, hash_files
 from llm_analyzer import analyze_tender
 from notifier import format_tender_message, send_startup_message, send_summary, send_tender_message
-from scraper import get_tender_page, parse_result_info, search_eis
+from scraper import (
+    get_tender_page, parse_result_info, search_eis, search_eis_by_okpd2,
+)
+from winner_analytics   import run_update   as run_winner_update, classify_category, recommend_bid
+from customer_scorer    import run_new_customers, run_refresh_customers, get_customer_risk_label
+from change_detector    import check_once   as check_changes
 from filter_engine import run_stage1_filters, run_stage2_filters
 
 logging.basicConfig(
@@ -48,46 +53,35 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 
-def run_stage1(dry_run: bool = False) -> tuple[int, int]:
-    """Массовая подгрузка карточек и первичный скоринг без ТЗ."""
-    started_at = datetime.now().isoformat(timespec="seconds")
-    logger.info("═" * 50)
-    logger.info("Этап 1: поиск карточек и первичный скоринг")
+def _stage1_period_label(days_back: int | None) -> str:
+    return "all-active" if days_back is not None and days_back <= 0 else f"{days_back or config.PUBLISH_DAYS_BACK}d"
 
-    errors: list[str] = []
-    candidates: dict[str, dict] = {}
-    keyword_map: dict[str, set[str]] = {}
 
-    for keyword in config.SEARCH_KEYWORDS:
-        try:
-            tenders = search_eis(
-                keyword=keyword,
-                price_from=config.PRICE_MIN,
-                price_to=config.PRICE_MAX,
-                fz44=config.SEARCH_44FZ,
-                fz223=config.SEARCH_223FZ,
-                pages=config.SEARCH_PAGES,
-                days_back=config.PUBLISH_DAYS_BACK,   # ← только свежие закупки
-            )
-        except Exception as exc:
-            msg = f"Ошибка поиска по '{keyword}': {exc}"
-            logger.error(msg)
-            errors.append(msg)
+def _stage1_phase_mode(kind: str, value: str, days_back: int | None, pages: int) -> str:
+    value = re.sub(r"\s+", " ", value).strip()
+    laws = "".join([("44" if config.SEARCH_44FZ else ""), ("223" if config.SEARCH_223FZ else "")])
+    return (
+        f"stage1:{kind}:{value}:period={_stage1_period_label(days_back)}:pages={pages}:"
+        f"price={config.PRICE_MIN}-{config.PRICE_MAX}:fz={laws or 'none'}"
+    )
+
+
+def _process_stage1_tenders(
+    tenders: list[dict],
+    matched_keyword: str,
+    dry_run: bool,
+    seen_this_run: set[str],
+) -> tuple[int, int, int]:
+    saved = 0
+    newly_counted = 0
+    primary_candidates = 0
+
+    for tender in tenders:
+        pnum = tender.get("purchase_number", "")
+        if not pnum:
             continue
 
-        for tender in tenders:
-            pnum = tender.get("purchase_number", "")
-            if not pnum:
-                continue
-            if pnum not in candidates:
-                candidates[pnum] = tender
-                keyword_map[pnum] = set()
-            keyword_map[pnum].add(keyword)
-
-    saved = 0
-    primary_candidates = 0
-    for pnum, tender in candidates.items():
-        matched_keywords = sorted(keyword_map.get(pnum, []))
+        matched_keywords = sorted(set(tender.get("matched_keywords") or []) | {matched_keyword})
         tender["matched_keywords"] = matched_keywords
         primary_text = tender.get("primary_text", "")
         filter_result = run_stage1_filters(tender, primary_text)
@@ -96,11 +90,24 @@ def run_stage1(dry_run: bool = False) -> tuple[int, int]:
         tender["filter_decision"] = filter_result.decision
         tender["filter_scores"] = filter_result.to_filter_scores()
         tender["filter_stop"] = " | ".join(filter_result.stop_factors)
+
+        customer_inn = tender.get("customer_inn", "")
+        risk_label = get_customer_risk_label(customer_inn)
+        if risk_label:
+            logger.info("Риск заказчика %s: %s", customer_inn, risk_label)
+            tender["customer_risk_label"] = risk_label
+
         result = db.upsert_primary(tender, primary_score, primary_reasons, matched_keywords)
-        db.save_filter_result(filter_result)
+        db.save_filter_result(filter_result, stage="stage1")
         saved += 1
-        if primary_score >= config.MIN_PRIMARY_SCORE_FOR_DETAIL:
-            primary_candidates += 1
+
+        first_in_run = pnum not in seen_this_run
+        if first_in_run:
+            seen_this_run.add(pnum)
+            newly_counted += 1
+            if primary_score >= config.MIN_PRIMARY_SCORE_FOR_DETAIL:
+                primary_candidates += 1
+
         logger.info(
             "Stage1 %s: скор %d, %s (%s)",
             result,
@@ -109,14 +116,102 @@ def run_stage1(dry_run: bool = False) -> tuple[int, int]:
             pnum,
         )
 
-        if dry_run and primary_score >= config.MIN_PRIMARY_SCORE_FOR_DETAIL:
+        if dry_run and first_in_run and primary_score >= config.MIN_PRIMARY_SCORE_FOR_DETAIL:
             print("\n" + "─" * 50)
             print(f"PRIMARY SCORE: {primary_score}")
             print(re.sub(r"<[^>]+>", "", format_tender_message(tender, primary_score, primary_reasons, None)))
 
-    logger.info("Этап 1 завершён: найдено %d, кандидатов на этап 2: %d", saved, primary_candidates)
-    db.log_run("stage1", started_at, found=saved, processed=saved, notified=0, errors="; ".join(errors))
-    return saved, primary_candidates
+    return saved, newly_counted, primary_candidates
+
+
+def run_stage1(
+    dry_run: bool = False,
+    skip_completed_today: bool = False,
+    backfill_active: bool = False,
+) -> tuple[int, int]:
+    """Массовая подгрузка карточек и первичный скоринг без ТЗ."""
+    started_at = datetime.now().isoformat(timespec="seconds")
+    logger.info("═" * 50)
+    logger.info("Этап 1: поиск карточек и первичный скоринг")
+
+    errors: list[str] = []
+    seen_this_run: set[str] = set()
+    saved = 0
+    unique_saved = 0
+    primary_candidates = 0
+    days_back = 0 if backfill_active else config.PUBLISH_DAYS_BACK
+    pages = config.BACKFILL_SEARCH_PAGES if backfill_active else config.SEARCH_PAGES
+
+    # ── Канал 1: поиск по ключевым словам ──────────────────────────────────
+    for keyword in config.SEARCH_KEYWORDS:
+        phase_started_at = datetime.now().isoformat(timespec="seconds")
+        phase_mode = _stage1_phase_mode("keyword", keyword, days_back, pages)
+        if skip_completed_today and db.was_stage_completed_today(phase_mode):
+            logger.info("Поиск '%s' уже готов сегодня — пропускаю", keyword)
+            continue
+        try:
+            tenders = search_eis(
+                keyword=keyword,
+                price_from=config.PRICE_MIN,
+                price_to=config.PRICE_MAX,
+                fz44=config.SEARCH_44FZ,
+                fz223=config.SEARCH_223FZ,
+                pages=pages,
+                days_back=days_back,
+            )
+            phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
+                tenders,
+                keyword,
+                dry_run,
+                seen_this_run,
+            )
+            saved += phase_saved
+            unique_saved += phase_unique
+            primary_candidates += phase_candidates
+            db.log_run(phase_mode, phase_started_at, found=len(tenders), processed=phase_saved, notified=0, errors="")
+        except Exception as exc:
+            msg = f"Ошибка поиска по '{keyword}': {exc}"
+            logger.error(msg)
+            errors.append(msg)
+            continue
+
+    # ── Канал 2: поиск по ОКПД2 (параллельный, ловит без ключевых слов) ───
+    if getattr(config, "OKPD2_SEARCH_ENABLED", True) and config.OKPD2_CODES:
+        phase_started_at = datetime.now().isoformat(timespec="seconds")
+        okpd2_value = ",".join(config.OKPD2_CODES)
+        phase_mode = _stage1_phase_mode("okpd2", okpd2_value, days_back, pages)
+        if skip_completed_today and db.was_stage_completed_today(phase_mode):
+            logger.info("ОКПД2-поиск %s уже готов сегодня — пропускаю", config.OKPD2_CODES)
+        else:
+            before_unique = len(seen_this_run)
+            try:
+                okpd2_tenders = search_eis_by_okpd2(
+                    okpd2_codes=config.OKPD2_CODES,
+                    price_from=config.PRICE_MIN,
+                    price_to=config.PRICE_MAX,
+                    fz44=config.SEARCH_44FZ,
+                    fz223=config.SEARCH_223FZ,
+                    pages=pages,
+                    days_back=days_back,
+                )
+                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
+                    okpd2_tenders,
+                    "okpd2",
+                    dry_run,
+                    seen_this_run,
+                )
+                saved += phase_saved
+                unique_saved += phase_unique
+                primary_candidates += phase_candidates
+                logger.info("ОКПД2-канал добавил %d новых тендеров", len(seen_this_run) - before_unique)
+                db.log_run(phase_mode, phase_started_at, found=len(okpd2_tenders), processed=phase_saved, notified=0, errors="")
+            except Exception as exc:
+                logger.error("Ошибка ОКПД2-поиска: %s", exc)
+                errors.append(f"ОКПД2: {exc}")
+
+    logger.info("Этап 1 завершён: найдено %d, кандидатов на этап 2: %d", unique_saved, primary_candidates)
+    db.log_run("stage1", started_at, found=unique_saved, processed=saved, notified=0, errors="; ".join(errors))
+    return unique_saved, primary_candidates
 
 
 def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
@@ -209,7 +304,7 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
             document_text=scoring_text,
             notified=notified,
         )
-        db.save_filter_result(filter_result)
+        db.save_filter_result(filter_result, stage="stage2")
         processed += 1
         if notified:
             notified_count += 1
@@ -274,10 +369,95 @@ def run_stage3(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
     return processed, 0
 
 
-def run_once(dry_run: bool = False) -> tuple[int, int]:
-    found, _ = run_stage1(dry_run=dry_run)
-    processed, notified = run_stage2(dry_run=dry_run)
+def _stage_completed_today(stage: str, skip_completed_today: bool) -> bool:
+    if not skip_completed_today:
+        return False
+    if db.was_stage_completed_today(stage):
+        logger.info("%s уже успешно выполнялся сегодня — пропускаю", stage)
+        return True
+    return False
+
+
+def run_once(
+    dry_run: bool = False,
+    skip_completed_today: bool = False,
+    backfill_active: bool = False,
+) -> tuple[int, int]:
+    found, _ = run_stage1(
+        dry_run=dry_run,
+        skip_completed_today=skip_completed_today,
+        backfill_active=backfill_active,
+    )
+
+    if _stage_completed_today("stage2", skip_completed_today):
+        processed, notified = 0, 0
+    else:
+        processed, notified = run_stage2(dry_run=dry_run)
     return found + processed, notified
+
+
+def run_analytics(dry_run: bool = False) -> None:
+    """
+    Аналитический цикл (запускается реже — раз в день или вручную):
+      1. Ценовые коридоры — скрейп реестра контрактов + пересчёт
+      2. Карточки заказчиков — новые и обновление устаревших
+      3. Детектор изменений ТЗ
+    """
+    logger.info("═" * 50)
+    logger.info("Аналитический цикл")
+
+    # 1. Ценовые коридоры
+    try:
+        logger.info("Обновление ценовых коридоров…")
+        run_winner_update(
+            keywords=config.SEARCH_KEYWORDS[:8],
+            pages=getattr(config, "WINNER_ANALYTICS_PAGES", 3),
+        )
+    except Exception as e:
+        logger.error("Ошибка winner_analytics: %s", e)
+
+    if dry_run:
+        logger.info("dry_run: пропускаем customer_scorer и change_detector")
+        return
+
+    # 2. Заказчики — новые
+    try:
+        n = run_new_customers(limit=getattr(config, "CUSTOMER_SCORE_LIMIT", 30))
+        logger.info("Новых профилей заказчиков: %d", n)
+    except Exception as e:
+        logger.error("Ошибка customer_scorer (новые): %s", e)
+
+    # 3. Заказчики — обновление устаревших
+    try:
+        n = run_refresh_customers(
+            limit=10,
+            days=getattr(config, "CUSTOMER_REFRESH_DAYS", 7),
+        )
+        logger.info("Обновлено профилей заказчиков: %d", n)
+    except Exception as e:
+        logger.error("Ошибка customer_scorer (refresh): %s", e)
+
+    # 4. Детектор изменений ТЗ
+    try:
+        checked, changed = check_changes()
+        logger.info("Детектор изменений: проверено %d, изменений %d", checked, changed)
+    except Exception as e:
+        logger.error("Ошибка change_detector: %s", e)
+
+
+def _start_analytics_subprocess() -> None:
+    """Запускает change_detector.py как фоновый демон."""
+    import subprocess, sys
+    script = Path(__file__).parent / "change_detector.py"
+    if not script.exists():
+        logger.warning("change_detector.py не найден")
+        return
+    proc = subprocess.Popen(
+        [sys.executable, str(script), "--daemon"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    logger.info("change_detector.py запущен (PID %d)", proc.pid)
 
 
 def _start_telegram_decisions_subprocess() -> None:
@@ -304,6 +484,7 @@ def _start_telegram_decisions_subprocess() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Двухэтапный тендерный монитор ЕИС")
+    parser.add_argument("--analytics", action="store_true", help="Ценовые коридоры + карточки заказчиков + детектор изменений")
     parser.add_argument("--stage1", action="store_true", help="Только поиск карточек и первичный скоринг")
     parser.add_argument("--stage2", action="store_true", help="Только детальный анализ кандидатов")
     parser.add_argument("--stage3", action="store_true", help="После дедлайна подтянуть результаты/победителей")
@@ -312,29 +493,60 @@ def main() -> None:
     parser.add_argument("--test", action="store_true", help="Тестовый полный цикл без отправки в Telegram")
     parser.add_argument("--reset-db", action="store_true", help="Сбросить PostgreSQL-таблицы проекта и создать чистую схему")
     parser.add_argument("--limit", type=int, default=None, help="Лимит кандидатов для stage2")
+    parser.add_argument("--skip-completed-today", action="store_true", help="Не запускать стадии, которые уже успешно завершались сегодня")
+    parser.add_argument("--backfill-active", action="store_true", help="Stage1: собрать все активные закупки без фильтра по дате публикации")
     args = parser.parse_args()
 
     if args.reset_db:
-        db.reset_db()
+        db.reset_db()   # DROP всех таблиц + пересоздание схемы + defaults
     else:
-        db.init_db()
+        db.connect_db()
+        db.check_db()
 
-    if args.stage1:
-        run_stage1(dry_run=args.test)
+    # Читаем runtime-настройки из БД (могут быть изменены через веб-интерфейс)
+    config.PRICE_MIN                    = config.get_runtime("PRICE_MIN",                    config.PRICE_MIN)
+    config.PRICE_MAX                    = config.get_runtime("PRICE_MAX",                    config.PRICE_MAX)
+    config.PUBLISH_DAYS_BACK            = config.get_runtime("PUBLISH_DAYS_BACK",            config.PUBLISH_DAYS_BACK)
+    config.SCHEDULE_HOURS               = config.get_runtime("SCHEDULE_HOURS",               config.SCHEDULE_HOURS)
+    config.MIN_PRIMARY_SCORE_FOR_DETAIL = config.get_runtime("MIN_PRIMARY_SCORE_FOR_DETAIL", config.MIN_PRIMARY_SCORE_FOR_DETAIL)
+    config.MIN_DETAILED_SCORE_FOR_NOTIFY= config.get_runtime("MIN_DETAILED_SCORE_FOR_NOTIFY",config.MIN_DETAILED_SCORE_FOR_NOTIFY)
+    config.SEARCH_KEYWORDS              = config.get_runtime("SEARCH_KEYWORDS",              config.SEARCH_KEYWORDS)
+    config.OKPD2_SEARCH_ENABLED         = config.get_runtime("OKPD2_SEARCH_ENABLED",         config.OKPD2_SEARCH_ENABLED)
+    config.OKPD2_CODES                  = config.get_runtime("OKPD2_CODES",                  config.OKPD2_CODES)
+    config.BACKFILL_SEARCH_PAGES        = config.get_runtime("BACKFILL_SEARCH_PAGES",        config.BACKFILL_SEARCH_PAGES)
+
+    if args.analytics:
+        run_analytics(dry_run=args.test)
+    elif args.stage1:
+        run_stage1(
+            dry_run=args.test,
+            skip_completed_today=args.skip_completed_today,
+            backfill_active=args.backfill_active,
+        )
     elif args.stage2:
-        run_stage2(dry_run=args.test, limit=args.limit)
+        if not _stage_completed_today("stage2", args.skip_completed_today):
+            run_stage2(dry_run=args.test, limit=args.limit)
     elif args.stage3 or args.results:
-        run_stage3(dry_run=args.test, limit=args.limit)
+        if not _stage_completed_today("stage3", args.skip_completed_today):
+            run_stage3(dry_run=args.test, limit=args.limit)
     elif args.once or args.test:
-        run_once(dry_run=args.test)
+        run_once(
+            dry_run=args.test,
+            skip_completed_today=args.skip_completed_today,
+            backfill_active=args.backfill_active,
+        )
     else:
         if schedule is None:
             raise SystemExit("Для daemon-режима установи зависимость: pip install schedule")
         logger.info("Запуск по расписанию каждые %d ч.: stage1 + stage2", config.SCHEDULE_HOURS)
         send_startup_message(config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID, config.SEARCH_KEYWORDS)
-        _start_telegram_decisions_subprocess()   # ← кнопки решений в Telegram
+        _start_telegram_decisions_subprocess()
+        _start_analytics_subprocess()          # change_detector фоновым процессом
         run_once()
         schedule.every(config.SCHEDULE_HOURS).hours.do(run_once)
+        # Аналитика — раз в сутки (в 04:00, чтобы не нагружать в рабочие часы)
+        schedule.every().day.at("04:00").do(run_analytics)
+        logger.info("Аналитика запланирована: ежедневно в 04:00")
         while True:
             schedule.run_pending()
             time.sleep(60)
@@ -350,4 +562,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        db.close_db()

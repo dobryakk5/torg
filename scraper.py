@@ -90,6 +90,7 @@ def search_eis(
     """
     days_back: искать только закупки опубликованные за последние N дней.
     None → берёт значение из config.PUBLISH_DAYS_BACK (по умолчанию 30).
+    0 или меньше → не ставит publishDateFrom, но оставляет af=on (только активные).
     Без этого параметра ЕИС отдаёт закупки за все годы включая 2014.
     """
     from datetime import datetime, timedelta
@@ -98,7 +99,7 @@ def search_eis(
     seen_numbers: set[str] = set()
 
     n_days = days_back if days_back is not None else getattr(config, "PUBLISH_DAYS_BACK", 30)
-    date_from = (datetime.now() - timedelta(days=n_days)).strftime("%d.%m.%Y")
+    date_from = (datetime.now() - timedelta(days=n_days)).strftime("%d.%m.%Y") if n_days and n_days > 0 else ""
 
     params_base = {
         "searchString":       keyword,
@@ -110,8 +111,9 @@ def search_eis(
         "sortBy":             "UPDATE_DATE",
         "currencyIdGeneral":  "-1",
         "af":                 "on",          # только активные (приём заявок)
-        "publishDateFrom":    date_from,     # ← только свежие закупки
     }
+    if date_from:
+        params_base["publishDateFrom"] = date_from
     if fz44:
         params_base["fz44"] = "on"
     if fz223:
@@ -123,7 +125,8 @@ def search_eis(
 
     for page in range(1, pages + 1):
         params = {**params_base, "pageNumber": str(page)}
-        logger.info("Ищу '%s', страница %d (с %s)", keyword, page, date_from)
+        period = f"с {date_from}" if date_from else "все активные"
+        logger.info("Ищу '%s', страница %d (%s)", keyword, page, period)
 
         resp = _get(SEARCH_URL, params=params)
         if not resp:
@@ -332,3 +335,87 @@ def parse_result_info(page_text: str, initial_price: float | None = None) -> dic
             pass
 
     return result
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Поиск по ОКПД2 кодам
+# ══════════════════════════════════════════════════════════════════════════════
+
+def search_eis_by_okpd2(
+    okpd2_codes: list[str],
+    price_from: int | None = None,
+    price_to: int | None = None,
+    fz44: bool = True,
+    fz223: bool = True,
+    pages: int = 2,
+    days_back: int | None = None,
+) -> list[dict]:
+    """
+    Ищет закупки по кодам ОКПД2 вместо ключевых слов.
+    Ловит тендеры, где нет наших ключевых слов в названии,
+    но код деятельности соответствует ИТ.
+
+    Пример:
+        search_eis_by_okpd2(["62.01", "62.02", "62.09"])
+
+    Параметр ЕИС: okpd2IDs (через запятую).
+    days_back <= 0 отключает publishDateFrom, но оставляет af=on.
+    """
+    from datetime import datetime, timedelta
+
+    tenders: list[dict] = []
+    seen:    set[str]   = set()
+
+    n_days    = days_back if days_back is not None else getattr(config, "PUBLISH_DAYS_BACK", 30)
+    date_from = (datetime.now() - timedelta(days=n_days)).strftime("%d.%m.%Y") if n_days and n_days > 0 else ""
+
+    params_base = {
+        "okpd2IDs":           ",".join(okpd2_codes),
+        "search-filter":      "Дате размещения",
+        "sortDirection":      "false",
+        "recordsPerPage":     "_20",
+        "showLotsInfoHidden": "false",
+        "sortBy":             "UPDATE_DATE",
+        "currencyIdGeneral":  "-1",
+        "af":                 "on",
+    }
+    if date_from:
+        params_base["publishDateFrom"] = date_from
+    if fz44:
+        params_base["fz44"] = "on"
+    if fz223:
+        params_base["fz223"] = "on"
+    if price_from:
+        params_base["priceFrom"] = str(price_from)
+    if price_to:
+        params_base["priceTo"] = str(price_to)
+
+    for page in range(1, pages + 1):
+        params = {**params_base, "pageNumber": str(page)}
+        period = f"с {date_from}" if date_from else "все активные"
+        logger.info("ОКПД2 %s, страница %d (%s)", okpd2_codes, page, period)
+
+        resp = _get(SEARCH_URL, params=params)
+        if not resp:
+            break
+
+        soup  = BeautifulSoup(resp.text, "html.parser")
+        cards = soup.select("div.registry-entry__form") or soup.select("div.search-registry-entry-block")
+        if not cards:
+            logger.info("Нет карточек на стр. %d для ОКПД2 %s", page, okpd2_codes)
+            break
+
+        for card in cards:
+            tender = _parse_card(card)
+            if not tender:
+                continue
+            tender["matched_keywords"] = [f"okpd2:{','.join(okpd2_codes)}"]
+            num = tender.get("purchase_number", "")
+            if num and num not in seen:
+                seen.add(num)
+                tenders.append(tender)
+
+        _sleep()
+
+    logger.info("ОКПД2 %s → %d закупок", okpd2_codes, len(tenders))
+    return tenders

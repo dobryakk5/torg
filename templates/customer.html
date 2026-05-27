@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Заказчик — Тендерный монитор</title>
+<style>
+:root{--bg:#0f1117;--surf:#1a1d27;--surf2:#20243a;--border:#2a2d3e;
+  --text:#e2e8f0;--dim:#8892a4;--dimmer:#4a5568;
+  --accent:#818cf8;--green:#4ade80;--yellow:#facc15;--red:#f87171;--blue:#60a5fa;
+  --mono:'JetBrains Mono','Fira Code',monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.header{background:var(--surf);border-bottom:1px solid var(--border);padding:.75rem 2rem}
+.header-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:1.5rem}
+.logo{font-family:var(--mono);font-size:.85rem;font-weight:700;color:var(--accent)}
+.nav a{font-size:.75rem;color:var(--dim);padding:.3rem .6rem;border-radius:4px}
+.nav a:hover{color:var(--text);background:var(--surf2)}
+.main{max-width:1200px;margin:0 auto;padding:2rem}
+.back{font-size:.75rem;color:var(--dim);margin-bottom:1.5rem;display:inline-block}
+
+/* Шапка карточки */
+.card-header{background:var(--surf);border:1px solid var(--border);border-radius:10px;padding:1.5rem;margin-bottom:1.5rem}
+.customer-name{font-size:1.15rem;font-weight:600;margin-bottom:.35rem}
+.customer-inn{font-family:var(--mono);font-size:.75rem;color:var(--dim)}
+
+/* Метрики */
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin:1.25rem 0}
+.metric{background:var(--surf2);border-radius:8px;padding:1rem}
+.metric-label{font-size:.58rem;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.4rem}
+.metric-value{font-size:1.4rem;font-weight:700;font-family:var(--mono);line-height:1}
+.metric-sub{font-size:.62rem;color:var(--dim);margin-top:.2rem}
+
+/* Надёжность */
+.reliability{display:flex;gap:.35rem;margin:.75rem 0}
+.rel-dot{width:28px;height:28px;border-radius:6px}
+
+/* Монополия */
+.monopoly-block{background:rgba(250,204,21,.07);border:1px solid rgba(250,204,21,.2);
+  border-radius:8px;padding:.85rem 1rem;margin:.75rem 0;font-size:.8rem}
+.monopoly-block.danger{background:rgba(248,113,113,.07);border-color:rgba(248,113,113,.2)}
+
+/* Арбитраж */
+.arbitration-block{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.2);
+  border-radius:8px;padding:.85rem 1rem;margin:.75rem 0;font-size:.8rem}
+
+/* Таблица тендеров */
+table{width:100%;border-collapse:collapse;margin-top:1rem}
+thead tr{background:var(--surf)}
+th{padding:8px 12px;text-align:left;font-size:.6rem;font-weight:600;color:var(--dim);
+   text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border)}
+td{padding:8px 12px;border-bottom:1px solid var(--border);font-size:.8rem;vertical-align:middle}
+tr:hover td{background:rgba(255,255,255,.02)}
+.badge{display:inline-block;padding:2px 7px;border-radius:999px;font-size:.58rem;font-weight:700}
+.badge-go{background:rgba(74,222,128,.15);color:var(--green)}
+.badge-caution{background:rgba(250,204,21,.15);color:var(--yellow)}
+.badge-nogo{background:rgba(248,113,113,.15);color:var(--red)}
+.mono{font-family:var(--mono);font-size:.75rem}
+.muted{color:var(--dim)}
+h2{font-size:.85rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;opacity:.65;margin:1.5rem 0 .75rem}
+.notes-block{background:var(--surf2);border-radius:6px;padding:.75rem 1rem;font-size:.8rem;color:var(--dim);margin-top:.75rem}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <div class="logo">🔍 ТендерМонитор</div>
+    <nav class="nav" style="display:flex;gap:.25rem">
+      <a href="/">Тендеры</a>
+      <a href="/analytics">Аналитика</a>
+    </nav>
+  </div>
+</div>
+
+<div class="main">
+  <a class="back" href="/analytics">← Назад к аналитике</a>
+
+  {% set score = customer.reliability_score or 3 %}
+
+  <div class="card-header">
+    <div class="customer-name">{{ customer.name or '—' }}</div>
+    <div class="customer-inn">ИНН {{ customer.inn }}</div>
+
+    <!-- Шкала надёжности -->
+    <div class="reliability" style="margin-top:.85rem">
+      {% for i in range(1,6) %}
+        {% if i <= score %}
+          {% if score >= 4 %}<div class="rel-dot" style="background:var(--green)"></div>
+          {% elif score == 3 %}<div class="rel-dot" style="background:var(--accent)"></div>
+          {% elif score == 2 %}<div class="rel-dot" style="background:var(--yellow)"></div>
+          {% else %}<div class="rel-dot" style="background:var(--red)"></div>{% endif %}
+        {% else %}
+          <div class="rel-dot" style="background:var(--surf2);border:1px solid var(--border)"></div>
+        {% endif %}
+      {% endfor %}
+      <span style="font-size:.75rem;color:var(--dim);margin-left:.5rem;align-self:center">
+        Надёжность {{ score }}/5 —
+        {% if score >= 4 %}хороший заказчик
+        {% elif score == 3 %}средний риск
+        {% elif score == 2 %}высокий риск — проверить вручную
+        {% else %}критический риск — не рекомендуем{% endif %}
+      </span>
+    </div>
+
+    <!-- Ключевые метрики -->
+    <div class="metrics">
+      <div class="metric">
+        <div class="metric-label">Контрактов</div>
+        <div class="metric-value">{{ customer.total_contracts or 0 }}</div>
+        <div class="metric-sub">в реестре ЕИС</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Расторжений</div>
+        <div class="metric-value" style="color:{{ 'var(--red)' if customer.terminated_contracts else 'var(--green)' }}">
+          {{ customer.terminated_contracts or 0 }}
+        </div>
+        <div class="metric-sub">
+          {% if customer.total_contracts %}
+            {{ ((customer.terminated_contracts or 0) / customer.total_contracts * 100)|round(1) }}% от всех
+          {% endif %}
+        </div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Ср. снижение</div>
+        <div class="metric-value">{{ ('−' + (customer.avg_drop_pct|string) + '%') if customer.avg_drop_pct else '—' }}</div>
+        <div class="metric-sub">от НМЦК</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Арбитраж</div>
+        <div class="metric-value" style="color:{{ 'var(--red)' if customer.arbitration_count >= 3 else 'var(--text)' }}">
+          {{ customer.arbitration_count or 0 }}
+        </div>
+        <div class="metric-sub">
+          {% if customer.last_arbitration_date %}последнее: {{ customer.last_arbitration_date }}{% else %}дел (ответчик){% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Монополия -->
+    {% if customer.monopoly_flag %}
+    <div class="monopoly-block danger">
+      ⚠️ <strong>Монополизация:</strong>
+      {{ customer.repeat_winner_name or '?' }} выигрывает {{ customer.repeat_winner_share }}% торгов
+      {% if customer.repeat_winner_inn %} (ИНН {{ customer.repeat_winner_inn }}){% endif %}.
+      Высокая вероятность, что новый участник не сможет выиграть.
+    </div>
+    {% elif customer.repeat_winner_name %}
+    <div class="monopoly-block">
+      ℹ️ Частый победитель: {{ customer.repeat_winner_name }} — {{ customer.repeat_winner_share }}% торгов.
+      Не критично, но стоит учесть.
+    </div>
+    {% endif %}
+
+    <!-- Арбитраж -->
+    {% if customer.arbitration_count >= 3 %}
+    <div class="arbitration-block">
+      🔴 <strong>Арбитражный риск:</strong> {{ customer.arbitration_count }} дел, где заказчик выступает ответчиком.
+      {% if customer.last_arbitration_date %}Последнее: {{ customer.last_arbitration_date }}.{% endif %}
+      Проверьте на kad.arbitr.ru перед подачей заявки.
+    </div>
+    {% elif customer.arbitration_count >= 1 %}
+    <div class="arbitration-block" style="background:rgba(250,204,21,.05);border-color:rgba(250,204,21,.2)">
+      ⚠️ {{ customer.arbitration_count }} арбитражных дел (ответчик). Рекомендуем проверить на kad.arbitr.ru.
+    </div>
+    {% endif %}
+
+    {% if customer.notes %}
+    <div class="notes-block">📋 {{ customer.notes }}</div>
+    {% endif %}
+  </div>
+
+  <!-- Тендеры этого заказчика в нашей базе -->
+  <h2>Тендеры в нашей базе</h2>
+  {% if tenders %}
+  <table>
+    <thead>
+      <tr>
+        <th>Название</th>
+        <th>НМЦК</th>
+        <th>Закон</th>
+        <th>Скор</th>
+        <th>Решение</th>
+        <th>Победитель</th>
+        <th>Снижение</th>
+        <th>Статус</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tenders %}
+      <tr>
+        <td style="max-width:300px">
+          <a href="/tender/{{ t.purchase_number }}" style="font-size:.78rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
+            {{ t.title or '—' }}
+          </a>
+        </td>
+        <td class="mono">{{ (t.price|int|string + ' ₽') if t.price else '—' }}</td>
+        <td><span class="badge" style="background:rgba(96,165,250,.1);color:var(--blue);font-weight:400">{{ t.law_type or '—' }}</span></td>
+        <td class="mono" style="font-weight:700">{{ t.filter_total or '—' }}</td>
+        <td>
+          {% set dec = t.filter_decision or '' %}
+          {% if dec == 'GO' %}<span class="badge badge-go">GO</span>
+          {% elif dec == 'CAUTION' %}<span class="badge badge-caution">CAUTION</span>
+          {% elif dec == 'NO-GO' %}<span class="badge badge-nogo">NO-GO</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td class="muted" style="font-size:.72rem;max-width:150px">{{ (t.winner_name or '')[:35] or '—' }}</td>
+        <td class="mono">{{ ('−' + (t.price_drop_percent|string) + '%') if t.price_drop_percent else '—' }}</td>
+        <td class="muted" style="font-size:.7rem">{{ t.status or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:var(--dim);font-style:italic;padding:1rem 0">Тендеров этого заказчика в базе нет.</p>
+  {% endif %}
+</div>
+</body>
+</html>

@@ -340,6 +340,12 @@ tr:hover .fbar-label { color: var(--dim); }
     <button class="tab tab-nogo {% if active == 'NO-GO' %}active{% endif %}" onclick="showTab('NO-GO')">
       NO-GO <span class="cnt">{{ groups['NO-GO']|length }}</span>
     </button>
+    <a href="/analytics" class="tab" style="text-decoration:none;margin-left:auto;opacity:.65;font-size:.65rem">
+      📊 Аналитика
+    </a>
+    <a href="/control" class="tab" style="text-decoration:none;opacity:.65;font-size:.65rem">
+      ⚙ Управление
+    </a>
   </div>
 </nav>
 
