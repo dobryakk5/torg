@@ -159,6 +159,7 @@ def run_stage1(
                 pages=pages,
                 days_back=days_back,
             )
+            db.reconnect_db()
             phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
                 tenders,
                 keyword,
@@ -194,6 +195,7 @@ def run_stage1(
                     pages=pages,
                     days_back=days_back,
                 )
+                db.reconnect_db()
                 phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
                     okpd2_tenders,
                     "okpd2",

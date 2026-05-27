@@ -41,7 +41,7 @@ def _build_dsn() -> str:
         f"dbname={getattr(config, 'PG_DBNAME', 'tenders_db')} "
         f"user={getattr(config, 'PG_USER', 'postgres')} "
         f"password={getattr(config, 'PG_PASSWORD', '')} "
-        f"connect_timeout=10"
+        f"connect_timeout=5"
     )
 
 
@@ -49,10 +49,10 @@ def _connect_kwargs() -> dict[str, Any]:
     statement_timeout_ms = int(getattr(config, "PG_STATEMENT_TIMEOUT_MS", os.getenv("PG_STATEMENT_TIMEOUT_MS", "120000")))
     idle_timeout_ms = int(getattr(config, "PG_IDLE_TX_TIMEOUT_MS", os.getenv("PG_IDLE_TX_TIMEOUT_MS", "120000")))
     return {
-        "connect_timeout": int(getattr(config, "PG_CONNECT_TIMEOUT", os.getenv("PG_CONNECT_TIMEOUT", "10"))),
+        "connect_timeout": int(getattr(config, "PG_CONNECT_TIMEOUT", os.getenv("PG_CONNECT_TIMEOUT", "5"))),
         "keepalives": 1,
-        "keepalives_idle": int(getattr(config, "PG_KEEPALIVES_IDLE", os.getenv("PG_KEEPALIVES_IDLE", "30"))),
-        "keepalives_interval": int(getattr(config, "PG_KEEPALIVES_INTERVAL", os.getenv("PG_KEEPALIVES_INTERVAL", "10"))),
+        "keepalives_idle": int(getattr(config, "PG_KEEPALIVES_IDLE", os.getenv("PG_KEEPALIVES_IDLE", "10"))),
+        "keepalives_interval": int(getattr(config, "PG_KEEPALIVES_INTERVAL", os.getenv("PG_KEEPALIVES_INTERVAL", "5"))),
         "keepalives_count": int(getattr(config, "PG_KEEPALIVES_COUNT", os.getenv("PG_KEEPALIVES_COUNT", "3"))),
         "application_name": "torg-monitor",
         "options": f"-c statement_timeout={statement_timeout_ms} -c idle_in_transaction_session_timeout={idle_timeout_ms}",
@@ -64,14 +64,7 @@ def _pool_limits() -> tuple[int, int]:
 
 
 def _reset_pool() -> None:
-    global _pool
-    if _pool is not None:
-        try:
-            _pool.closeall()
-        except Exception as exc:
-            logger.debug("Не удалось закрыть старый пул PostgreSQL: %s", exc)
-        _pool = None
-    connect_db()
+    reconnect_db()
 
 
 def _db_retry_attempts() -> int:
@@ -114,6 +107,16 @@ def _conn() -> Iterator[psycopg2.extensions.connection]:
     if conn.closed:
         _pool.putconn(conn, close=True)
         conn = _pool.getconn()
+    else:
+        # Быстрая проверка живости соединения: ловит протухшие pooled-соединения
+        # до того, как они заблокируются на 20+ секунд в TCP-таймауте.
+        try:
+            conn.cursor().execute("SELECT 1")
+            if conn.status == psycopg2.extensions.STATUS_IN_TRANSACTION:
+                conn.rollback()
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            _pool.putconn(conn, close=True)
+            conn = _pool.getconn()
     try:
         yield conn
         conn.commit()
@@ -466,8 +469,17 @@ def init_db() -> None:
 def close_db() -> None:
     global _pool
     if _pool is not None:
-        _pool.closeall()
+        try:
+            _pool.closeall()
+        except Exception as exc:
+            logger.debug("Не удалось закрыть PostgreSQL pool: %s", exc)
         _pool = None
+
+
+def reconnect_db() -> None:
+    """Пересоздаёт пул, чтобы не писать через соединения, простаивавшие во время долгого скрейпинга."""
+    close_db()
+    connect_db()
 
 
 def reset_db() -> None:
