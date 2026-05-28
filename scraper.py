@@ -78,6 +78,18 @@ def _parse_price(text: str) -> Optional[float]:
         return None
 
 
+def to_common_info_url(url_or_number: str) -> str:
+    """Build the public common-info notice URL from any EIS URL or regNumber."""
+    value = str(url_or_number or "")
+    match = re.search(r"\b\d{11,22}\b", value)
+    if not match:
+        return value
+    return (
+        "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html"
+        f"?regNumber={match.group(0)}"
+    )
+
+
 def search_eis(
     keyword: str,
     price_from: int | None = None,
@@ -177,10 +189,11 @@ def _parse_card(card) -> Optional[dict]:
             return None
 
         href = num_el.get("href", "")
-        url = BASE_URL + href if href.startswith("/") else href
+        source_url = BASE_URL + href if href.startswith("/") else href
         num_text = num_el.get_text(" ", strip=True)
         number_match = re.search(r"\d{11,22}", num_text + " " + href + " " + text_all)
         purchase_number = number_match.group(0) if number_match else num_text
+        url = to_common_info_url(purchase_number or source_url)
 
         title = ""
         title_candidates = [

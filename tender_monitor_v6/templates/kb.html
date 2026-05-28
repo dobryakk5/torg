@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>База знаний — Тендерный монитор</title>
+<style>
+:root{
+  --bg:#0f1117;--surf:#1a1d27;--surf2:#20243a;--surf3:#252940;
+  --border:#2a2d3e;--border2:#333655;
+  --text:#e2e8f0;--dim:#8892a4;--dimmer:#4a5568;
+  --accent:#818cf8;--green:#4ade80;--yellow:#facc15;--red:#f87171;
+  --blue:#60a5fa;--orange:#fb923c;--purple:#c084fc;
+  --mono:'JetBrains Mono','Fira Code',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px}
+a{color:var(--accent);text-decoration:none}
+code{font-family:var(--mono);font-size:.8rem;background:var(--surf2);padding:.1rem .35rem;border-radius:3px}
+
+.header{background:var(--surf);border-bottom:1px solid var(--border);padding:.75rem 2rem;position:sticky;top:0;z-index:100}
+.header-inner{max-width:1400px;margin:0 auto;display:flex;align-items:center;gap:1.5rem}
+.logo{font-family:var(--mono);font-weight:700;color:var(--accent)}
+.nav a{font-size:.75rem;color:var(--dim);padding:.3rem .65rem;border-radius:4px}
+.nav a:hover,.nav a.active{color:var(--text);background:var(--surf2);text-decoration:none}
+
+.layout{max-width:1400px;margin:0 auto;padding:1.5rem 2rem;display:grid;grid-template-columns:200px 1fr;gap:1.5rem}
+.sidebar{display:flex;flex-direction:column;gap:.4rem}
+.sidebar-title{font-size:.6rem;font-weight:700;color:var(--dimmer);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.3rem;padding:0 .5rem}
+.sec-btn{display:flex;align-items:center;justify-content:space-between;padding:.5rem .75rem;border-radius:6px;cursor:pointer;border:none;background:none;color:var(--dim);font-size:.78rem;width:100%;text-align:left;transition:.12s}
+.sec-btn:hover{background:var(--surf2);color:var(--text)}
+.sec-btn.active{background:rgba(129,140,248,.12);color:var(--accent);font-weight:600}
+.sec-badge{font-family:var(--mono);font-size:.6rem;background:var(--surf3);padding:.1rem .4rem;border-radius:3px}
+.sec-btn.active .sec-badge{background:rgba(129,140,248,.2);color:var(--accent)}
+
+.main-area{min-width:0}
+.section-panel{display:none}
+.section-panel.active{display:block}
+
+/* Toolbar */
+.toolbar{display:flex;align-items:center;gap:.75rem;margin-bottom:1rem}
+.toolbar h2{font-size:.85rem;font-weight:700;color:var(--text);flex:1}
+.btn{font-family:var(--mono);font-size:.72rem;font-weight:600;padding:.4rem .9rem;border-radius:5px;border:none;cursor:pointer;transition:.12s;white-space:nowrap}
+.btn-primary{background:var(--accent);color:var(--bg)}
+.btn-primary:hover{opacity:.85}
+.btn-ghost{background:none;color:var(--dim);border:1px solid var(--border2)}
+.btn-ghost:hover{color:var(--text);border-color:var(--accent)}
+.btn-danger{background:none;color:var(--red);border:1px solid rgba(248,113,113,.2);padding:.25rem .55rem;font-size:.65rem}
+.btn-danger:hover{background:rgba(248,113,113,.08)}
+
+/* Table */
+.kb-table{width:100%;border-collapse:collapse}
+.kb-table thead tr{background:var(--surf)}
+.kb-table th{padding:8px 10px;text-align:left;font-size:.6rem;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border);white-space:nowrap}
+.kb-table td{padding:8px 10px;border-bottom:1px solid var(--border);font-size:.8rem;vertical-align:top}
+.kb-table tr:hover td{background:rgba(255,255,255,.02)}
+.kb-table .mono{font-family:var(--mono);font-size:.72rem}
+.kb-table .muted{color:var(--dim)}
+.kb-table .actions{display:flex;gap:.35rem;white-space:nowrap}
+
+/* Tags */
+.tag{display:inline-block;padding:1px 7px;border-radius:3px;font-size:.6rem;font-weight:600;font-family:var(--mono)}
+.tag-stop{background:rgba(248,113,113,.12);color:var(--red)}
+.tag-warn{background:rgba(250,204,21,.12);color:var(--yellow)}
+.tag-boost{background:rgba(74,222,128,.12);color:var(--green)}
+.tag-cert{background:rgba(192,132,252,.12);color:var(--purple)}
+.tag-cat{background:rgba(96,165,250,.1);color:var(--blue);font-weight:400}
+
+/* Level dots */
+.level-dots{display:flex;gap:2px}
+.level-dot{width:8px;height:8px;border-radius:2px}
+
+/* Modal / inline form */
+.modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center}
+.modal-backdrop.open{display:flex}
+.modal{background:var(--surf);border:1px solid var(--border2);border-radius:12px;padding:1.75rem;width:min(640px,95vw);max-height:90vh;overflow-y:auto}
+.modal h3{font-size:.9rem;font-weight:600;margin-bottom:1.25rem;color:var(--accent)}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:.85rem}
+.form-field{display:flex;flex-direction:column;gap:.3rem}
+.form-field.full{grid-column:1/-1}
+.form-field label{font-size:.6rem;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+.form-field input,.form-field select,.form-field textarea{
+  background:var(--surf2);border:1px solid var(--border2);color:var(--text);
+  border-radius:5px;padding:.4rem .65rem;font-family:var(--mono);font-size:.78rem;outline:none;width:100%}
+.form-field input:focus,.form-field select:focus,.form-field textarea:focus{border-color:var(--accent)}
+.form-field textarea{resize:vertical;min-height:70px}
+.modal-actions{display:flex;gap:.6rem;margin-top:1.25rem;justify-content:flex-end}
+.empty-state{color:var(--dimmer);font-style:italic;padding:2rem;text-align:center}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <div class="logo">🔍 ТендерМонитор</div>
+    <nav class="nav" style="display:flex;gap:.2rem">
+      <a href="/">Тендеры</a>
+      <a href="/analytics">Аналитика</a>
+      <a href="/control">Управление</a>
+      <a href="/kb" class="active">База знаний</a>
+    </nav>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- Сайдбар ──────────────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-title">Разделы</div>
+    {% set secs = [
+      ('contracts',   '📋 Контракты',    stats.kb_contracts),
+      ('competencies','🧠 Компетенции',  stats.kb_competencies),
+      ('equipment',   '🖥 Оборудование', stats.kb_equipment),
+      ('risks',       '⚠️ Риски',         stats.kb_risk_rules),
+      ('templates',   '📝 Шаблоны',      stats.kb_templates),
+    ] %}
+    {% for sec_id, sec_label, sec_count in secs %}
+    <button class="sec-btn {% if section == sec_id %}active{% endif %}"
+            onclick="showSection('{{ sec_id }}')">
+      {{ sec_label }}
+      <span class="sec-badge">{{ sec_count or 0 }}</span>
+    </button>
+    {% endfor %}
+  </aside>
+
+  <!-- Основная область ──────────────────────────────────────────────────── -->
+  <div class="main-area">
+
+    <!-- ── Контракты ───────────────────────────────────────────────────── -->
+    <div class="section-panel {% if section == 'contracts' %}active{% endif %}" id="sec-contracts">
+      <div class="toolbar">
+        <h2>Исполненные контракты</h2>
+        <button class="btn btn-primary" onclick="openModal('contract')">+ Добавить</button>
+      </div>
+      <table class="kb-table">
+        <thead><tr><th>Название</th><th>Год</th><th>Сумма</th><th>Категория</th><th>Стек</th><th></th></tr></thead>
+        <tbody>
+        {% for c in contracts %}
+        <tr>
+          <td>
+            <div style="font-weight:500">{{ c.title[:60] }}</div>
+            <div class="muted" style="font-size:.7rem">{{ (c.customer or '')[:50] }}</div>
+          </td>
+          <td class="mono">{{ c.year or '—' }}</td>
+          <td class="mono">
+            {% if c.price %}
+              {% set p = c.price | float %}
+              {{ ('%.1f млн' % (p/1000000)) if p >= 1000000 else ('%.0f тыс.' % (p/1000)) }} ₽
+            {% else %}—{% endif %}
+          </td>
+          <td><span class="tag tag-cat">{{ c.category or '—' }}</span></td>
+          <td class="muted" style="font-size:.7rem">
+            {% set ts = c.tech_stack %}
+            {% if ts is string %}{{ ts[:40] }}{% elif ts %}{{ ts[:3]|join(', ') }}{% else %}—{% endif %}
+          </td>
+          <td class="actions">
+            <button class="btn-danger" onclick="deleteRow('contracts',{{ c.id }})">✕</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty-state">Нет контрактов. Добавьте исполненные проекты для улучшения LLM-анализа.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── Компетенции ─────────────────────────────────────────────────── -->
+    <div class="section-panel {% if section == 'competencies' %}active{% endif %}" id="sec-competencies">
+      <div class="toolbar">
+        <h2>Компетенции команды</h2>
+        <button class="btn btn-primary" onclick="openModal('competency')">+ Добавить</button>
+      </div>
+      <table class="kb-table">
+        <thead><tr><th>Технология / навык</th><th>Категория</th><th>Уровень</th><th>Сертификат</th><th>Заметки</th><th></th></tr></thead>
+        <tbody>
+        {% for c in competencies %}
+        <tr>
+          <td style="font-weight:500">{{ c.tech }}</td>
+          <td><span class="tag tag-cat">{{ c.category or '—' }}</span></td>
+          <td>
+            <div class="level-dots">
+              {% for i in range(1,6) %}
+              <div class="level-dot" style="background:{% if i <= (c.level or 0) %}var(--accent){% else %}var(--surf3){% endif %}"></div>
+              {% endfor %}
+            </div>
+          </td>
+          <td>
+            {% if c.certified %}<span class="tag tag-cert">✓ {{ c.cert_name or 'есть' }}</span>{% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td class="muted" style="font-size:.72rem">{{ (c.notes or '')[:50] }}</td>
+          <td class="actions">
+            <button class="btn-danger" onclick="deleteRow('competencies',{{ c.id }})">✕</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty-state">Нет компетенций. Добавьте технологии, которыми владеете — они будут учитываться при скоринге.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── Оборудование ────────────────────────────────────────────────── -->
+    <div class="section-panel {% if section == 'equipment' %}active{% endif %}" id="sec-equipment">
+      <div class="toolbar">
+        <h2>Каталог оборудования</h2>
+        <button class="btn btn-primary" onclick="openModal('equipment')">+ Добавить</button>
+      </div>
+      <table class="kb-table">
+        <thead><tr><th>Название / модель</th><th>Категория</th><th>Цена</th><th>Срок</th><th>Аналог для</th><th></th></tr></thead>
+        <tbody>
+        {% for eq in equipment %}
+        <tr>
+          <td>
+            <div style="font-weight:500">{{ eq.vendor or '' }} {{ eq.model or eq.name }}</div>
+            <div class="muted" style="font-size:.7rem">{{ eq.name[:50] }}</div>
+          </td>
+          <td><span class="tag tag-cat">{{ eq.category or '—' }}</span></td>
+          <td class="mono">{% if eq.price_rub %}{{ '%,.0f' % eq.price_rub | float }} ₽{% else %}—{% endif %}</td>
+          <td class="mono">{% if eq.lead_days %}{{ eq.lead_days }} дн.{% else %}—{% endif %}</td>
+          <td class="muted" style="font-size:.7rem">
+            {% set af = eq.analog_for %}
+            {% if af %}{{ af[:3]|join(', ') if af is not string else af[:40] }}{% else %}—{% endif %}
+          </td>
+          <td class="actions">
+            <button class="btn-danger" onclick="deleteRow('equipment',{{ eq.id }})">✕</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty-state">Нет оборудования. Добавьте позиции — система найдёт аналоги в тендерах.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── Правила рисков ──────────────────────────────────────────────── -->
+    <div class="section-panel {% if section == 'risks' %}active{% endif %}" id="sec-risks">
+      <div class="toolbar">
+        <h2>Персональные правила рисков</h2>
+        <button class="btn btn-primary" onclick="openModal('risk')">+ Добавить</button>
+      </div>
+      <p style="font-size:.75rem;color:var(--dim);margin-bottom:1rem">
+        Эти правила применяются в filter_engine к каждому тендеру. Stop — немедленный NO-GO, Warn — штраф к скору, Boost — бонус.
+      </p>
+      <table class="kb-table">
+        <thead><tr><th>Тип</th><th>Паттерн</th><th>Вес</th><th>Объяснение</th><th>Статус</th><th></th></tr></thead>
+        <tbody>
+        {% for r in risk_rules %}
+        <tr>
+          <td>
+            {% if r.rule_type == 'stop' %}<span class="tag tag-stop">STOP</span>
+            {% elif r.rule_type == 'warn' %}<span class="tag tag-warn">WARN</span>
+            {% else %}<span class="tag tag-boost">BOOST</span>{% endif %}
+          </td>
+          <td class="mono" style="color:var(--blue)">{{ r.pattern }}</td>
+          <td class="mono" style="color:{% if (r.weight or 0) > 0 %}var(--green){% else %}var(--red){% endif %}">
+            {{ '%+d' % (r.weight or 0) }}
+          </td>
+          <td>{{ r.reason[:70] }}</td>
+          <td>
+            {% if r.active %}<span style="color:var(--green);font-size:.7rem">● активно</span>
+            {% else %}<span style="color:var(--dimmer);font-size:.7rem">○ выкл.</span>{% endif %}
+          </td>
+          <td class="actions">
+            <button class="btn-danger" onclick="deleteRow('risks',{{ r.id }})">✕</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty-state">Нет правил. Загружены стартовые? Запустите: <code>python init_db.py --defaults</code></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── Шаблоны ─────────────────────────────────────────────────────── -->
+    <div class="section-panel {% if section == 'templates' %}active{% endif %}" id="sec-templates">
+      <div class="toolbar">
+        <h2>Шаблоны запросов и претензий</h2>
+        <button class="btn btn-primary" onclick="openModal('template')">+ Добавить</button>
+      </div>
+      <table class="kb-table">
+        <thead><tr><th>Название</th><th>Категория</th><th>Использований</th><th>Теги</th><th></th></tr></thead>
+        <tbody>
+        {% for t in templates %}
+        <tr>
+          <td>
+            <a href="#" onclick="previewTemplate({{ t.id }},event)" style="font-weight:500">{{ t.title[:60] }}</a>
+          </td>
+          <td><span class="tag tag-cat">{{ t.category or '—' }}</span></td>
+          <td class="mono">{{ t.used_count or 0 }}</td>
+          <td class="muted" style="font-size:.7rem">
+            {% set tags = t.tags %}
+            {% if tags %}{{ tags[:4]|join(' · ') if tags is not string else tags[:50] }}{% else %}—{% endif %}
+          </td>
+          <td class="actions">
+            <button class="btn btn-ghost" onclick="copyTemplate({{ t.id }})" style="padding:.2rem .6rem;font-size:.65rem">Копировать</button>
+            <button class="btn-danger" onclick="deleteRow('templates',{{ t.id }})">✕</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty-state">Нет шаблонов. Добавьте типовые запросы на разъяснение, жалобы в ФАС.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ Модальные формы ══════════════════════════════════════════════════════ -->
+
+<!-- Контракт -->
+<div class="modal-backdrop" id="modal-contract">
+  <div class="modal">
+    <h3>📋 Добавить контракт</h3>
+    <div class="form-grid">
+      <div class="form-field full"><label>Название проекта *</label>
+        <input id="c-title" placeholder="Разработка сайта на 1С-Битрикс для МФЦ"></div>
+      <div class="form-field"><label>Заказчик</label><input id="c-customer"></div>
+      <div class="form-field"><label>Номер в ЕИС</label><input id="c-num" class="mono" placeholder="0123456789012345678"></div>
+      <div class="form-field"><label>Год</label><input id="c-year" type="number" value="2024" min="2015" max="2030"></div>
+      <div class="form-field"><label>Сумма (₽)</label><input id="c-price" type="number" placeholder="780000"></div>
+      <div class="form-field"><label>Категория</label>
+        <select id="c-cat">
+          <option value="bitrix">bitrix</option><option value="crm">crm</option>
+          <option value="integration">integration</option><option value="website">website</option>
+          <option value="server">server</option><option value="hardware">hardware</option>
+          <option value="other_it">other_it</option>
+        </select>
+      </div>
+      <div class="form-field full"><label>Стек технологий (через запятую)</label>
+        <input id="c-stack" placeholder="PHP, MySQL, 1С-Битрикс, Linux"></div>
+      <div class="form-field full"><label>Описание (что сделали)</label>
+        <textarea id="c-desc" rows="3"></textarea></div>
+      <div class="form-field full"><label>Сложности и как решили</label>
+        <textarea id="c-problems" rows="2" placeholder="Например: нестандартный обмен с 1С — написали кастомный модуль"></textarea></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('contract')">Отмена</button>
+      <button class="btn btn-primary" onclick="saveContract()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Компетенция -->
+<div class="modal-backdrop" id="modal-competency">
+  <div class="modal">
+    <h3>🧠 Добавить компетенцию</h3>
+    <div class="form-grid">
+      <div class="form-field full"><label>Технология / навык *</label>
+        <input id="comp-tech" placeholder="1С-Битрикс"></div>
+      <div class="form-field"><label>Категория</label>
+        <select id="comp-cat">
+          <option value="platform">platform</option><option value="language">language</option>
+          <option value="framework">framework</option><option value="database">database</option>
+          <option value="infrastructure">infrastructure</option><option value="hardware">hardware</option>
+          <option value="certificate">certificate</option>
+        </select>
+      </div>
+      <div class="form-field"><label>Уровень (1–5)</label>
+        <input id="comp-level" type="number" min="1" max="5" value="3"></div>
+      <div class="form-field"><label>Сертификат</label>
+        <div style="display:flex;align-items:center;gap:.6rem;margin-top:.4rem">
+          <input type="checkbox" id="comp-cert" style="width:16px;height:16px;cursor:pointer">
+          <input id="comp-cert-name" placeholder="Название сертификата" style="flex:1;background:var(--surf2);border:1px solid var(--border2);color:var(--text);border-radius:5px;padding:.4rem .65rem;font-size:.78rem">
+        </div>
+      </div>
+      <div class="form-field full"><label>Заметки</label>
+        <input id="comp-notes" placeholder="Опыт 5 лет, участвовали в 12 проектах"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('competency')">Отмена</button>
+      <button class="btn btn-primary" onclick="saveCompetency()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Оборудование -->
+<div class="modal-backdrop" id="modal-equipment">
+  <div class="modal">
+    <h3>🖥 Добавить оборудование</h3>
+    <div class="form-grid">
+      <div class="form-field full"><label>Название *</label>
+        <input id="eq-name" placeholder="Сервер Dell PowerEdge R350"></div>
+      <div class="form-field"><label>Производитель</label><input id="eq-vendor" placeholder="Dell"></div>
+      <div class="form-field"><label>Модель</label><input id="eq-model" placeholder="PowerEdge R350"></div>
+      <div class="form-field"><label>Категория</label>
+        <select id="eq-cat">
+          <option value="server">server</option><option value="storage">storage</option>
+          <option value="network">network</option><option value="scanner">scanner</option>
+          <option value="printer">printer</option><option value="tsd">tsd (ТСД)</option>
+          <option value="cctv">cctv</option><option value="other">other</option>
+        </select>
+      </div>
+      <div class="form-field"><label>Цена (₽)</label>
+        <input id="eq-price" type="number" placeholder="185000"></div>
+      <div class="form-field"><label>Срок поставки (дней)</label>
+        <input id="eq-lead" type="number" placeholder="14" min="1"></div>
+      <div class="form-field full"><label>Аналог для брендов (через запятую)</label>
+        <input id="eq-analog" placeholder="HP, HPE, Fujitsu" title="Если в ТЗ указан этот бренд — предложим наш аналог"></div>
+      <div class="form-field full"><label>Заметки</label>
+        <input id="eq-notes"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('equipment')">Отмена</button>
+      <button class="btn btn-primary" onclick="saveEquipment()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Правило риска -->
+<div class="modal-backdrop" id="modal-risk">
+  <div class="modal">
+    <h3>⚠️ Добавить правило риска</h3>
+    <div class="form-grid">
+      <div class="form-field"><label>Тип правила</label>
+        <select id="r-type">
+          <option value="stop">STOP — немедленный NO-GO</option>
+          <option value="warn" selected>WARN — штраф к скору</option>
+          <option value="boost">BOOST — бонус к скору</option>
+        </select>
+      </div>
+      <div class="form-field"><label>Вес (отрицательный для штрафа)</label>
+        <input id="r-weight" type="number" value="-3" placeholder="-5"></div>
+      <div class="form-field full"><label>Паттерн для поиска в тексте тендера *</label>
+        <input id="r-pattern" placeholder="по заявкам без ограничения"></div>
+      <div class="form-field full"><label>Объяснение (покажется в скоринге) *</label>
+        <input id="r-reason" placeholder="Безлимитный объём работ — не берём"></div>
+      <div class="form-field"><label>Категория (необязательно)</label>
+        <input id="r-category" placeholder="bitrix, server, all..."></div>
+      <div class="form-field" style="display:flex;align-items:center;gap:.6rem;padding-top:1rem">
+        <input type="checkbox" id="r-active" checked style="width:16px;height:16px">
+        <label style="font-size:.78rem;color:var(--dim)">Активно</label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('risk')">Отмена</button>
+      <button class="btn btn-primary" onclick="saveRisk()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Шаблон -->
+<div class="modal-backdrop" id="modal-template">
+  <div class="modal">
+    <h3>📝 Добавить шаблон</h3>
+    <div class="form-grid">
+      <div class="form-field full"><label>Название *</label>
+        <input id="t-title" placeholder="Запрос на разъяснение ТЗ: избыточные требования к ПО"></div>
+      <div class="form-field"><label>Категория</label>
+        <select id="t-cat">
+          <option value="clarification">Запрос разъяснения</option>
+          <option value="complaint">Жалоба в ФАС</option>
+          <option value="appeal">Обжалование</option>
+          <option value="response">Ответ заказчику</option>
+          <option value="other">Другое</option>
+        </select>
+      </div>
+      <div class="form-field"><label>Теги (через запятую)</label>
+        <input id="t-tags" placeholder="ТЗ, требования, разъяснение"></div>
+      <div class="form-field full"><label>Текст шаблона *</label>
+        <textarea id="t-content" rows="8" placeholder="В соответствии с ч. 3 ст. 65 44-ФЗ прошу разъяснить..."></textarea></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('template')">Отмена</button>
+      <button class="btn btn-primary" onclick="saveTemplate()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Preview шаблона -->
+<div class="modal-backdrop" id="modal-preview">
+  <div class="modal">
+    <h3 id="preview-title">Шаблон</h3>
+    <pre id="preview-content" style="background:var(--surf2);border-radius:6px;padding:1rem;
+      font-family:var(--mono);font-size:.75rem;white-space:pre-wrap;line-height:1.6;
+      max-height:400px;overflow-y:auto;color:var(--text)"></pre>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('preview')">Закрыть</button>
+      <button class="btn btn-primary" id="preview-copy-btn">Скопировать</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Навигация ────────────────────────────────────────────────────────────────
+function showSection(id) {
+  document.querySelectorAll('.section-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sec-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('sec-' + id)?.classList.add('active');
+  document.querySelectorAll('.sec-btn').forEach(b => {
+    if (b.getAttribute('onclick')?.includes("'" + id + "'")) b.classList.add('active');
+  });
+  history.replaceState(null, '', '/kb?section=' + id);
+}
+
+// ── Модальные окна ───────────────────────────────────────────────────────────
+function openModal(id)  { document.getElementById('modal-' + id).classList.add('open'); }
+function closeModal(id) { document.getElementById('modal-' + id).classList.remove('open'); }
+document.querySelectorAll('.modal-backdrop').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+});
+
+// ── Удаление ─────────────────────────────────────────────────────────────────
+async function deleteRow(section, id) {
+  if (!confirm('Удалить запись?')) return;
+  const sectionMap = {
+    contracts:'contracts', competencies:'competencies',
+    equipment:'equipment', risks:'risks', templates:'templates',
+  };
+  const ep = sectionMap[section] || section;
+  const r = await fetch(`/api/kb/${ep}/${id}`, { method: 'DELETE' });
+  if ((await r.json()).ok) location.reload();
+  else alert('Ошибка удаления');
+}
+
+// ── Сохранение: контракт ─────────────────────────────────────────────────────
+async function saveContract() {
+  const stack = document.getElementById('c-stack').value
+    .split(',').map(s => s.trim()).filter(Boolean);
+  const data = {
+    title:       document.getElementById('c-title').value,
+    customer:    document.getElementById('c-customer').value,
+    contract_num:document.getElementById('c-num').value,
+    year:        +document.getElementById('c-year').value || null,
+    price:       +document.getElementById('c-price').value || null,
+    category:    document.getElementById('c-cat').value,
+    tech_stack:  stack,
+    description: document.getElementById('c-desc').value,
+    problems:    document.getElementById('c-problems').value,
+  };
+  if (!data.title) { alert('Введите название'); return; }
+  const r = await fetch('/api/kb/contracts', { method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+  if ((await r.json()).ok) location.reload();
+}
+
+// ── Компетенция ──────────────────────────────────────────────────────────────
+async function saveCompetency() {
+  const data = {
+    tech:      document.getElementById('comp-tech').value,
+    category:  document.getElementById('comp-cat').value,
+    level:     +document.getElementById('comp-level').value,
+    certified: document.getElementById('comp-cert').checked,
+    cert_name: document.getElementById('comp-cert-name').value,
+    notes:     document.getElementById('comp-notes').value,
+  };
+  if (!data.tech) { alert('Введите технологию'); return; }
+  const r = await fetch('/api/kb/competencies', { method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+  if ((await r.json()).ok) location.reload();
+}
+
+// ── Оборудование ─────────────────────────────────────────────────────────────
+async function saveEquipment() {
+  const analogs = document.getElementById('eq-analog').value
+    .split(',').map(s => s.trim()).filter(Boolean);
+  const data = {
+    name:      document.getElementById('eq-name').value,
+    vendor:    document.getElementById('eq-vendor').value,
+    model:     document.getElementById('eq-model').value,
+    category:  document.getElementById('eq-cat').value,
+    price_rub: +document.getElementById('eq-price').value || null,
+    lead_days: +document.getElementById('eq-lead').value || null,
+    analog_for:analogs,
+    notes:     document.getElementById('eq-notes').value,
+  };
+  if (!data.name) { alert('Введите название'); return; }
+  const r = await fetch('/api/kb/equipment', { method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+  if ((await r.json()).ok) location.reload();
+}
+
+// ── Правило риска ────────────────────────────────────────────────────────────
+async function saveRisk() {
+  const data = {
+    rule_type: document.getElementById('r-type').value,
+    pattern:   document.getElementById('r-pattern').value.toLowerCase(),
+    weight:    +document.getElementById('r-weight').value,
+    reason:    document.getElementById('r-reason').value,
+    category:  document.getElementById('r-category').value,
+    active:    document.getElementById('r-active').checked,
+  };
+  if (!data.pattern || !data.reason) { alert('Заполните паттерн и объяснение'); return; }
+  const r = await fetch('/api/kb/risks', { method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+  if ((await r.json()).ok) location.reload();
+}
+
+// ── Шаблон ───────────────────────────────────────────────────────────────────
+async function saveTemplate() {
+  const tags = document.getElementById('t-tags').value
+    .split(',').map(s => s.trim()).filter(Boolean);
+  const data = {
+    title:    document.getElementById('t-title').value,
+    category: document.getElementById('t-cat').value,
+    content:  document.getElementById('t-content').value,
+    tags:     tags,
+  };
+  if (!data.title || !data.content) { alert('Заполните название и текст'); return; }
+  const r = await fetch('/api/kb/templates', { method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+  if ((await r.json()).ok) location.reload();
+}
+
+// ── Preview шаблона ──────────────────────────────────────────────────────────
+async function previewTemplate(id, e) {
+  e.preventDefault();
+  const r = await fetch(`/api/kb/templates/${id}/use`);
+  const t = await r.json();
+  document.getElementById('preview-title').textContent = t.title;
+  document.getElementById('preview-content').textContent = t.content;
+  document.getElementById('preview-copy-btn').onclick = () => copyTemplateText(t.content);
+  openModal('preview');
+}
+
+async function copyTemplate(id) {
+  const r = await fetch(`/api/kb/templates/${id}/use`);
+  const t = await r.json();
+  copyTemplateText(t.content);
+}
+
+function copyTemplateText(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    // Небольшое визуальное подтверждение
+    const btn = document.getElementById('preview-copy-btn');
+    if (btn) { btn.textContent = '✓ Скопировано'; setTimeout(() => btn.textContent = 'Скопировать', 2000); }
+  });
+}
+</script>
+</body>
+</html>

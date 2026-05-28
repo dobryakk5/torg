@@ -265,6 +265,18 @@ tr:hover .fbar-label { color: var(--dim); }
 .law-44  { color: var(--accent); }
 .law-223 { color: #34D399; }
 .date-cell  { white-space: nowrap; color: var(--dim); }
+.eis-link-cell { max-width: 260px; }
+.eis-link {
+  display: block;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: .68rem;
+}
+.eis-link:hover { color: var(--text); text-decoration: underline; }
 
 /* ── Empty state ── */
 .empty {
@@ -366,6 +378,7 @@ tr:hover .fbar-label { color: var(--dim); }
             <th style="width:72px">БАЛЛ</th>
             <th style="width:80px">РЕШЕНИЕ</th>
             <th>НАЗВАНИЕ / ЗАКАЗЧИК</th>
+            <th style="width:260px">ССЫЛКА ЕИС</th>
             <th class="hide-sm">ФИЛЬТРЫ</th>
             <th class="hide-sm">НМЦК</th>
             <th class="hide-sm">ЗАКОН</th>
@@ -409,6 +422,16 @@ tr:hover .fbar-label { color: var(--dim); }
             <td class="title-cell">
               <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
               <span class="title-customer" title="{{ t.customer }}">{{ t.customer or '' }}</span>
+            </td>
+
+            <!-- EIS link -->
+            <td class="eis-link-cell">
+              {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
+              {% if eis_url %}
+              <a href="{{ eis_url }}" target="_blank" rel="noopener noreferrer" class="eis-link" title="{{ eis_url }}" onclick="event.stopPropagation()">{{ eis_url }}</a>
+              {% else %}
+              <span style="color:var(--dimmer);font-size:.65rem">—</span>
+              {% endif %}
             </td>
 
             <!-- Filter mini bars -->
@@ -473,6 +496,7 @@ tr:hover .fbar-label { color: var(--dim); }
             <th style="width:72px">БАЛЛ</th>
             <th style="width:80px">РЕШЕНИЕ</th>
             <th>НАЗВАНИЕ / ЗАКАЗЧИК</th>
+            <th style="width:260px">ССЫЛКА ЕИС</th>
             <th class="hide-sm">ФИЛЬТРЫ</th>
             <th class="hide-sm">НМЦК</th>
             <th class="hide-sm">ЗАКОН</th>
@@ -502,6 +526,14 @@ tr:hover .fbar-label { color: var(--dim); }
             <td class="title-cell">
               <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
               <span class="title-customer">{{ t.customer or '' }}</span>
+            </td>
+            <td class="eis-link-cell">
+              {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
+              {% if eis_url %}
+              <a href="{{ eis_url }}" target="_blank" rel="noopener noreferrer" class="eis-link" title="{{ eis_url }}" onclick="event.stopPropagation()">{{ eis_url }}</a>
+              {% else %}
+              <span style="color:var(--dimmer);font-size:.65rem">—</span>
+              {% endif %}
             </td>
             <td class="hide-sm">
               {% if t.get('filter_scores') %}
@@ -546,7 +578,7 @@ tr:hover .fbar-label { color: var(--dim); }
       <table>
         <thead><tr>
           <th style="width:32px">#</th><th style="width:72px">БАЛЛ</th>
-          <th>НАЗВАНИЕ / ЗАКАЗЧИК</th><th class="hide-sm">ФИЛЬТРЫ</th>
+          <th>НАЗВАНИЕ / ЗАКАЗЧИК</th><th style="width:260px">ССЫЛКА ЕИС</th><th class="hide-sm">ФИЛЬТРЫ</th>
           <th class="hide-sm">НМЦК</th><th class="hide-sm">ЗАКОН</th><th class="hide-sm">СРОК</th>
         </tr></thead>
         <tbody>
@@ -559,6 +591,14 @@ tr:hover .fbar-label { color: var(--dim); }
             <td class="title-cell">
               <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
               <span class="title-customer">{{ t.customer or '' }}</span>
+            </td>
+            <td class="eis-link-cell">
+              {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
+              {% if eis_url %}
+              <a href="{{ eis_url }}" target="_blank" rel="noopener noreferrer" class="eis-link" title="{{ eis_url }}" onclick="event.stopPropagation()">{{ eis_url }}</a>
+              {% else %}
+              <span style="color:var(--dimmer);font-size:.65rem">—</span>
+              {% endif %}
             </td>
             <td class="hide-sm">
               {% if t.get('filter_scores') %}
@@ -596,7 +636,7 @@ tr:hover .fbar-label { color: var(--dim); }
       <table>
         <thead><tr>
           <th style="width:32px">#</th><th style="width:72px">БАЛЛ</th>
-          <th>НАЗВАНИЕ / ЗАКАЗЧИК</th><th class="hide-sm">ФИЛЬТРЫ</th>
+          <th>НАЗВАНИЕ / ЗАКАЗЧИК</th><th style="width:260px">ССЫЛКА ЕИС</th><th class="hide-sm">ФИЛЬТРЫ</th>
           <th class="hide-sm">НМЦК</th><th class="hide-sm">ЗАКОН</th><th class="hide-sm">СРОК</th>
         </tr></thead>
         <tbody>
@@ -609,6 +649,14 @@ tr:hover .fbar-label { color: var(--dim); }
             <td class="title-cell">
               <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
               <span class="title-customer">{{ t.customer or '' }}</span>
+            </td>
+            <td class="eis-link-cell">
+              {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
+              {% if eis_url %}
+              <a href="{{ eis_url }}" target="_blank" rel="noopener noreferrer" class="eis-link" title="{{ eis_url }}" onclick="event.stopPropagation()">{{ eis_url }}</a>
+              {% else %}
+              <span style="color:var(--dimmer);font-size:.65rem">—</span>
+              {% endif %}
             </td>
             <td class="hide-sm">
               {% if t.get('filter_scores') %}
@@ -646,7 +694,7 @@ tr:hover .fbar-label { color: var(--dim); }
       <table>
         <thead><tr>
           <th style="width:32px">#</th><th style="width:72px">БАЛЛ</th>
-          <th>НАЗВАНИЕ / ЗАКАЗЧИК</th><th class="hide-sm">СТОП-ФАКТОРЫ</th>
+          <th>НАЗВАНИЕ / ЗАКАЗЧИК</th><th style="width:260px">ССЫЛКА ЕИС</th><th class="hide-sm">СТОП-ФАКТОРЫ</th>
           <th class="hide-sm">НМЦК</th><th class="hide-sm">ЗАКОН</th>
         </tr></thead>
         <tbody>
@@ -659,6 +707,14 @@ tr:hover .fbar-label { color: var(--dim); }
             <td class="title-cell">
               <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
               <span class="title-customer">{{ t.customer or '' }}</span>
+            </td>
+            <td class="eis-link-cell">
+              {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
+              {% if eis_url %}
+              <a href="{{ eis_url }}" target="_blank" rel="noopener noreferrer" class="eis-link" title="{{ eis_url }}" onclick="event.stopPropagation()">{{ eis_url }}</a>
+              {% else %}
+              <span style="color:var(--dimmer);font-size:.65rem">—</span>
+              {% endif %}
             </td>
             <td class="hide-sm" style="max-width:280px">
               {% set stops = t.filter_stop | parse_stop %}

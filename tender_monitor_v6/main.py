@@ -1,0 +1,473 @@
+"""
+main.py — двухэтапный тендерный монитор.
+
+Этап 1: массово собирает карточки закупок из ЕИС, делает первичный скоринг по описанию,
+        сохраняет ссылку и метаданные. Документы не скачиваются.
+Этап 2: берет только закупки с высоким первичным скором, скачивает ТЗ/документы,
+        извлекает условия, делает детальный скоринг и отправляет лучшие в Telegram.
+Этап 3: после дедлайна подтягивает результаты/протоколы для аналитики конкуренции.
+
+Запуск:
+    python main.py --stage1   # только массовая подгрузка карточек
+    python main.py --stage2   # только детальный анализ кандидатов
+    python main.py --once     # stage1 + stage2
+    python main.py --test     # stage1 + stage2 без отправки в Telegram
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import re
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+try:
+    import schedule
+except ImportError:  # schedule нужен только для daemon-режима
+    schedule = None
+
+import config
+import database as db
+from document_processor import collect_document_text, download_documents, extract_financial_terms, hash_files
+from llm_analyzer import analyze_tender
+from notifier import format_tender_message, send_startup_message, send_summary, send_tender_message
+from scraper import (
+    get_tender_page, parse_result_info, search_eis, search_eis_by_okpd2,
+)
+from winner_analytics   import run_update   as run_winner_update, classify_category, recommend_bid
+from customer_scorer    import run_new_customers, run_refresh_customers, get_customer_risk_label
+from change_detector    import check_once   as check_changes
+from filter_engine import run_stage1_filters, run_stage2_filters
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(config.LOG_PATH, encoding="utf-8"),
+    ],
+)
+logger = logging.getLogger("main")
+
+
+def run_stage1(dry_run: bool = False) -> tuple[int, int]:
+    """Массовая подгрузка карточек и первичный скоринг без ТЗ."""
+    started_at = datetime.now().isoformat(timespec="seconds")
+    logger.info("═" * 50)
+    logger.info("Этап 1: поиск карточек и первичный скоринг")
+
+    errors:      list[str]         = []
+    candidates:  dict[str, dict]   = {}
+    keyword_map: dict[str, set[str]] = {}
+
+    # ── Канал 1: поиск по ключевым словам ──────────────────────────────────
+    for keyword in config.SEARCH_KEYWORDS:
+        try:
+            tenders = search_eis(
+                keyword=keyword,
+                price_from=config.PRICE_MIN,
+                price_to=config.PRICE_MAX,
+                fz44=config.SEARCH_44FZ,
+                fz223=config.SEARCH_223FZ,
+                pages=config.SEARCH_PAGES,
+                days_back=config.PUBLISH_DAYS_BACK,
+            )
+        except Exception as exc:
+            msg = f"Ошибка поиска по '{keyword}': {exc}"
+            logger.error(msg)
+            errors.append(msg)
+            continue
+
+        for tender in tenders:
+            pnum = tender.get("purchase_number", "")
+            if not pnum:
+                continue
+            if pnum not in candidates:
+                candidates[pnum] = tender
+                keyword_map[pnum] = set()
+            keyword_map[pnum].add(keyword)
+
+    # ── Канал 2: поиск по ОКПД2 (параллельный, ловит без ключевых слов) ───
+    if getattr(config, "OKPD2_SEARCH_ENABLED", True) and config.OKPD2_CODES:
+        try:
+            okpd2_tenders = search_eis_by_okpd2(
+                okpd2_codes=config.OKPD2_CODES,
+                price_from=config.PRICE_MIN,
+                price_to=config.PRICE_MAX,
+                fz44=config.SEARCH_44FZ,
+                fz223=config.SEARCH_223FZ,
+                pages=config.SEARCH_PAGES,
+                days_back=config.PUBLISH_DAYS_BACK,
+            )
+            new_via_okpd2 = 0
+            for tender in okpd2_tenders:
+                pnum = tender.get("purchase_number", "")
+                if pnum and pnum not in candidates:
+                    candidates[pnum] = tender
+                    keyword_map[pnum] = {"okpd2"}
+                    new_via_okpd2 += 1
+            logger.info("ОКПД2-канал добавил %d новых тендеров", new_via_okpd2)
+        except Exception as exc:
+            logger.error("Ошибка ОКПД2-поиска: %s", exc)
+            errors.append(f"ОКПД2: {exc}")
+
+    # ── Скоринг и сохранение ────────────────────────────────────────────────
+    saved = 0
+    primary_candidates = 0
+    for pnum, tender in candidates.items():
+        matched_keywords = sorted(keyword_map.get(pnum, []))
+        tender["matched_keywords"] = matched_keywords
+        primary_text   = tender.get("primary_text", "")
+        filter_result  = run_stage1_filters(tender, primary_text)
+        primary_score  = filter_result.total_score
+        primary_reasons = filter_result.to_reasons()
+        tender["filter_decision"] = filter_result.decision
+        tender["filter_scores"]   = filter_result.to_filter_scores()
+        tender["filter_stop"]     = " | ".join(filter_result.stop_factors)
+
+        # Добавляем метку риска заказчика из customer_scorer (если профиль есть в БД)
+        customer_inn  = tender.get("customer_inn", "")
+        risk_label    = get_customer_risk_label(customer_inn)
+        if risk_label:
+            logger.info("Риск заказчика %s: %s", customer_inn, risk_label)
+            tender["customer_risk_label"] = risk_label
+
+        result = db.upsert_primary(tender, primary_score, primary_reasons, matched_keywords)
+        db.save_filter_result(filter_result, stage="stage1")
+        saved += 1
+        if primary_score >= config.MIN_PRIMARY_SCORE_FOR_DETAIL:
+            primary_candidates += 1
+        logger.info(
+            "Stage1 %s: скор %d, %s (%s)",
+            result, primary_score,
+            str(tender.get("title", "?"))[:80], pnum,
+        )
+
+        if dry_run and primary_score >= config.MIN_PRIMARY_SCORE_FOR_DETAIL:
+            print("\n" + "─" * 50)
+            print(f"PRIMARY SCORE: {primary_score}")
+            print(re.sub(r"<[^>]+>", "", format_tender_message(tender, primary_score, primary_reasons, None)))
+
+    logger.info("Этап 1 завершён: найдено %d, кандидатов на этап 2: %d", saved, primary_candidates)
+    db.log_run("stage1", started_at, found=saved, processed=saved, notified=0, errors="; ".join(errors))
+    return saved, primary_candidates
+
+
+def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
+    """Детальный анализ ТЗ/документов только по кандидатам этапа 1."""
+    started_at = datetime.now().isoformat(timespec="seconds")
+    logger.info("═" * 50)
+    logger.info("Этап 2: детальный анализ документов")
+
+    limit = limit or config.STAGE2_LIMIT
+    tenders = db.get_detail_candidates(limit=limit, min_primary_score=config.MIN_PRIMARY_SCORE_FOR_DETAIL)
+    logger.info("Кандидатов на детальный анализ: %d", len(tenders))
+
+    processed = 0
+    notified_count = 0
+    errors: list[str] = []
+
+    for tender in tenders:
+        pnum = tender.get("purchase_number", "")
+        page_html = ""
+        page_text = ""
+        document_text = ""
+        scoring_text = tender.get("primary_text", "") or ""
+
+        try:
+            page_html, page_text = get_tender_page(tender.get("url", ""))
+            full_text_for_terms = "\n".join([scoring_text, page_text])
+
+            if config.DOWNLOAD_DOCUMENTS and page_html:
+                docs = download_documents(pnum, page_html, tender.get("url", ""))
+                files = docs.get("files", [])
+                document_text = collect_document_text(files, config.MAX_DOCUMENT_TEXT_CHARS)
+                tender["document_count"] = len(files)
+                tender["documents_dir"] = docs.get("dir", "")
+                tender["documents_hash"] = hash_files(files)
+                full_text_for_terms += "\n" + document_text
+
+            terms = extract_financial_terms(full_text_for_terms)
+            for key, value in terms.items():
+                if value not in (None, ""):
+                    tender[key] = value
+            scoring_text = "\n".join([scoring_text, page_text, document_text])
+        except Exception as exc:
+            msg = f"Ошибка получения/анализа документов {pnum}: {exc}"
+            logger.warning(msg)
+            errors.append(msg)
+
+        filter_result = run_stage2_filters(tender, scoring_text)
+        detail_score = filter_result.total_score
+        detail_reasons = filter_result.to_reasons()
+        tender["filter_decision"] = filter_result.decision
+        tender["filter_scores"] = filter_result.to_filter_scores()
+        tender["filter_stop"] = " | ".join(filter_result.stop_factors)
+        logger.info("Stage2 8-фильтровый скор %d/%s: %s (%s)", detail_score, filter_result.decision, str(tender.get("title", "?"))[:90], pnum)
+
+        llm_analysis = None
+        if detail_score >= config.MIN_SCORE_FOR_LLM and config.ANTHROPIC_API_KEY:
+            try:
+                llm_analysis = analyze_tender(tender, scoring_text)
+            except Exception as exc:
+                logger.warning("Ошибка LLM-анализа %s: %s", pnum, exc)
+
+        should_notify = (
+            detail_score >= config.MIN_DETAILED_SCORE_FOR_NOTIFY
+            and filter_result.decision != "NO-GO"
+            and not tender.get("notified_at")
+        )
+        notified = False
+        if should_notify:
+            if dry_run:
+                print("\n" + "═" * 50)
+                print(re.sub(r"<[^>]+>", "", format_tender_message(tender, detail_score, detail_reasons, llm_analysis)))
+                print("═" * 50)
+                notified = False
+            else:
+                notified = send_tender_message(
+                    tender,
+                    detail_score,
+                    detail_reasons,
+                    llm_analysis,
+                    config.TELEGRAM_BOT_TOKEN,
+                    config.TELEGRAM_CHAT_ID,
+                )
+                time.sleep(0.5)
+
+        db.save_detail(
+            tender,
+            detail_score,
+            detail_reasons,
+            llm_analysis or "",
+            document_text=scoring_text,
+            notified=notified,
+        )
+        db.save_filter_result(filter_result, stage="stage2")
+        processed += 1
+        if notified:
+            notified_count += 1
+
+    logger.info("Этап 2 завершён: обработано %d, отправлено %d", processed, notified_count)
+    if not dry_run:
+        send_summary(config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID, processed, notified_count, len(config.SEARCH_KEYWORDS))
+    db.log_run("stage2", started_at, found=len(tenders), processed=processed, notified=notified_count, errors="; ".join(errors))
+    return processed, notified_count
+
+
+
+def _parse_deadline(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    value = str(value).strip()
+    for fmt in ("%d.%m.%Y %H:%M", "%d.%m.%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(value[:19], fmt)
+            return dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def _deadline_passed(value: str | None) -> bool:
+    dt = _parse_deadline(value)
+    return bool(dt and dt < datetime.now(timezone.utc))
+
+
+def run_stage3(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
+    """После дедлайна подтягивает результат закупки для аналитики конкуренции."""
+    started_at = datetime.now().isoformat(timespec="seconds")
+    logger.info("═" * 50)
+    logger.info("Этап 3: подтягивание результатов и протоколов")
+
+    limit = limit or config.STAGE3_LIMIT
+    candidates = db.get_result_candidates(limit=limit)
+    candidates = [t for t in candidates if _deadline_passed(t.get("deadline"))]
+    logger.info("Кандидатов на Stage 3 после фильтра по дедлайну: %d", len(candidates))
+
+    processed = 0
+    errors: list[str] = []
+    for tender in candidates:
+        pnum = tender.get("purchase_number", "")
+        try:
+            _, page_text = get_tender_page(tender.get("url", ""))
+            result = parse_result_info(page_text, initial_price=tender.get("price"))
+            if dry_run:
+                print(f"{pnum}: {result}")
+            else:
+                db.save_result(pnum, result)
+            processed += 1
+            time.sleep(0.5)
+        except Exception as exc:
+            msg = f"Ошибка Stage3 {pnum}: {exc}"
+            logger.warning(msg)
+            errors.append(msg)
+
+    logger.info("Этап 3 завершён: обработано %d", processed)
+    db.log_run("stage3", started_at, found=len(candidates), processed=processed, notified=0, errors="; ".join(errors))
+    return processed, 0
+
+
+def run_once(dry_run: bool = False) -> tuple[int, int]:
+    found, _ = run_stage1(dry_run=dry_run)
+    processed, notified = run_stage2(dry_run=dry_run)
+    return found + processed, notified
+
+
+def run_analytics(dry_run: bool = False) -> None:
+    """
+    Аналитический цикл (запускается реже — раз в день или вручную):
+      1. Ценовые коридоры — скрейп реестра контрактов + пересчёт
+      2. Карточки заказчиков — новые и обновление устаревших
+      3. Детектор изменений ТЗ
+    """
+    logger.info("═" * 50)
+    logger.info("Аналитический цикл")
+
+    # 1. Ценовые коридоры
+    try:
+        logger.info("Обновление ценовых коридоров…")
+        run_winner_update(
+            keywords=config.SEARCH_KEYWORDS[:8],
+            pages=getattr(config, "WINNER_ANALYTICS_PAGES", 3),
+        )
+    except Exception as e:
+        logger.error("Ошибка winner_analytics: %s", e)
+
+    if dry_run:
+        logger.info("dry_run: пропускаем customer_scorer и change_detector")
+        return
+
+    # 2. Заказчики — новые
+    try:
+        n = run_new_customers(limit=getattr(config, "CUSTOMER_SCORE_LIMIT", 30))
+        logger.info("Новых профилей заказчиков: %d", n)
+    except Exception as e:
+        logger.error("Ошибка customer_scorer (новые): %s", e)
+
+    # 3. Заказчики — обновление устаревших
+    try:
+        n = run_refresh_customers(
+            limit=10,
+            days=getattr(config, "CUSTOMER_REFRESH_DAYS", 7),
+        )
+        logger.info("Обновлено профилей заказчиков: %d", n)
+    except Exception as e:
+        logger.error("Ошибка customer_scorer (refresh): %s", e)
+
+    # 4. Детектор изменений ТЗ
+    try:
+        checked, changed = check_changes()
+        logger.info("Детектор изменений: проверено %d, изменений %d", checked, changed)
+    except Exception as e:
+        logger.error("Ошибка change_detector: %s", e)
+
+
+def _start_analytics_subprocess() -> None:
+    """Запускает change_detector.py как фоновый демон."""
+    import subprocess, sys
+    script = Path(__file__).parent / "change_detector.py"
+    if not script.exists():
+        logger.warning("change_detector.py не найден")
+        return
+    proc = subprocess.Popen(
+        [sys.executable, str(script), "--daemon"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    logger.info("change_detector.py запущен (PID %d)", proc.pid)
+
+
+def _start_telegram_decisions_subprocess() -> None:
+    """
+    Запускает telegram_decisions.py как дочерний процесс.
+    Вызывается автоматически при запуске daemon-режима.
+
+    Требует: TELEGRAM_BOT_TOKEN задан в .env или переменных окружения.
+    Если процесс уже запущен (например, через systemd) — повторный запуск безопасен:
+    Telegram API не теряет апдейты (long polling с offset).
+    """
+    import subprocess, sys
+    script = Path(__file__).parent / "telegram_decisions.py"
+    if not script.exists():
+        logger.warning("telegram_decisions.py не найден, кнопки решений работать не будут")
+        return
+    proc = subprocess.Popen(
+        [sys.executable, str(script)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    logger.info("telegram_decisions.py запущен (PID %d)", proc.pid)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Двухэтапный тендерный монитор ЕИС")
+    parser.add_argument("--analytics", action="store_true", help="Ценовые коридоры + карточки заказчиков + детектор изменений")
+    parser.add_argument("--stage1", action="store_true", help="Только поиск карточек и первичный скоринг")
+    parser.add_argument("--stage2", action="store_true", help="Только детальный анализ кандидатов")
+    parser.add_argument("--stage3", action="store_true", help="После дедлайна подтянуть результаты/победителей")
+    parser.add_argument("--results", action="store_true", help="Алиас для --stage3")
+    parser.add_argument("--once", action="store_true", help="Один полный цикл: stage1 + stage2")
+    parser.add_argument("--test", action="store_true", help="Тестовый полный цикл без отправки в Telegram")
+    parser.add_argument("--reset-db", action="store_true", help="Сбросить PostgreSQL-таблицы проекта и создать чистую схему")
+    parser.add_argument("--limit", type=int, default=None, help="Лимит кандидатов для stage2")
+    args = parser.parse_args()
+
+    if args.reset_db:
+        db.reset_db()   # DROP всех таблиц + пересоздание схемы + defaults
+    else:
+        db.connect_db()
+        db.check_db()
+
+    # Читаем runtime-настройки из БД (могут быть изменены через веб-интерфейс)
+    config.PRICE_MIN                    = config.get_runtime("PRICE_MIN",                    config.PRICE_MIN)
+    config.PRICE_MAX                    = config.get_runtime("PRICE_MAX",                    config.PRICE_MAX)
+    config.PUBLISH_DAYS_BACK            = config.get_runtime("PUBLISH_DAYS_BACK",            config.PUBLISH_DAYS_BACK)
+    config.SCHEDULE_HOURS               = config.get_runtime("SCHEDULE_HOURS",               config.SCHEDULE_HOURS)
+    config.MIN_PRIMARY_SCORE_FOR_DETAIL = config.get_runtime("MIN_PRIMARY_SCORE_FOR_DETAIL", config.MIN_PRIMARY_SCORE_FOR_DETAIL)
+    config.MIN_DETAILED_SCORE_FOR_NOTIFY= config.get_runtime("MIN_DETAILED_SCORE_FOR_NOTIFY",config.MIN_DETAILED_SCORE_FOR_NOTIFY)
+    config.SEARCH_KEYWORDS              = config.get_runtime("SEARCH_KEYWORDS",              config.SEARCH_KEYWORDS)
+    config.OKPD2_SEARCH_ENABLED         = config.get_runtime("OKPD2_SEARCH_ENABLED",         config.OKPD2_SEARCH_ENABLED)
+    config.OKPD2_CODES                  = config.get_runtime("OKPD2_CODES",                  config.OKPD2_CODES)
+
+    if args.analytics:
+        run_analytics(dry_run=args.test)
+    elif args.stage1:
+        run_stage1(dry_run=args.test)
+    elif args.stage2:
+        run_stage2(dry_run=args.test, limit=args.limit)
+    elif args.stage3 or args.results:
+        run_stage3(dry_run=args.test, limit=args.limit)
+    elif args.once or args.test:
+        run_once(dry_run=args.test)
+    else:
+        if schedule is None:
+            raise SystemExit("Для daemon-режима установи зависимость: pip install schedule")
+        logger.info("Запуск по расписанию каждые %d ч.: stage1 + stage2", config.SCHEDULE_HOURS)
+        send_startup_message(config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID, config.SEARCH_KEYWORDS)
+        _start_telegram_decisions_subprocess()
+        _start_analytics_subprocess()          # change_detector фоновым процессом
+        run_once()
+        schedule.every(config.SCHEDULE_HOURS).hours.do(run_once)
+        # Аналитика — раз в сутки (в 04:00, чтобы не нагружать в рабочие часы)
+        schedule.every().day.at("04:00").do(run_analytics)
+        logger.info("Аналитика запланирована: ежедневно в 04:00")
+        while True:
+            schedule.run_pending()
+            time.sleep(60)
+
+    stats = db.get_stats()
+    logger.info(
+        "Статистика: всего %d, primary-кандидатов %d, детально проверено %d, отправлено %d",
+        stats["total"],
+        stats["primary_candidates"],
+        stats["detailed"],
+        stats["sent"],
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -188,9 +188,20 @@ def parse_signals(s: str) -> list[str]:
 def parse_stop(s: str) -> list[str]:
     return [x.strip() for x in (s or "").split("|") if x.strip()]
 
+def zakupki_common_info_url(url: str, purchase_number: str = "") -> str:
+    value = f"{url or ''} {purchase_number or ''}"
+    match = re.search(r"\b\d{11,22}\b", value)
+    if not match:
+        return url or ""
+    return (
+        "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html"
+        f"?regNumber={match.group(0)}"
+    )
+
 for name, fn in [("fmt_price",fmt_price),("fmt_date",fmt_date),
                   ("score_color",score_color),("decision_class",decision_class),
-                  ("parse_signals",parse_signals),("parse_stop",parse_stop)]:
+                  ("parse_signals",parse_signals),("parse_stop",parse_stop),
+                  ("zakupki_common_info_url",zakupki_common_info_url)]:
     templates.env.filters[name] = fn
 
 

@@ -91,7 +91,10 @@ def _with_db_retries(label: str, func: Callable[[], T]) -> T:
                 attempts,
                 exc,
             )
-            _reset_pool()
+            try:
+                _reset_pool()
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as reset_exc:
+                logger.warning("Не удалось пересоздать PostgreSQL pool: %s", reset_exc)
             if delay:
                 time.sleep(delay * attempt)
     raise RuntimeError("Недостижимая ветка retry PostgreSQL")
@@ -418,30 +421,40 @@ def check_db() -> None:
 
     Вызывается при каждом старте после connect_db().
     """
-    connect_db()
     try:
-        with _conn() as conn:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT version FROM schema_migrations WHERE version = %s",
-                (SCHEMA_VERSION,),
-            )
-            row = cur.fetchone()
-        if not row:
-            raise SystemExit(
-                f"\n❌ БД не инициализирована или устарела (нужна {SCHEMA_VERSION}).\n"
-                f"   Запусти один раз: python init_db.py\n"
-            )
-        logger.debug("Схема БД OK: %s", SCHEMA_VERSION)
+        row = _with_db_retries("check_db", _check_db_version_once)
     except Exception as exc:
         if isinstance(exc, SystemExit):
             raise
-        # Таблица schema_migrations не существует вообще
+        if isinstance(exc, (psycopg2.OperationalError, psycopg2.InterfaceError)):
+            raise SystemExit(
+                f"\n❌ PostgreSQL сейчас недоступен или рвёт соединение.\n"
+                f"   Схема БД может быть уже создана; это не ошибка init_db.py.\n"
+                f"   Повтори запуск через минуту или проверь сеть/VPN/сервер БД.\n"
+                f"   Детали: {exc}\n"
+            ) from exc
         raise SystemExit(
             f"\n❌ БД не инициализирована.\n"
             f"   Запусти один раз: python init_db.py\n"
             f"   Детали: {exc}\n"
         ) from exc
+    if not row:
+        raise SystemExit(
+            f"\n❌ БД не инициализирована или устарела (нужна {SCHEMA_VERSION}).\n"
+            f"   Запусти один раз: python init_db.py\n"
+        )
+    logger.debug("Схема БД OK: %s", SCHEMA_VERSION)
+
+
+def _check_db_version_once() -> tuple[str] | None:
+    connect_db()
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT version FROM schema_migrations WHERE version = %s",
+            (SCHEMA_VERSION,),
+        )
+        return cur.fetchone()
 
 
 def init_db() -> None:
