@@ -62,6 +62,9 @@ h2 span{font-weight:400;font-size:.65rem;color:var(--dimmer);text-transform:none
   cursor:pointer;transition:opacity .15s;margin-top:auto}
 .btn-run:hover{opacity:.85}
 .btn-run:disabled{opacity:.35;cursor:not-allowed}
+.btn{font-family:var(--mono);font-weight:700;border-radius:5px;border:none;cursor:pointer;transition:.12s}
+.btn-ghost{background:transparent;color:var(--dim);border:1px solid var(--border2)}
+.btn-ghost:hover{color:var(--text);border-color:var(--accent)}
 
 /* Settings form */
 .settings-form{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}
@@ -129,6 +132,8 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
       <a href="/">Тендеры</a>
       <a href="/analytics">Аналитика</a>
       <a href="/control" class="active">Управление</a>
+      <a href="/rules">Правила</a>
+      <a href="/kb">База знаний</a>
     </nav>
   </div>
 </div>
@@ -178,7 +183,78 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
   <div class="card full" id="jobsCard">
     <h2>▶ Запуск задач <span>(статус обновляется каждые 3 сек)</span></h2>
     <div class="jobs-grid" id="jobsGrid">
+      {% set jst1 = job_status.get('stage1', {}) %}
+      {% set st1 = jst1.get('status','idle') %}
+      <div class="job-card" id="job-stage1" style="grid-column:1/-1">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+          <div>
+            <div class="job-name">Stage 1 — поиск карточек</div>
+            <div class="job-desc">Выберите ключевые слова и параметры для этого запуска</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.4rem">
+            <div class="job-status {{ st1 }}" id="jstatus-stage1">{{ st1 }}</div>
+            <div class="job-meta" id="jmeta-stage1" style="text-align:right">
+              {% if jst1.get('finished_at') %}завершено: {{ jst1.finished_at[:19] }}{% endif %}
+              {% if jst1.get('error') %}<br><span style="color:var(--red)">{{ jst1.error[:60] }}</span>{% endif %}
+              {% if jst1.get('result') and st1 == 'done' %}<br>{{ jst1.result[:60] }}{% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div style="background:var(--surf3);border-radius:8px;padding:1rem;margin-top:.85rem">
+          <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.6rem;flex-wrap:wrap">
+            <span style="font-size:.6rem;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.07em">Ключевые слова</span>
+            <button class="btn btn-ghost" style="padding:.15rem .5rem;font-size:.6rem" onclick="selectAllKw(true)">Все</button>
+            <button class="btn btn-ghost" style="padding:.15rem .5rem;font-size:.6rem" onclick="selectAllKw(false)">Снять</button>
+            <button class="btn btn-ghost" style="padding:.15rem .5rem;font-size:.6rem" onclick="selectPreset('bitrix')">Битрикс</button>
+            <button class="btn btn-ghost" style="padding:.15rem .5rem;font-size:.6rem" onclick="selectPreset('server')">Серверы</button>
+            <button class="btn btn-ghost" style="padding:.15rem .5rem;font-size:.6rem" onclick="selectPreset('hardware')">Железо</button>
+          </div>
+          <div id="kwList" style="display:flex;flex-wrap:wrap;gap:.35rem;min-height:28px;margin-bottom:.85rem">
+            <span style="font-size:.68rem;color:var(--dimmer)">Загрузка...</span>
+          </div>
+
+          <div style="display:flex;flex-wrap:wrap;gap:.85rem;align-items:flex-end;margin-bottom:.75rem">
+            <div>
+              <div style="font-size:.58rem;color:var(--dimmer);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem">НМЦК от (₽)</div>
+              <input id="s1-price-min" type="number" placeholder="из настроек" style="background:var(--surf2);border:1px solid var(--border2);color:var(--text);border-radius:5px;padding:.38rem .65rem;font-family:var(--mono);font-size:.75rem;width:130px;outline:none">
+            </div>
+            <div>
+              <div style="font-size:.58rem;color:var(--dimmer);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem">НМЦК до (₽)</div>
+              <input id="s1-price-max" type="number" placeholder="из настроек" style="background:var(--surf2);border:1px solid var(--border2);color:var(--text);border-radius:5px;padding:.38rem .65rem;font-family:var(--mono);font-size:.75rem;width:130px;outline:none">
+            </div>
+            <div>
+              <div style="font-size:.58rem;color:var(--dimmer);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem">Глубина (дней)</div>
+              <input id="s1-days" type="number" placeholder="из настроек" min="1" max="365" style="background:var(--surf2);border:1px solid var(--border2);color:var(--text);border-radius:5px;padding:.38rem .65rem;font-family:var(--mono);font-size:.75rem;width:110px;outline:none">
+            </div>
+            <div style="display:flex;gap:1rem;align-items:center;padding-bottom:.1rem;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.75rem;color:var(--dim)">
+                <input type="checkbox" id="s1-fz44" checked style="width:14px;height:14px"> 44-ФЗ
+              </label>
+              <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.75rem;color:var(--dim)">
+                <input type="checkbox" id="s1-fz223" checked style="width:14px;height:14px"> 223-ФЗ
+              </label>
+              <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.75rem;color:var(--dim)">
+                <input type="checkbox" id="s1-okpd2" checked style="width:14px;height:14px"> ОКПД2
+              </label>
+              <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.75rem;color:var(--dim)" title="Коммерческие закупки и 223-ФЗ вне ЕИС">
+                <input type="checkbox" id="s1-b2b" style="width:14px;height:14px"> B2B-Center
+              </label>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+            <span style="font-size:.68rem;color:var(--dimmer)" id="s1-summary">Загрузка...</span>
+            <button class="btn-run" id="jbtn-stage1" onclick="runStage1()"
+              {% if st1 == 'running' %}disabled{% endif %}>
+              {% if st1 == 'running' %}Выполняется…{% else %}▶ Запустить поиск{% endif %}
+            </button>
+          </div>
+        </div>
+      </div>
+
       {% for job_id, job_label in jobs.items() %}
+      {% if job_id != 'stage1' %}
       {% set jst = job_status.get(job_id, {}) %}
       {% set st = jst.get('status','idle') %}
       <div class="job-card" id="job-{{ job_id }}">
@@ -195,6 +271,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
           {% if st == 'running' %}Выполняется…{% else %}▶ Запустить{% endif %}
         </button>
       </div>
+      {% endif %}
       {% endfor %}
     </div>
   </div>
@@ -250,9 +327,26 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
         <span class="hint">Например: ["62.01", "62.02", "62.09"]</span>
       </div>
 
+      <div class="field">
+        <label>Источник B2B-Center</label>
+        <div class="toggle-row">
+          <label class="toggle">
+            <input type="checkbox" name="SOURCE_B2B_ENABLED"
+              {% if settings.get('SOURCE_B2B_ENABLED','0') == '1' %}checked{% endif %}>
+            <span class="toggle-slider"></span>
+          </label>
+          <span style="font-size:.75rem;color:var(--dim)">Коммерческие закупки и 223-ФЗ вне ЕИС</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>B2B-Center: страниц на запрос</label>
+        <input type="number" name="B2B_SEARCH_PAGES" value="{{ settings.get('B2B_SEARCH_PAGES', '1') }}" min="1" max="10">
+        <span class="hint">По 20 торгов на страницу</span>
+      </div>
+
       <div class="field full-row">
-        <label>Ключевые слова <span style="font-weight:400">(JSON-массив, по одному слову в строке визуально)</span></label>
-        <textarea name="SEARCH_KEYWORDS" rows="6">{{ settings.get('SEARCH_KEYWORDS', '[]') }}</textarea>
+        <label>Поисковые фразы (ЕИС) <span style="font-weight:400">— по одной на строку; пустые строки игнорируются</span></label>
+        <textarea name="SEARCH_KEYWORDS" rows="10" placeholder="разработка сайта&#10;модернизация сайта&#10;интеграция 1С">{{ search_keywords_text }}</textarea>
       </div>
 
       <button type="submit" class="btn-save">💾 Сохранить настройки</button>
@@ -283,7 +377,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
             {% elif 'analyt' in stage %}<span class="tag" style="background:rgba(129,140,248,.1);color:var(--accent)">Analytics</span>
             {% else %}<span class="tag" style="background:rgba(72,85,104,.3);color:var(--dim)">{{ stage[:8] }}</span>{% endif %}
           </td>
-          <td class="mono muted">{{ (r.started_at or '')[:19] }}</td>
+          <td class="mono muted">{{ (r.started_at | string)[:19] if r.started_at else '—' }}</td>
           <td class="mono">{{ r.found or '—' }}</td>
           <td class="mono">{{ r.processed or '—' }}</td>
           <td class="mono">{{ r.notified or '—' }}</td>
@@ -324,8 +418,10 @@ async function pollStatus() {
       if (metaEl) metaEl.innerHTML = meta;
 
       if (btnEl) {
-        btnEl.disabled     = (st === 'running');
-        btnEl.textContent  = (st === 'running') ? 'Выполняется…' : '▶ Запустить';
+        const noStage1Keywords = id === 'stage1' && typeof getSelectedKeywords === 'function' && getSelectedKeywords().length === 0;
+        btnEl.disabled     = (st === 'running') || noStage1Keywords;
+        const idleText = id === 'stage1' ? '▶ Запустить поиск' : '▶ Запустить';
+        btnEl.textContent  = (st === 'running') ? 'Выполняется…' : idleText;
       }
     }
   } catch(e) { /* сеть недоступна — молча пропускаем */ }
@@ -360,6 +456,12 @@ async function saveSettings(e) {
     if (el.type === 'submit')        continue;
     const v = el.value.trim();
     if (!v) continue;
+    // Поисковые фразы — по одной на строку → массив (поддержка и старого JSON-формата)
+    if (el.name === 'SEARCH_KEYWORDS') {
+      if (v.startsWith('[')) { try { data[el.name] = JSON.parse(v); continue; } catch {} }
+      data[el.name] = v.split('\n').map(s => s.trim()).filter(Boolean);
+      continue;
+    }
     // Попытка парсить JSON для массивов
     if (v.startsWith('[') || v.startsWith('{')) {
       try { data[el.name] = JSON.parse(v); continue; } catch {}
@@ -384,6 +486,143 @@ async function saveSettings(e) {
     }
   } catch(err) { alert('Ошибка: ' + err); }
 }
+
+// ── Панель выбора условий поиска (Stage 1) ───────────────────────────────
+let _allKeywords = [];
+
+const KW_PRESETS = {
+  bitrix: ['1С-Битрикс','Битрикс24','Bitrix','сопровождение сайта','доработка сайта','техническая поддержка сайта','интеграция с 1С','интеграция 1С'],
+  server: ['администрирование сервера','администрирование сайта','резервное копирование','VPS','Linux','техническое сопровождение информационной системы'],
+  hardware: ['терминал сбора данных','сканер штрихкода','принтер этикеток','сетевое оборудование','видеонаблюдение','СКУД'],
+};
+
+async function loadSearchOptions() {
+  try {
+    const r = await fetch('/api/search/options');
+    const opts = await r.json();
+    _allKeywords = Array.isArray(opts.keywords) ? opts.keywords : [];
+
+    const container = document.getElementById('kwList');
+    if (!container) return;
+    container.innerHTML = '';
+
+    _allKeywords.forEach(kw => {
+      const label = document.createElement('label');
+      label.style.cssText = [
+        'display:flex','align-items:center','gap:.3rem','cursor:pointer',
+        'background:var(--surf2)','border:1px solid var(--border2)',
+        'border-radius:4px','padding:.2rem .55rem',
+        'font-size:.7rem','color:var(--dim)','transition:.12s'
+      ].join(';');
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'kw-cb';
+      cb.value = kw;
+      cb.checked = true;
+      cb.style.cssText = 'width:12px;height:12px;cursor:pointer';
+      cb.addEventListener('change', updateSummary);
+
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(' ' + kw));
+      label.addEventListener('mouseenter', () => label.style.borderColor = 'var(--accent)');
+      label.addEventListener('mouseleave', () => label.style.borderColor = 'var(--border2)');
+      container.appendChild(label);
+    });
+
+    if (opts.price_min) document.getElementById('s1-price-min').placeholder = String(opts.price_min);
+    if (opts.price_max) document.getElementById('s1-price-max').placeholder = String(opts.price_max);
+    if (opts.days_back) document.getElementById('s1-days').placeholder = String(opts.days_back);
+    document.getElementById('s1-fz44').checked = !!opts.fz44;
+    document.getElementById('s1-fz223').checked = !!opts.fz223;
+    document.getElementById('s1-okpd2').checked = !!opts.okpd2_enabled;
+    const b2bEl = document.getElementById('s1-b2b');
+    if (b2bEl) b2bEl.checked = !!opts.b2b_enabled;
+    updateSummary();
+  } catch(e) {
+    const c = document.getElementById('kwList');
+    if (c) c.innerHTML = '<span style="color:var(--red);font-size:.7rem">Ошибка загрузки опций</span>';
+  }
+}
+
+function getSelectedKeywords() {
+  return [...document.querySelectorAll('.kw-cb:checked')].map(cb => cb.value);
+}
+
+function selectAllKw(state) {
+  document.querySelectorAll('.kw-cb').forEach(cb => cb.checked = state);
+  updateSummary();
+}
+
+function selectPreset(preset) {
+  const presetKws = KW_PRESETS[preset] || [];
+  document.querySelectorAll('.kw-cb').forEach(cb => {
+    const kw = cb.value.toLowerCase();
+    cb.checked = presetKws.some(p => kw.includes(p.toLowerCase()) || p.toLowerCase().includes(kw));
+  });
+  updateSummary();
+}
+
+function updateSummary() {
+  const sel = getSelectedKeywords();
+  const total = _allKeywords.length;
+  const summary = document.getElementById('s1-summary');
+  const btn = document.getElementById('jbtn-stage1');
+  if (!summary) return;
+
+  if (!sel.length) {
+    summary.innerHTML = '<span style="color:var(--red)">Не выбрано ни одного ключевого слова</span>';
+    if (btn) btn.disabled = true;
+    return;
+  }
+
+  if (btn && document.getElementById('jstatus-stage1')?.textContent !== 'running') {
+    btn.disabled = false;
+  }
+  if (sel.length === total) {
+    summary.textContent = 'Выбрано: все ' + total + ' ключевых слов';
+  } else {
+    summary.textContent = 'Выбрано: ' + sel.length + ' из ' + total + ': '
+      + sel.slice(0, 4).join(', ') + (sel.length > 4 ? '...' : '');
+  }
+}
+
+async function runStage1() {
+  const keywords = getSelectedKeywords();
+  if (!keywords.length) { alert('Выберите хотя бы одно ключевое слово'); return; }
+
+  const btn = document.getElementById('jbtn-stage1');
+  if (btn) { btn.disabled = true; btn.textContent = 'Запуск...'; }
+
+  const params = {
+    keywords,
+    price_min: +document.getElementById('s1-price-min').value || null,
+    price_max: +document.getElementById('s1-price-max').value || null,
+    days_back: +document.getElementById('s1-days').value || null,
+    fz44: document.getElementById('s1-fz44').checked,
+    fz223: document.getElementById('s1-fz223').checked,
+    okpd2: document.getElementById('s1-okpd2').checked,
+    b2b: document.getElementById('s1-b2b') ? document.getElementById('s1-b2b').checked : false,
+  };
+
+  try {
+    const r = await fetch('/api/run/stage1', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(params),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      alert('Не удалось запустить: ' + (d.reason || 'ошибка'));
+      if (btn) { btn.disabled = false; btn.textContent = '▶ Запустить поиск'; }
+    }
+  } catch(e) {
+    alert('Ошибка запроса: ' + e);
+    if (btn) { btn.disabled = false; btn.textContent = '▶ Запустить поиск'; }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadSearchOptions);
 </script>
 </body>
 </html>

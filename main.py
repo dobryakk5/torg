@@ -128,36 +128,61 @@ def run_stage1(
     dry_run: bool = False,
     skip_completed_today: bool = False,
     backfill_active: bool = False,
+    keywords: list[str] | None = None,
+    price_min: int | None = None,
+    price_max: int | None = None,
+    days_back: int | None = None,
+    fz44: bool | None = None,
+    fz223: bool | None = None,
+    okpd2: bool | None = None,
+    b2b: bool | None = None,
 ) -> tuple[int, int]:
-    """Массовая подгрузка карточек и первичный скоринг без ТЗ."""
+    """
+    Массовая подгрузка карточек и первичный скоринг без ТЗ.
+
+    Override-параметры позволяют запускать Stage 1 с настройками из веб-панели.
+    Если параметр не передан, используется текущее значение из config/settings.
+    """
     started_at = datetime.now().isoformat(timespec="seconds")
     logger.info("═" * 50)
-    logger.info("Этап 1: поиск карточек и первичный скоринг")
 
     errors: list[str] = []
     seen_this_run: set[str] = set()
     saved = 0
     unique_saved = 0
     primary_candidates = 0
-    days_back = 0 if backfill_active else config.PUBLISH_DAYS_BACK
+
+    kw_list = keywords if keywords is not None else config.SEARCH_KEYWORDS
+    p_min = price_min if price_min is not None else config.PRICE_MIN
+    p_max = price_max if price_max is not None else config.PRICE_MAX
+    d_back = days_back if days_back is not None else (0 if backfill_active else config.PUBLISH_DAYS_BACK)
+    use_44 = fz44 if fz44 is not None else config.SEARCH_44FZ
+    use_223 = fz223 if fz223 is not None else config.SEARCH_223FZ
+    use_okpd2 = okpd2 if okpd2 is not None else getattr(config, "OKPD2_SEARCH_ENABLED", True)
+    use_b2b = b2b if b2b is not None else getattr(config, "SOURCE_B2B_ENABLED", False)
     pages = config.BACKFILL_SEARCH_PAGES if backfill_active else config.SEARCH_PAGES
 
+    logger.info(
+        "Этап 1: поиск карточек (%d ключей, цена %s–%s ₽, %s дн., 44-ФЗ=%s, 223-ФЗ=%s, ОКПД2=%s)",
+        len(kw_list), f"{p_min:,}", f"{p_max:,}", d_back, use_44, use_223, use_okpd2,
+    )
+
     # ── Канал 1: поиск по ключевым словам ──────────────────────────────────
-    for keyword in config.SEARCH_KEYWORDS:
+    for keyword in kw_list:
         phase_started_at = datetime.now().isoformat(timespec="seconds")
-        phase_mode = _stage1_phase_mode("keyword", keyword, days_back, pages)
+        phase_mode = _stage1_phase_mode("keyword", keyword, d_back, pages)
         if skip_completed_today and db.was_stage_completed_today(phase_mode):
             logger.info("Поиск '%s' уже готов сегодня — пропускаю", keyword)
             continue
         try:
             tenders = search_eis(
                 keyword=keyword,
-                price_from=config.PRICE_MIN,
-                price_to=config.PRICE_MAX,
-                fz44=config.SEARCH_44FZ,
-                fz223=config.SEARCH_223FZ,
+                price_from=p_min,
+                price_to=p_max,
+                fz44=use_44,
+                fz223=use_223,
                 pages=pages,
-                days_back=days_back,
+                days_back=d_back,
             )
             db.reconnect_db()
             phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
@@ -177,10 +202,10 @@ def run_stage1(
             continue
 
     # ── Канал 2: поиск по ОКПД2 (параллельный, ловит без ключевых слов) ───
-    if getattr(config, "OKPD2_SEARCH_ENABLED", True) and config.OKPD2_CODES:
+    if use_okpd2 and config.OKPD2_CODES:
         phase_started_at = datetime.now().isoformat(timespec="seconds")
         okpd2_value = ",".join(config.OKPD2_CODES)
-        phase_mode = _stage1_phase_mode("okpd2", okpd2_value, days_back, pages)
+        phase_mode = _stage1_phase_mode("okpd2", okpd2_value, d_back, pages)
         if skip_completed_today and db.was_stage_completed_today(phase_mode):
             logger.info("ОКПД2-поиск %s уже готов сегодня — пропускаю", config.OKPD2_CODES)
         else:
@@ -188,12 +213,12 @@ def run_stage1(
             try:
                 okpd2_tenders = search_eis_by_okpd2(
                     okpd2_codes=config.OKPD2_CODES,
-                    price_from=config.PRICE_MIN,
-                    price_to=config.PRICE_MAX,
-                    fz44=config.SEARCH_44FZ,
-                    fz223=config.SEARCH_223FZ,
+                    price_from=p_min,
+                    price_to=p_max,
+                    fz44=use_44,
+                    fz223=use_223,
                     pages=pages,
-                    days_back=days_back,
+                    days_back=d_back,
                 )
                 db.reconnect_db()
                 phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
@@ -211,9 +236,163 @@ def run_stage1(
                 logger.error("Ошибка ОКПД2-поиска: %s", exc)
                 errors.append(f"ОКПД2: {exc}")
 
+    # ── Канал 3: B2B-Center (коммерческие закупки и 223-ФЗ вне ЕИС) ──────────
+    if use_b2b:
+        from sources.b2b_center import search_b2b
+        b2b_pages = getattr(config, "B2B_SEARCH_PAGES", 1)
+        for keyword in kw_list:
+            phase_started_at = datetime.now().isoformat(timespec="seconds")
+            kw_clean = re.sub(r"\s+", " ", keyword).strip()
+            phase_mode = f"stage1:b2b:{kw_clean}:pages={b2b_pages}"
+            if skip_completed_today and db.was_stage_completed_today(phase_mode):
+                logger.info("B2B-поиск '%s' уже готов сегодня — пропускаю", keyword)
+                continue
+            try:
+                b2b_tenders = search_b2b(keyword, price_from=p_min, price_to=p_max, pages=b2b_pages)
+                db.reconnect_db()
+                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
+                    b2b_tenders, f"b2b:{keyword}", dry_run, seen_this_run,
+                )
+                saved += phase_saved
+                unique_saved += phase_unique
+                primary_candidates += phase_candidates
+                db.log_run(phase_mode, phase_started_at, found=len(b2b_tenders), processed=phase_saved, notified=0, errors="")
+            except Exception as exc:
+                msg = f"Ошибка B2B-поиска по '{keyword}': {exc}"
+                logger.error(msg)
+                errors.append(msg)
+                continue
+
     logger.info("Этап 1 завершён: найдено %d, кандидатов на этап 2: %d", unique_saved, primary_candidates)
     db.log_run("stage1", started_at, found=unique_saved, processed=saved, notified=0, errors="; ".join(errors))
     return unique_saved, primary_candidates
+
+
+def run_triage(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
+    """Stage 1.5 — LLM-триаж карточек.
+
+    Дешёвый массовый проход по собранным карточкам: классифицирует пригодность
+    (БЕРУ/ЧАСТИЧНО/МИМО), ловит перекуп лицензий/железа и ложные совпадения
+    ключевых слов. Результат сохраняется и мягко корректирует Ф1 (профиль).
+    """
+    started_at = datetime.now().isoformat(timespec="seconds")
+    logger.info("═" * 50)
+
+    if not getattr(config, "LLM_TRIAGE_ENABLED", True):
+        logger.info("LLM-триаж выключен (LLM_TRIAGE_ENABLED=0) — пропускаю")
+        return 0, 0
+
+    import llm_provider
+    from llm_analyzer import triage_tender
+
+    if not llm_provider.is_configured():
+        logger.warning(
+            "LLM-триаж пропущен: не задан ключ провайдера %s "
+            "(OPENROUTER_API_KEY/ANTHROPIC_API_KEY)", llm_provider.provider(),
+        )
+        return 0, 0
+
+    limit = limit or getattr(config, "LLM_TRIAGE_MAX_CARDS", 300)
+    model = llm_provider.triage_model()
+    candidates = db.get_triage_candidates(limit=limit, only_new=True)
+    logger.info("Stage 1.5 LLM-триаж: карточек к разметке %d (модель %s)", len(candidates), model)
+
+    processed = 0
+    taken = 0
+    errors: list[str] = []
+
+    for tender in candidates:
+        pnum = tender.get("purchase_number", "")
+        try:
+            triage = triage_tender(tender)
+            if not triage:
+                continue
+            db.save_triage(pnum, triage, model)
+            tender["llm_triage"] = triage
+            filter_result = run_stage1_filters(tender, tender.get("primary_text", "") or "")
+            db.update_stage1_after_triage(filter_result)
+            processed += 1
+            if triage.get("verdict") == "БЕРУ":
+                taken += 1
+            mark = "/перекуп" if triage.get("resale") else ""
+            line = f"[{triage.get('verdict')}/{triage.get('fit')}{mark}] {str(tender.get('title',''))[:80]} — {triage.get('reason','')}"
+            if dry_run:
+                print(line)
+            logger.info("Триаж %s", line)
+        except Exception as exc:
+            msg = f"Ошибка триажа {pnum}: {exc}"
+            logger.warning(msg)
+            errors.append(msg)
+
+    logger.info("Stage 1.5 завершён: размечено %d, из них БЕРУ %d", processed, taken)
+    db.log_run("triage", started_at, found=len(candidates), processed=processed, notified=0, errors="; ".join(errors))
+    return processed, taken
+
+
+def run_rescore(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
+    """Разовый пересчёт скоринга всех существующих лотов по текущему движку.
+
+    БЕЗ обращения к сети и БЕЗ LLM — только по уже сохранённому тексту карточек/ТЗ.
+    Нужен после правок filter_engine (ценовой коридор, страж перекупа, нейтрализация
+    Stage 1 и т.п.), чтобы дашборд сразу отразил новые оценки по всей базе.
+    Уже проставленные LLM-триаж-вердикты сохраняются и учитываются.
+    """
+    started_at = datetime.now().isoformat(timespec="seconds")
+    logger.info("═" * 50)
+    logger.info("Пересчёт скоринга существующих лотов (без сети/LLM)")
+
+    tenders = db.get_all_tenders_for_rescore(limit=limit)
+    logger.info("Лотов к пересчёту: %d", len(tenders))
+
+    rescored = 0
+    changed = 0
+    errors: list[str] = []
+
+    for tender in tenders:
+        pnum = tender.get("purchase_number", "")
+        try:
+            # Сохраняем влияние ранее полученного LLM-триажа на Ф1.
+            if tender.get("llm_triage_verdict"):
+                tender["llm_triage"] = {
+                    "verdict":  tender.get("llm_triage_verdict"),
+                    "fit":      tender.get("llm_triage_fit"),
+                    "resale":   tender.get("llm_triage_resale"),
+                    "category": tender.get("llm_triage_category"),
+                    "reason":   tender.get("llm_triage_reason"),
+                }
+
+            old_decision = tender.get("filter_decision")
+            detailed = tender.get("detail_checked_at") is not None
+
+            if detailed:
+                # По уже скачанному тексту (ТЗ/страница), без новой загрузки.
+                text = "\n".join(
+                    str(tender.get(k) or "")
+                    for k in ("primary_text", "document_text_excerpt")
+                )
+                filter_result = run_stage2_filters(tender, text)
+                if not dry_run:
+                    db.save_filter_result(filter_result, stage="stage2")
+            else:
+                filter_result = run_stage1_filters(tender, tender.get("primary_text", "") or "")
+                if not dry_run:
+                    db.update_stage1_after_triage(filter_result)
+
+            rescored += 1
+            if filter_result.decision != old_decision:
+                changed += 1
+            if dry_run:
+                print(f"{pnum}: {old_decision or '—'} → {filter_result.decision} "
+                      f"({filter_result.total_score}) {str(tender.get('title',''))[:70]}")
+        except Exception as exc:
+            msg = f"Ошибка пересчёта {pnum}: {exc}"
+            logger.warning(msg)
+            errors.append(msg)
+
+    logger.info("Пересчёт завершён: обработано %d, решение изменилось у %d", rescored, changed)
+    if not dry_run:
+        db.log_run("rescore", started_at, found=len(tenders), processed=rescored, notified=0, errors="; ".join(errors))
+    return rescored, changed
 
 
 def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
@@ -241,7 +420,8 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
             page_html, page_text = get_tender_page(tender.get("url", ""))
             full_text_for_terms = "\n".join([scoring_text, page_text])
 
-            if config.DOWNLOAD_DOCUMENTS and page_html:
+            is_eis = (tender.get("platform") or "ЕИС") == "ЕИС"
+            if config.DOWNLOAD_DOCUMENTS and page_html and is_eis:
                 docs = download_documents(pnum, page_html, tender.get("url", ""))
                 files = docs.get("files", [])
                 document_text = collect_document_text(files, config.MAX_DOCUMENT_TEXT_CHARS)
@@ -269,7 +449,8 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
         logger.info("Stage2 8-фильтровый скор %d/%s: %s (%s)", detail_score, filter_result.decision, str(tender.get("title", "?"))[:90], pnum)
 
         llm_analysis = None
-        if detail_score >= config.MIN_SCORE_FOR_LLM and config.ANTHROPIC_API_KEY:
+        import llm_provider
+        if detail_score >= config.MIN_SCORE_FOR_LLM and llm_provider.is_configured():
             try:
                 llm_analysis = analyze_tender(tender, scoring_text)
             except Exception as exc:
@@ -391,6 +572,9 @@ def run_once(
         backfill_active=backfill_active,
     )
 
+    # LLM-триаж в автоцикл НЕ включаем — он запускается вручную кнопкой в /control
+    # (или `python main.py --triage`) и размечает только лоты без LLM-оценки.
+
     if _stage_completed_today("stage2", skip_completed_today):
         processed, notified = 0, 0
     else:
@@ -488,6 +672,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Двухэтапный тендерный монитор ЕИС")
     parser.add_argument("--analytics", action="store_true", help="Ценовые коридоры + карточки заказчиков + детектор изменений")
     parser.add_argument("--stage1", action="store_true", help="Только поиск карточек и первичный скоринг")
+    parser.add_argument("--triage", action="store_true", help="Только LLM-триаж карточек (Stage 1.5)")
+    parser.add_argument("--rescore", action="store_true", help="Разовый пересчёт скоринга всех лотов (без сети/LLM)")
     parser.add_argument("--stage2", action="store_true", help="Только детальный анализ кандидатов")
     parser.add_argument("--stage3", action="store_true", help="После дедлайна подтянуть результаты/победителей")
     parser.add_argument("--results", action="store_true", help="Алиас для --stage3")
@@ -504,6 +690,7 @@ def main() -> None:
     else:
         db.connect_db()
         db.check_db()
+        db.ensure_extra_columns()   # идемпотентный ALTER: колонки триажа и пр.
 
     # Читаем runtime-настройки из БД (могут быть изменены через веб-интерфейс)
     config.PRICE_MIN                    = config.get_runtime("PRICE_MIN",                    config.PRICE_MIN)
@@ -516,6 +703,13 @@ def main() -> None:
     config.OKPD2_SEARCH_ENABLED         = config.get_runtime("OKPD2_SEARCH_ENABLED",         config.OKPD2_SEARCH_ENABLED)
     config.OKPD2_CODES                  = config.get_runtime("OKPD2_CODES",                  config.OKPD2_CODES)
     config.BACKFILL_SEARCH_PAGES        = config.get_runtime("BACKFILL_SEARCH_PAGES",        config.BACKFILL_SEARCH_PAGES)
+    config.SOURCE_B2B_ENABLED           = config.get_runtime("SOURCE_B2B_ENABLED",           config.SOURCE_B2B_ENABLED)
+    config.B2B_SEARCH_PAGES             = config.get_runtime("B2B_SEARCH_PAGES",             config.B2B_SEARCH_PAGES)
+    # LLM-настройки (провайдер/модели/триаж) — тоже из БД с откатом на env.
+    config.LLM_PROVIDER                 = config.get_runtime("LLM_PROVIDER",                 config.LLM_PROVIDER)
+    config.OPENROUTER_TRIAGE_MODEL      = config.get_runtime("OPENROUTER_TRIAGE_MODEL",      config.OPENROUTER_TRIAGE_MODEL)
+    config.OPENROUTER_DEEP_MODEL        = config.get_runtime("OPENROUTER_DEEP_MODEL",        config.OPENROUTER_DEEP_MODEL)
+    config.LLM_TRIAGE_ENABLED           = config.get_runtime("LLM_TRIAGE_ENABLED",           config.LLM_TRIAGE_ENABLED)
 
     if args.analytics:
         run_analytics(dry_run=args.test)
@@ -525,6 +719,10 @@ def main() -> None:
             skip_completed_today=args.skip_completed_today,
             backfill_active=args.backfill_active,
         )
+    elif args.triage:
+        run_triage(dry_run=args.test, limit=args.limit)
+    elif args.rescore:
+        run_rescore(dry_run=args.test, limit=args.limit)
     elif args.stage2:
         if not _stage_completed_today("stage2", args.skip_completed_today):
             run_stage2(dry_run=args.test, limit=args.limit)

@@ -218,6 +218,15 @@ CREATE TABLE IF NOT EXISTS tenders (
     llm_analysis                 TEXT,
     llm_verdict                  TEXT,
 
+    -- LLM-триаж по карточке (Stage 1)
+    llm_triage_verdict           TEXT,
+    llm_triage_fit               TEXT,
+    llm_triage_resale            BOOLEAN,
+    llm_triage_category          TEXT,
+    llm_triage_reason            TEXT,
+    llm_triage_model             TEXT,
+    llm_triage_at                TIMESTAMPTZ,
+
     application_security_amount  NUMERIC(15, 2),
     contract_security_amount     NUMERIC(15, 2),
     warranty_security_amount     NUMERIC(15, 2),
@@ -396,7 +405,100 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 );
 """
 
-SCHEMA_VERSION = "v4"   # bump при добавлении новых таблиц
+SCHEMA_VERSION = "v6"   # bump при добавлении новых таблиц
+
+
+DDL_KB = """
+-- Реестр исполненных контрактов (опыт, для ст.31 44-ФЗ и контекста LLM)
+CREATE TABLE IF NOT EXISTS kb_contracts (
+    id           SERIAL PRIMARY KEY,
+    title        TEXT NOT NULL,
+    customer     TEXT,
+    contract_num TEXT,
+    year         INTEGER,
+    price        NUMERIC,
+    category     TEXT,
+    tech_stack   JSONB    DEFAULT '[]',
+    description  TEXT,
+    problems     TEXT,
+    result_url   TEXT,
+    created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Компетенции команды (технологии, сертификаты)
+CREATE TABLE IF NOT EXISTS kb_competencies (
+    id           SERIAL PRIMARY KEY,
+    tech         TEXT NOT NULL,
+    category     TEXT,
+    level        SMALLINT DEFAULT 3,
+    certified    BOOLEAN  DEFAULT FALSE,
+    cert_name    TEXT,
+    cert_expires DATE,
+    notes        TEXT
+);
+
+-- Каталог оборудования и аналогов
+CREATE TABLE IF NOT EXISTS kb_equipment (
+    id            SERIAL PRIMARY KEY,
+    name          TEXT NOT NULL,
+    vendor        TEXT,
+    model         TEXT,
+    category      TEXT,
+    specs         JSONB    DEFAULT '{}',
+    price_rub     NUMERIC,
+    lead_days     INTEGER,
+    analog_for    TEXT[]   DEFAULT '{}',
+    notes         TEXT
+);
+
+-- Персональные правила рисков (stop/warn/boost)
+CREATE TABLE IF NOT EXISTS kb_risk_rules (
+    id          SERIAL PRIMARY KEY,
+    rule_type   TEXT NOT NULL CHECK (rule_type IN ('stop','warn','boost')),
+    category    TEXT,
+    pattern     TEXT NOT NULL,
+    weight      INTEGER DEFAULT -5,
+    reason      TEXT NOT NULL,
+    active      BOOLEAN DEFAULT TRUE,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Шаблоны запросов, претензий, жалоб в ФАС
+CREATE TABLE IF NOT EXISTS kb_templates (
+    id          SERIAL PRIMARY KEY,
+    title       TEXT NOT NULL,
+    category    TEXT,
+    content     TEXT NOT NULL,
+    tags        TEXT[]  DEFAULT '{}',
+    used_count  INTEGER DEFAULT 0,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_kb_contracts_category ON kb_contracts(category);
+CREATE INDEX IF NOT EXISTS idx_kb_competencies_tech  ON kb_competencies(tech);
+CREATE INDEX IF NOT EXISTS idx_kb_equipment_category ON kb_equipment(category);
+CREATE INDEX IF NOT EXISTS idx_kb_risk_rules_active  ON kb_risk_rules(active, rule_type);
+"""
+
+# Словарь фраз для 8 фильтров (редактируется в /rules).
+# Заменяет вшитые списки в filter_engine.py. dim — номер фильтра 1–8,
+# bucket — «корзина» (strong/medium/bad/...), term — фраза (| = ИЛИ, * = wildcard),
+# unless/require — фразы-стражи контекста.
+DDL_SCORING_RULES = """
+CREATE TABLE IF NOT EXISTS scoring_rules (
+    id          SERIAL PRIMARY KEY,
+    dim         SMALLINT NOT NULL,
+    bucket      TEXT NOT NULL,
+    term        TEXT NOT NULL,
+    unless      TEXT[]  DEFAULT '{}',
+    require     TEXT[]  DEFAULT '{}',
+    active      BOOLEAN DEFAULT TRUE,
+    note        TEXT,
+    sort        INTEGER DEFAULT 100,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_scoring_rules_active ON scoring_rules(active, dim, bucket);
+"""
 
 
 def connect_db() -> None:
@@ -469,7 +571,7 @@ def init_db() -> None:
             DDL_MIGRATIONS, DDL_SETTINGS,
             DDL_TENDERS, DDL_FILTER_SCORES, DDL_RUNS, DDL_DECISIONS,
             DDL_TENDER_CHANGES, DDL_CUSTOMERS, DDL_PRICE_CORRIDORS,
-            DDL_INDEXES, DDL_TRIGGER,
+            DDL_KB, DDL_SCORING_RULES, DDL_INDEXES, DDL_TRIGGER,
         ):
             cur.execute(ddl)
         cur.execute(
@@ -477,6 +579,77 @@ def init_db() -> None:
             (SCHEMA_VERSION,),
         )
     logger.info("PostgreSQL схема создана: %s", SCHEMA_VERSION)
+
+
+def ensure_extra_columns() -> None:
+    """
+    Идемпотентные ALTER-ы, которые можно безопасно выполнять при каждом старте.
+    Не требуют bump SCHEMA_VERSION и перезапуска init_db.py.
+
+    Сейчас: details_json — распарсенные детальные блоки страницы common-info
+    (сроки исполнения, финансирование, объект закупки, требования к участникам).
+    """
+    connect_db()
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("ALTER TABLE tenders ADD COLUMN IF NOT EXISTS details_json JSONB")
+        cur.execute("ALTER TABLE tenders ADD COLUMN IF NOT EXISTS details_checked_at TIMESTAMPTZ")
+        # LLM-триаж по карточке (Stage 1) — добавляется без bump SCHEMA_VERSION.
+        for ddl in (
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS llm_triage_verdict TEXT",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS llm_triage_fit TEXT",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS llm_triage_resale BOOLEAN",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS llm_triage_category TEXT",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS llm_triage_reason TEXT",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS llm_triage_model TEXT",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS llm_triage_at TIMESTAMPTZ",
+        ):
+            cur.execute(ddl)
+
+
+def save_tender_details(purchase_number: str, details: dict[str, Any]) -> None:
+    """Сохраняет распарсенные детальные блоки лота в tenders.details_json."""
+    if not purchase_number:
+        return
+    _with_db_retries(
+        "save_tender_details",
+        lambda: _save_tender_details_once(purchase_number, details),
+    )
+
+
+def _save_tender_details_once(purchase_number: str, details: dict[str, Any]) -> None:
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE tenders
+               SET details_json = %s,
+                   details_checked_at = NOW(),
+                   updated_at = NOW()
+             WHERE purchase_number = %s
+            """,
+            (json.dumps(details or {}, ensure_ascii=False, default=str), purchase_number),
+        )
+
+
+def get_tender_details(purchase_number: str) -> Optional[dict[str, Any]]:
+    """Возвращает details_json лота (или None, если ещё не собирали)."""
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT details_json FROM tenders WHERE purchase_number = %s",
+            (purchase_number,),
+        )
+        row = cur.fetchone()
+    if not row or row[0] is None:
+        return None
+    value = row[0]
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except Exception:
+            return None
+    return value
 
 
 def close_db() -> None:
@@ -504,6 +677,8 @@ def reset_db() -> None:
     with _conn() as conn:
         cur = conn.cursor()
         for tbl in [
+            "kb_templates", "kb_risk_rules", "kb_equipment",
+            "kb_competencies", "kb_contracts", "scoring_rules",
             "filter_scores", "decisions", "tender_changes", "runs",
             "customers", "price_corridors", "settings",
             "schema_migrations", "tenders",
@@ -728,6 +903,142 @@ def get_detail_candidates(limit: int, min_primary_score: int) -> list[dict[str, 
         )
         rows = cur.fetchall()
     return _rows_to_dicts(rows)
+
+def get_triage_candidates(limit: int, only_new: bool = True) -> list[dict[str, Any]]:
+    """Карточки для LLM-триажа Stage 1: ещё не размеченные, не явный мусор.
+
+    only_new=True — только те, где триаж ещё не делался (llm_triage_at IS NULL).
+    Сортировка: сначала более перспективные по первичному скору и цене.
+    """
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        where = "WHERE filter_decision <> 'NO-GO' AND status <> 'detail_rejected'"
+        if only_new:
+            where += " AND llm_triage_at IS NULL"
+        cur.execute(
+            f"""
+            SELECT * FROM tenders
+             {where}
+             ORDER BY primary_score DESC, price DESC NULLS LAST
+             LIMIT %s
+            """,
+            (limit,),
+        )
+        rows = cur.fetchall()
+    return _rows_to_dicts(rows)
+
+
+def save_triage(purchase_number: str, triage: dict[str, Any], model: str = "") -> None:
+    """Сохраняет результат LLM-триажа карточки (Stage 1)."""
+    if not purchase_number:
+        return
+    _with_db_retries(
+        "save_triage",
+        lambda: _save_triage_once(purchase_number, triage, model),
+    )
+
+
+def _save_triage_once(purchase_number: str, triage: dict[str, Any], model: str) -> None:
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE tenders
+               SET llm_triage_verdict  = %(verdict)s,
+                   llm_triage_fit      = %(fit)s,
+                   llm_triage_resale   = %(resale)s,
+                   llm_triage_category = %(category)s,
+                   llm_triage_reason   = %(reason)s,
+                   llm_triage_model    = %(model)s,
+                   llm_triage_at       = NOW(),
+                   updated_at          = NOW()
+             WHERE purchase_number = %(pnum)s
+            """,
+            {
+                "verdict": triage.get("verdict"),
+                "fit": triage.get("fit"),
+                "resale": bool(triage.get("resale")),
+                "category": triage.get("category"),
+                "reason": triage.get("reason"),
+                "model": model,
+                "pnum": purchase_number,
+            },
+        )
+
+
+def get_all_tenders_for_rescore(limit: int | None = None) -> list[dict[str, Any]]:
+    """Все лоты целиком (SELECT *) для разового пересчёта скоринга без сети/LLM."""
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        sql = "SELECT * FROM tenders ORDER BY primary_score DESC NULLS LAST"
+        if limit:
+            sql += " LIMIT %s"
+            cur.execute(sql, (limit,))
+        else:
+            cur.execute(sql)
+        rows = cur.fetchall()
+    return _rows_to_dicts(rows)
+
+
+def update_stage1_after_triage(filter_result: Any) -> None:
+    """Принудительно переписывает Stage 1-оценки после LLM-триажа.
+
+    В отличие от save_filter_result(stage1) — обновляет и заголовочные поля
+    (primary_score/filter_total/decision), и per-filter строки (Ф1 c учётом
+    вердикта). Применяется только к лотам, ещё не прошедшим Stage 2.
+    """
+    _with_db_retries("update_stage1_after_triage", lambda: _update_stage1_after_triage_once(filter_result))
+
+
+def _update_stage1_after_triage_once(filter_result: Any) -> None:
+    pnum = getattr(filter_result, "purchase_number", "")
+    if not pnum:
+        return
+    total = getattr(filter_result, "total_score", 0)
+    decision = getattr(filter_result, "decision", None)
+    stop_factors = getattr(filter_result, "stop_factors", []) or []
+    reasons = " | ".join(filter_result.to_reasons()) if hasattr(filter_result, "to_reasons") else ""
+
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE tenders
+               SET primary_score   = %(total)s,
+                   total_score     = %(total)s,
+                   score           = %(total)s,
+                   filter_total    = %(total)s,
+                   filter_decision = %(decision)s,
+                   filter_stop     = %(stop)s,
+                   primary_reasons = %(reasons)s,
+                   updated_at      = NOW()
+             WHERE purchase_number = %(pnum)s
+               AND (detail_checked_at IS NULL OR needs_detail_refresh = TRUE)
+            """,
+            {
+                "total": total, "decision": decision,
+                "stop": " | ".join(stop_factors), "reasons": reasons, "pnum": pnum,
+            },
+        )
+        for f in getattr(filter_result, "filters", []) or []:
+            cur.execute(
+                """
+                INSERT INTO filter_scores
+                    (purchase_number, filter_number, filter_name, score, signals, stop_factor)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (purchase_number, filter_number) DO UPDATE SET
+                    filter_name = EXCLUDED.filter_name,
+                    score       = EXCLUDED.score,
+                    signals     = EXCLUDED.signals,
+                    stop_factor = EXCLUDED.stop_factor
+                """,
+                (
+                    pnum, getattr(f, "number", 0), getattr(f, "name", ""),
+                    getattr(f, "score", 0), " | ".join(getattr(f, "signals", []) or []),
+                    bool(getattr(f, "stop_factor", False)),
+                ),
+            )
+
 
 def save_detail(
     tender: dict[str, Any],
@@ -984,6 +1295,9 @@ def get_top_tenders(
     price_min: Optional[float] = None,
     price_max: Optional[float] = None,
     law_type:  Optional[str]   = None,
+    matched_keyword: Optional[str] = None,   # фасет: фраза, по которой найден тендер
+    q: Optional[str] = None,                  # свободный текст: название/заказчик/номер
+    exclude_keywords: Optional[list[str]] = None,
     # Per-filter минимальные оценки (1–5) для Ф1–Ф8
     f1_min: Optional[int] = None,
     f2_min: Optional[int] = None,
@@ -993,10 +1307,13 @@ def get_top_tenders(
     f6_min: Optional[int] = None,
     f7_min: Optional[int] = None,
     f8_min: Optional[int] = None,
+    sort_by: str = "score",          # score | price | phrase | date | deadline
+    order:   str = "desc",           # asc | desc
 ) -> list[dict[str, Any]]:
     """
     Возвращает тендеры с оценками всех 8 фильтров в одном SQL-запросе (без N+1).
     Поддерживает фильтрацию по минимальному баллу каждого фильтра отдельно.
+    Сортировка: score (filter_total), price, phrase, date (created_at), deadline.
 
     Пример:
         # Только GO-тендеры, где нет заточки (Ф6≥3) и нормальная экономика (Ф2≥3):
@@ -1017,6 +1334,22 @@ def get_top_tenders(
     if law_type:
         conditions.append("t.law_type = %s")
         params.append(law_type)
+    if matched_keyword:
+        conditions.append("t.matched_keywords ILIKE %s")
+        params.append(f"%{matched_keyword}%")
+    if q and q.strip():
+        # Свободный поиск по уже загруженным лотам (без скрейпинга):
+        # название, заказчик, номер закупки, категория триажа.
+        like = f"%{q.strip()}%"
+        conditions.append(
+            "(t.title ILIKE %s OR t.customer ILIKE %s OR t.purchase_number ILIKE %s "
+            "OR t.llm_triage_category ILIKE %s)"
+        )
+        params.extend([like, like, like, like])
+    for keyword in exclude_keywords or []:
+        if keyword:
+            conditions.append("(t.matched_keywords IS NULL OR t.matched_keywords NOT ILIKE %s)")
+            params.append(f"%{keyword}%")
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -1032,6 +1365,17 @@ def get_top_tenders(
             params.append(fmin)
 
     having = ("HAVING " + " AND ".join(having_parts)) if having_parts else ""
+
+    sort_col = {
+        "score":    "t.filter_total",
+        "price":    "t.price",
+        "phrase":   "LOWER(t.matched_keywords)",
+        "date":     "t.created_at",
+        "deadline": "t.deadline",
+    }.get((sort_by or "score").lower(), "t.filter_total")
+    sort_dir = "ASC" if (order or "desc").lower() == "asc" else "DESC"
+    order_by = f"{sort_col} {sort_dir} NULLS LAST, t.created_at DESC"
+
     params.append(limit)
 
     sql = f"""
@@ -1040,7 +1384,9 @@ def get_top_tenders(
             t.deadline, t.url, t.score, t.score_reasons, t.primary_score,
             t.detail_score, t.total_score, t.filter_total, t.filter_decision,
             t.filter_stop, t.llm_verdict, t.notified_at, t.decision,
-            t.status, t.created_at, t.published_at,
+            t.status, t.created_at, t.published_at, t.matched_keywords,
+            t.llm_triage_verdict, t.llm_triage_fit, t.llm_triage_resale,
+            t.llm_triage_category, t.llm_triage_reason,
 
             -- Агрегируем 8 фильтров в один JSON-объект — без N+1 запросов
             json_object_agg(
@@ -1062,9 +1408,9 @@ def get_top_tenders(
             t.deadline, t.url, t.score, t.score_reasons, t.primary_score,
             t.detail_score, t.total_score, t.filter_total, t.filter_decision,
             t.filter_stop, t.llm_verdict, t.notified_at, t.decision,
-            t.status, t.created_at, t.published_at
+            t.status, t.created_at, t.published_at, t.matched_keywords
         {having}
-        ORDER BY t.filter_total DESC NULLS LAST, t.created_at DESC
+        ORDER BY {order_by}
         LIMIT %s
     """
 
@@ -1313,6 +1659,53 @@ def _save_filter_result_once(filter_result: Any, stage: str = "stage1") -> None:
                         bool(getattr(f, "stop_factor", False)),
                     ),
                 )
+
+
+def overwrite_filter_result(filter_result: Any) -> None:
+    """
+    Принудительно перезаписывает результат фильтрации (для пересчёта по деталям).
+
+    В отличие от save_filter_result(stage1), который защищает оценки гардами и
+    INSERT … ON CONFLICT DO NOTHING, здесь баллы Ф1..Ф8 и решение перетираются.
+    Используется в rescore.py, когда мы досчитываем профиль по собранным details_json.
+    """
+    pnum = getattr(filter_result, "purchase_number", "")
+    if not pnum:
+        return
+    score = int(getattr(filter_result, "total_score", 0) or 0)
+    decision = getattr(filter_result, "decision", None)
+    stop = " | ".join(getattr(filter_result, "stop_factors", []) or [])
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE tenders
+               SET filter_total = %s, filter_decision = %s, filter_stop = %s,
+                   total_score = %s, score = %s,
+                   primary_score = %s, updated_at = NOW()
+             WHERE purchase_number = %s
+            """,
+            (score, decision, stop, score, score, score, pnum),
+        )
+        for f in getattr(filter_result, "filters", []) or []:
+            cur.execute(
+                """
+                INSERT INTO filter_scores
+                    (purchase_number, filter_number, filter_name, score, signals, stop_factor)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (purchase_number, filter_number) DO UPDATE SET
+                    filter_name = EXCLUDED.filter_name,
+                    score       = EXCLUDED.score,
+                    signals     = EXCLUDED.signals,
+                    stop_factor = EXCLUDED.stop_factor
+                """,
+                (
+                    pnum, getattr(f, "number", 0), getattr(f, "name", ""),
+                    getattr(f, "score", 0),
+                    " | ".join(getattr(f, "signals", []) or []),
+                    bool(getattr(f, "stop_factor", False)),
+                ),
+            )
 
 
 def save_llm_verdict(purchase_number: str, llm_verdict: str) -> None:
@@ -1600,3 +1993,353 @@ def upsert_settings_bulk(data: dict[str, str]) -> None:
     """Сохраняет несколько настроек за один вызов."""
     for key, value in data.items():
         set_setting(key, value)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SCORING RULES — словарь фраз для 8 фильтров (редактируется в /rules)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _norm_phrase_list(value: Any) -> list[str]:
+    """Приводит unless/require к списку строк (принимает list или строку через запятую/перенос)."""
+    if value is None or value == "":
+        return []
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
+    parts: list[str] = []
+    for chunk in str(value).replace(";", "\n").replace(",", "\n").splitlines():
+        chunk = chunk.strip()
+        if chunk:
+            parts.append(chunk)
+    return parts
+
+
+def scoring_rules_list() -> list[dict[str, Any]]:
+    """Все правила, сгруппированно отсортированные для UI."""
+    try:
+        with _conn() as conn:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT * FROM scoring_rules ORDER BY dim, bucket, sort, id")
+            return [_to_jsonable(dict(r)) for r in cur.fetchall()]
+    except Exception:
+        return []
+
+
+def scoring_rules_active() -> list[dict[str, Any]]:
+    """Активные правила для движка filter_engine (минимум полей)."""
+    try:
+        with _conn() as conn:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(
+                "SELECT dim, bucket, term, unless, require "
+                "FROM scoring_rules WHERE active = TRUE"
+            )
+            return [dict(r) for r in cur.fetchall()]
+    except Exception:
+        return []
+
+
+def scoring_rule_save(data: dict[str, Any]) -> int:
+    clean = {
+        "dim":     int(data.get("dim") or 1),
+        "bucket":  str(data.get("bucket") or "").strip(),
+        "term":    str(data.get("term") or "").strip(),
+        "unless":  _norm_phrase_list(data.get("unless")),
+        "require": _norm_phrase_list(data.get("require")),
+        "active":  bool(data.get("active", True)),
+        "note":    str(data.get("note") or "").strip() or None,
+        "sort":    int(data.get("sort") or 100),
+    }
+    if not clean["bucket"] or not clean["term"]:
+        raise ValueError("scoring_rule: требуются непустые bucket и term")
+
+    row_id = data.get("id")
+    with _conn() as conn:
+        cur = conn.cursor()
+        if row_id:
+            clean["_id"] = int(row_id)
+            cur.execute(
+                """UPDATE scoring_rules SET
+                       dim=%(dim)s, bucket=%(bucket)s, term=%(term)s,
+                       unless=%(unless)s::text[], require=%(require)s::text[],
+                       active=%(active)s, note=%(note)s, sort=%(sort)s
+                   WHERE id=%(_id)s RETURNING id""",
+                clean,
+            )
+        else:
+            cur.execute(
+                """INSERT INTO scoring_rules (dim, bucket, term, unless, require, active, note, sort)
+                   VALUES (%(dim)s, %(bucket)s, %(term)s, %(unless)s::text[], %(require)s::text[],
+                           %(active)s, %(note)s, %(sort)s)
+                   RETURNING id""",
+                clean,
+            )
+        return int(cur.fetchone()[0])
+
+
+def scoring_rule_delete(row_id: int) -> None:
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM scoring_rules WHERE id = %s", (int(row_id),))
+
+
+def scoring_rules_seed(force: bool = False) -> int:
+    """Засевает scoring_rules из filter_engine.DEFAULT_BUCKETS.
+
+    Идемпотентно: если таблица непуста и force=False — ничего не делает.
+    Вызывается из init_db.py (load_defaults) и из API /api/rules/seed.
+    """
+    try:
+        with _conn() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM scoring_rules")
+            count = cur.fetchone()[0]
+    except Exception as exc:
+        logger.warning("scoring_rules_seed: таблица недоступна: %s", exc)
+        return 0
+    if count and not force:
+        logger.info("scoring_rules уже содержит %d записей, seed пропущен", count)
+        return 0
+
+    from filter_engine import DEFAULT_BUCKETS
+    inserted = 0
+    with _conn() as conn:
+        cur = conn.cursor()
+        for (dim, bucket), terms in DEFAULT_BUCKETS.items():
+            for i, term in enumerate(terms, start=1):
+                cur.execute(
+                    "INSERT INTO scoring_rules (dim, bucket, term, sort) VALUES (%s, %s, %s, %s)",
+                    (int(dim), bucket, term, i * 10),
+                )
+                inserted += 1
+    logger.info("scoring_rules: засеяно %d правил из дефолтов", inserted)
+    return inserted
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# KNOWLEDGE BASE — CRUD для всех 5 разделов
+# ══════════════════════════════════════════════════════════════════════════════
+
+_KB_TABLES = {
+    "kb_contracts",
+    "kb_competencies",
+    "kb_equipment",
+    "kb_risk_rules",
+    "kb_templates",
+}
+
+
+def _kb_table(table: str) -> str:
+    if table not in _KB_TABLES:
+        raise ValueError(f"Недопустимая таблица БЗ: {table}")
+    return table
+
+
+def _kb_list(
+    table: str,
+    where: str = "",
+    params: tuple = (),
+    order: str = "id DESC",
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    table = _kb_table(table)
+    sql = f"SELECT * FROM {table}"
+    if where:
+        sql += f" {where}"
+    if order:
+        sql += f" ORDER BY {order}"
+    if limit is not None:
+        sql += " LIMIT %s"
+        params = (*params, limit)
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql, params)
+        return [_to_jsonable(dict(r)) for r in cur.fetchall()]
+
+
+def _kb_insert(table: str, data: dict[str, Any]) -> int:
+    table = _kb_table(table)
+    clean = {k: v for k, v in data.items() if k != "id"}
+    cols = ", ".join(clean.keys())
+    vals = ", ".join(f"%({k})s" for k in clean.keys())
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(f"INSERT INTO {table} ({cols}) VALUES ({vals}) RETURNING id", clean)
+        return int(cur.fetchone()[0])
+
+
+def _kb_update(table: str, row_id: int, data: dict[str, Any]) -> None:
+    table = _kb_table(table)
+    clean = {k: v for k, v in data.items() if k != "id"}
+    if not clean:
+        return
+    sets = ", ".join(f"{k} = %({k})s" for k in clean.keys())
+    clean["_id"] = row_id
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(f"UPDATE {table} SET {sets} WHERE id = %(_id)s", clean)
+
+
+def _kb_delete(table: str, row_id: int) -> None:
+    table = _kb_table(table)
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(f"DELETE FROM {table} WHERE id = %s", (row_id,))
+
+
+def kb_contracts_list() -> list[dict[str, Any]]:
+    return _kb_list("kb_contracts", order="id DESC")
+
+
+def kb_contracts_by_category(category: str, limit: int = 5) -> list[dict[str, Any]]:
+    if not category:
+        return _kb_list("kb_contracts", order="id DESC", limit=limit)
+    return _kb_list("kb_contracts", "WHERE category = %s", (category,), "id DESC", limit)
+
+
+def kb_contract_save(data: dict[str, Any]) -> int:
+    if isinstance(data.get("tech_stack"), list):
+        data["tech_stack"] = json.dumps(data["tech_stack"], ensure_ascii=False)
+    row_id = data.get("id")
+    if row_id:
+        _kb_update("kb_contracts", int(row_id), data)
+        return int(row_id)
+    return _kb_insert("kb_contracts", data)
+
+
+def kb_contract_delete(row_id: int) -> None:
+    _kb_delete("kb_contracts", row_id)
+
+
+def kb_competencies_list() -> list[dict[str, Any]]:
+    return _kb_list("kb_competencies", order="category NULLS LAST, level DESC, tech")
+
+
+def kb_competencies_for_category(category: str) -> list[dict[str, Any]]:
+    if not category:
+        return kb_competencies_list()
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            """
+            SELECT * FROM kb_competencies
+            WHERE category = %s OR category IS NULL OR category = ''
+            ORDER BY CASE WHEN category = %s THEN 0 ELSE 1 END, level DESC, tech
+            """,
+            (category, category),
+        )
+        return [_to_jsonable(dict(r)) for r in cur.fetchall()]
+
+
+def kb_competency_save(data: dict[str, Any]) -> int:
+    data["certified"] = bool(data.get("certified", False))
+    row_id = data.get("id")
+    if row_id:
+        _kb_update("kb_competencies", int(row_id), data)
+        return int(row_id)
+    return _kb_insert("kb_competencies", data)
+
+
+def kb_competency_delete(row_id: int) -> None:
+    _kb_delete("kb_competencies", row_id)
+
+
+def kb_equipment_list() -> list[dict[str, Any]]:
+    return _kb_list("kb_equipment", order="category NULLS LAST, name")
+
+
+def kb_equipment_find_analogs(text: str) -> list[dict[str, Any]]:
+    text_lower = (text or "").lower()
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM kb_equipment ORDER BY id DESC")
+        rows = cur.fetchall()
+
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        item = _to_jsonable(dict(row))
+        analogs = item.get("analog_for") or []
+        if isinstance(analogs, str):
+            analogs = re.findall(r"[\w\-]+", analogs)
+        probes = list(analogs)
+        if item.get("vendor"):
+            probes.append(str(item["vendor"]))
+        if item.get("model"):
+            probes.append(str(item["model"]))
+        if any(str(probe).lower() in text_lower for probe in probes if probe):
+            result.append(item)
+    return result[:5]
+
+
+def kb_equipment_save(data: dict[str, Any]) -> int:
+    if isinstance(data.get("specs"), dict):
+        data["specs"] = json.dumps(data["specs"], ensure_ascii=False)
+    row_id = data.get("id")
+    if row_id:
+        _kb_update("kb_equipment", int(row_id), data)
+        return int(row_id)
+    return _kb_insert("kb_equipment", data)
+
+
+def kb_equipment_delete(row_id: int) -> None:
+    _kb_delete("kb_equipment", row_id)
+
+
+def kb_risk_rules_list() -> list[dict[str, Any]]:
+    return _kb_list("kb_risk_rules", order="rule_type, weight, id DESC")
+
+
+def kb_risk_rules_active() -> list[dict[str, Any]]:
+    return _kb_list("kb_risk_rules", "WHERE active = TRUE", order="weight, id DESC")
+
+
+def kb_risk_rule_save(data: dict[str, Any]) -> int:
+    data["active"] = bool(data.get("active", True))
+    row_id = data.get("id")
+    if row_id:
+        _kb_update("kb_risk_rules", int(row_id), data)
+        return int(row_id)
+    return _kb_insert("kb_risk_rules", data)
+
+
+def kb_risk_rule_delete(row_id: int) -> None:
+    _kb_delete("kb_risk_rules", row_id)
+
+
+def kb_templates_list() -> list[dict[str, Any]]:
+    return _kb_list("kb_templates", order="category NULLS LAST, title")
+
+
+def kb_template_save(data: dict[str, Any]) -> int:
+    row_id = data.get("id")
+    if row_id:
+        _kb_update("kb_templates", int(row_id), data)
+        return int(row_id)
+    return _kb_insert("kb_templates", data)
+
+
+def kb_template_delete(row_id: int) -> None:
+    _kb_delete("kb_templates", row_id)
+
+
+def kb_template_use(row_id: int) -> Optional[dict[str, Any]]:
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "UPDATE kb_templates SET used_count = used_count + 1 WHERE id = %s RETURNING *",
+            (row_id,),
+        )
+        row = cur.fetchone()
+    return _to_jsonable(dict(row)) if row else None
+
+
+def kb_stats() -> dict[str, int]:
+    stats: dict[str, int] = {}
+    try:
+        with _conn() as conn:
+            cur = conn.cursor()
+            for table in _KB_TABLES:
+                cur.execute(f"SELECT COUNT(*) FROM {table}")
+                stats[table] = int(cur.fetchone()[0])
+    except Exception:
+        stats = {table: 0 for table in _KB_TABLES}
+    return stats

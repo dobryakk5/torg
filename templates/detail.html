@@ -386,6 +386,23 @@ body::before {
     </div>
   </div>
 
+  <!-- ── LLM-триаж (Stage 1) ── -->
+  {% if tender.llm_triage_verdict %}
+  {% set tv = tender.llm_triage_verdict %}
+  {% set tcls = 'verdict-go' if tv == 'БЕРУ' else ('verdict-stop' if tv == 'МИМО' else 'verdict-caution') %}
+  <div class="llm-box" style="margin-top:.8rem">
+    <div class="llm-verdict">
+      <span class="llm-verdict-badge {{ tcls }}">🤖 Триаж: {{ tv }}</span>
+      {% if tender.llm_triage_fit %}<span style="font-size:.7rem;color:var(--dim)">профиль: {{ tender.llm_triage_fit }}</span>{% endif %}
+      {% if tender.llm_triage_resale %}<span class="llm-verdict-badge verdict-stop">перекуп</span>{% endif %}
+      {% if tender.llm_triage_category %}<span style="font-size:.7rem;color:var(--dim)">· {{ tender.llm_triage_category }}</span>{% endif %}
+    </div>
+    {% if tender.llm_triage_reason %}
+    <div class="llm-text" style="margin-top:.4rem">{{ tender.llm_triage_reason }}</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <!-- ── Stop factors ── -->
   {% set stops = tender.filter_stop | parse_stop %}
   {% if stops %}

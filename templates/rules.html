@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Правила фильтрации — Тендерный монитор</title>
+<style>
+:root{
+  --bg:#0f1117;--surf:#1a1d27;--surf2:#20243a;--surf3:#252940;
+  --border:#2a2d3e;--border2:#333655;--text:#e2e8f0;--dim:#8892a4;--dimmer:#4a5568;
+  --accent:#818cf8;--green:#4ade80;--yellow:#facc15;--red:#f87171;--blue:#60a5fa;
+  --orange:#fb923c;--mono:'JetBrains Mono','Fira Code',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:var(--mono);font-size:.8rem;background:var(--surf2);padding:.1rem .35rem;border-radius:3px;color:var(--blue)}
+.header{background:var(--surf);border-bottom:1px solid var(--border);padding:.75rem 2rem;position:sticky;top:0;z-index:100}
+.header-inner{max-width:1300px;margin:0 auto;display:flex;align-items:center;gap:1.5rem}
+.logo{font-family:var(--mono);font-weight:700;color:var(--accent)}
+.nav{display:flex;gap:.2rem}
+.nav a{font-size:.75rem;color:var(--dim);padding:.3rem .65rem;border-radius:4px;white-space:nowrap}
+.nav a:hover,.nav a.active{color:var(--text);background:var(--surf2);text-decoration:none}
+.main{max-width:1300px;margin:0 auto;padding:1.75rem 2rem}
+h1{font-size:1.1rem;margin-bottom:.3rem}
+.sub{color:var(--dim);font-size:.78rem;margin-bottom:1.25rem;line-height:1.6}
+.banner{background:rgba(250,204,21,.08);border:1px solid rgba(250,204,21,.3);border-radius:8px;
+  padding:1rem 1.25rem;margin-bottom:1.5rem;font-size:.8rem;color:var(--yellow);
+  display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.card{background:var(--surf);border:1px solid var(--border);border-radius:10px;padding:1.1rem 1.25rem;margin-bottom:1.1rem}
+.card h2{font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:.2rem;display:flex;align-items:center;gap:.6rem}
+.card h2 .fnum{font-family:var(--mono);color:var(--accent);background:var(--surf2);border-radius:4px;padding:.05rem .45rem;font-size:.72rem}
+.card .legend{font-size:.62rem;color:var(--dimmer);margin-bottom:.85rem}
+table{width:100%;border-collapse:collapse}
+th{padding:6px 8px;text-align:left;font-size:.56rem;font-weight:600;color:var(--dim);
+  text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border)}
+td{padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr.inactive{opacity:.45}
+input[type=text],select{background:var(--surf2);border:1px solid var(--border2);color:var(--text);
+  border-radius:5px;padding:.32rem .5rem;font-family:var(--mono);font-size:.72rem;outline:none;width:100%}
+input[type=text]:focus,select:focus{border-color:var(--accent)}
+.bucket-pill{font-family:var(--mono);font-size:.6rem;padding:.1rem .4rem;border-radius:3px;
+  background:var(--surf3);color:var(--dim);white-space:nowrap}
+.btn{font-family:var(--mono);font-weight:700;border-radius:5px;border:none;cursor:pointer;transition:.12s;font-size:.68rem}
+.btn-accent{background:var(--accent);color:var(--bg);padding:.4rem .9rem}
+.btn-accent:hover{opacity:.85}
+.btn-ghost{background:transparent;color:var(--dim);border:1px solid var(--border2);padding:.3rem .7rem}
+.btn-ghost:hover{color:var(--text);border-color:var(--accent)}
+.btn-save{background:var(--green);color:var(--bg);padding:.3rem .6rem}
+.btn-del{background:transparent;color:var(--red);border:1px solid rgba(248,113,113,.3);padding:.3rem .55rem}
+.btn-del:hover{background:rgba(248,113,113,.12)}
+.toggle{position:relative;width:32px;height:18px;cursor:pointer;display:inline-block}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:var(--surf3);border-radius:18px;transition:.2s}
+.toggle-slider:before{content:'';position:absolute;width:12px;height:12px;background:#fff;border-radius:50%;bottom:3px;left:3px;transition:.2s}
+.toggle input:checked+.toggle-slider{background:var(--green)}
+.toggle input:checked+.toggle-slider:before{transform:translateX(14px)}
+.addbar{margin-top:.7rem}
+.col-term{width:24%}.col-bucket{width:13%}.col-ctx{width:22%}.col-note{width:13%}
+.feedback{font-size:.7rem;color:var(--green);font-family:var(--mono);margin-left:.6rem}
+.example{background:var(--surf2);border-left:3px solid var(--accent);border-radius:0 6px 6px 0;
+  padding:.7rem 1rem;font-size:.72rem;color:var(--dim);line-height:1.6;margin-bottom:1.5rem}
+.example b{color:var(--text)}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <div class="logo">🔍 ТендерМонитор</div>
+    <nav class="nav">
+      <a href="/">Тендеры</a>
+      <a href="/analytics">Аналитика</a>
+      <a href="/control">Управление</a>
+      <a href="/rules" class="active">Правила</a>
+      <a href="/kb">База знаний</a>
+    </nav>
+  </div>
+</div>
+
+<div class="main">
+  <h1>🧮 Словарь правил фильтрации</h1>
+  <p class="sub">
+    Все фразы, по которым 8 фильтров оценивают тендер. Триггер <code>term</code> может содержать
+    <code>|</code> (любой из вариантов) и <code>*</code> (wildcard). Стражи контекста:
+    <code>unless</code> — не срабатывать, если рядом есть одна из фраз; <code>require</code> — срабатывать
+    только если рядом есть одна из фраз.
+  </p>
+
+  <div class="example">
+    <b>Пример «Битрикс-сайт да, Битрикс-лицензии нет»:</b><br>
+    • Ф1 · <span class="bucket-pill">strong</span> term=<code>битрикс|bitrix</code>, unless=<code>лиценз, поставка лицензий, продление</code> → плюс за Битрикс, но не за лицензии.<br>
+    • Ф7 · <span class="bucket-pill">commodity</span> term=<code>лиценз</code>, require=<code>битрикс|bitrix|1с</code> → минус, если это перепродажа лицензий.
+  </div>
+
+  {% if is_empty %}
+  <div class="banner">
+    <span>⚠ Словарь пуст — фильтры сейчас работают на встроенных дефолтах ({{ default_count }} фраз).
+      Загрузите их в БД, чтобы редактировать в этом интерфейсе.</span>
+    <button class="btn btn-accent" onclick="seedDefaults()">⬇ Загрузить дефолты в БД</button>
+  </div>
+  {% endif %}
+
+  {% set dim_buckets = {
+    1:['strong','medium','bad'], 2:['no_advance'], 3:['unlimited','bounded'],
+    4:['hard','calm'], 5:['hard','medium','easy'], 6:['signs'],
+    7:['good_combo','commodity','pure_service','fast_delivery'], 8:['real_risk','warn_risk','good']
+  } %}
+
+  {% for dim in range(1,9) %}
+  <div class="card" data-dim="{{ dim }}">
+    <h2><span class="fnum">Ф{{ dim }}</span> {{ filter_names.get(dim, '') }}</h2>
+    <div class="legend">
+      {% for b in dim_buckets.get(dim, []) %}
+        <span class="bucket-pill">{{ b }}</span> {{ bucket_labels.get(b, '') }}{% if not loop.last %} · {% endif %}
+      {% endfor %}
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th class="col-term">Фраза (term)</th>
+          <th class="col-bucket">Корзина</th>
+          <th class="col-ctx">unless (кроме)</th>
+          <th class="col-ctx">require (только если)</th>
+          <th class="col-note">Заметка</th>
+          <th style="width:48px">вкл</th>
+          <th style="width:120px"></th>
+        </tr>
+      </thead>
+      <tbody id="tbody-{{ dim }}">
+        {% for r in by_dim.get(dim, []) %}
+        <tr data-id="{{ r.id }}" class="{{ '' if r.active else 'inactive' }}">
+          <td class="col-term"><input type="text" class="f-term" value="{{ r.term }}"></td>
+          <td class="col-bucket">
+            <select class="f-bucket">
+              {% for b in dim_buckets.get(dim, []) %}
+              <option value="{{ b }}" {% if r.bucket==b %}selected{% endif %}>{{ b }}</option>
+              {% endfor %}
+              {% if r.bucket not in dim_buckets.get(dim, []) %}
+              <option value="{{ r.bucket }}" selected>{{ r.bucket }}</option>
+              {% endif %}
+            </select>
+          </td>
+          <td class="col-ctx"><input type="text" class="f-unless" value="{{ r.unless | join(', ') }}" placeholder="—"></td>
+          <td class="col-ctx"><input type="text" class="f-require" value="{{ r.require | join(', ') }}" placeholder="—"></td>
+          <td class="col-note"><input type="text" class="f-note" value="{{ r.note or '' }}" placeholder="—"></td>
+          <td>
+            <label class="toggle"><input type="checkbox" class="f-active" {% if r.active %}checked{% endif %}><span class="toggle-slider"></span></label>
+          </td>
+          <td>
+            <button class="btn btn-save" onclick="saveRow(this)">✓</button>
+            <button class="btn btn-del" onclick="delRow(this)">✕</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="addbar">
+      <button class="btn btn-ghost" onclick="addRow({{ dim }})">+ добавить фразу</button>
+      <span class="feedback" id="fb-{{ dim }}"></span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+const DIM_BUCKETS = {
+  1:['strong','medium','bad'], 2:['no_advance'], 3:['unlimited','bounded'],
+  4:['hard','calm'], 5:['hard','medium','easy'], 6:['signs'],
+  7:['good_combo','commodity','pure_service','fast_delivery'], 8:['real_risk','warn_risk','good']
+};
+
+function rowPayload(tr) {
+  return {
+    id:      tr.dataset.id ? Number(tr.dataset.id) : null,
+    dim:     Number(tr.closest('.card').dataset.dim),
+    term:    tr.querySelector('.f-term').value.trim(),
+    bucket:  tr.querySelector('.f-bucket').value,
+    unless:  tr.querySelector('.f-unless').value,
+    require: tr.querySelector('.f-require').value,
+    note:    tr.querySelector('.f-note').value.trim(),
+    active:  tr.querySelector('.f-active').checked,
+  };
+}
+
+async function saveRow(btn) {
+  const tr = btn.closest('tr');
+  const payload = rowPayload(tr);
+  if (!payload.term) { alert('Фраза не может быть пустой'); return; }
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/rules', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (d.ok) {
+      tr.dataset.id = d.id;
+      tr.classList.toggle('inactive', !payload.active);
+      flash(tr, '✓ сохранено');
+    } else { alert('Ошибка: ' + JSON.stringify(d)); }
+  } catch(e) { alert('Ошибка запроса: ' + e); }
+  btn.disabled = false;
+}
+
+async function delRow(btn) {
+  const tr = btn.closest('tr');
+  if (tr.dataset.id) {
+    if (!confirm('Удалить правило?')) return;
+    try { await fetch('/api/rules/' + tr.dataset.id, { method:'DELETE' }); }
+    catch(e) { alert('Ошибка: ' + e); return; }
+  }
+  tr.remove();
+}
+
+function addRow(dim) {
+  const tbody = document.getElementById('tbody-' + dim);
+  const opts = DIM_BUCKETS[dim].map(b => `<option value="${b}">${b}</option>`).join('');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td class="col-term"><input type="text" class="f-term" placeholder="новая фраза"></td>
+    <td class="col-bucket"><select class="f-bucket">${opts}</select></td>
+    <td class="col-ctx"><input type="text" class="f-unless" placeholder="—"></td>
+    <td class="col-ctx"><input type="text" class="f-require" placeholder="—"></td>
+    <td class="col-note"><input type="text" class="f-note" placeholder="—"></td>
+    <td><label class="toggle"><input type="checkbox" class="f-active" checked><span class="toggle-slider"></span></label></td>
+    <td><button class="btn btn-save" onclick="saveRow(this)">✓</button>
+        <button class="btn btn-del" onclick="delRow(this)">✕</button></td>`;
+  tbody.appendChild(tr);
+  tr.querySelector('.f-term').focus();
+}
+
+function flash(tr, msg) {
+  const fb = document.getElementById('fb-' + tr.closest('.card').dataset.dim);
+  if (fb) { fb.textContent = msg; setTimeout(() => fb.textContent = '', 2000); }
+}
+
+async function seedDefaults() {
+  try {
+    const r = await fetch('/api/rules/seed', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const d = await r.json();
+    if (d.ok) { location.reload(); } else { alert('Ошибка: ' + JSON.stringify(d)); }
+  } catch(e) { alert('Ошибка запроса: ' + e); }
+}
+</script>
+</body>
+</html>

@@ -60,6 +60,10 @@ def load_defaults(db) -> None:
          "Мин. скор для мониторинга изменений"),
         ("WINNER_ANALYTICS_PAGES",       str(config.WINNER_ANALYTICS_PAGES),
          "Страниц для сбора статистики контрактов"),
+        ("SOURCE_B2B_ENABLED",           "1" if config.SOURCE_B2B_ENABLED else "0",
+         "Источник B2B-Center (1/0)"),
+        ("B2B_SEARCH_PAGES",             str(config.B2B_SEARCH_PAGES),
+         "B2B-Center: страниц на запрос"),
     ]
 
     # Не перетирать то, что пользователь уже сохранил
@@ -70,6 +74,21 @@ def load_defaults(db) -> None:
             db.set_setting(key, value, desc)
             inserted += 1
             logger.info("  + %-40s = %s", key, value[:60])
+
+    try:
+        from knowledge_base import seed_defaults as _seed_kb
+        n_kb = _seed_kb()
+        if n_kb:
+            logger.info("kb_risk_rules: загружено %d стартовых правил", n_kb)
+    except Exception as e:
+        logger.warning("Не удалось загрузить KB defaults: %s", e)
+
+    try:
+        n_rules = db.scoring_rules_seed()
+        if n_rules:
+            logger.info("scoring_rules: засеяно %d фраз из дефолтов", n_rules)
+    except Exception as e:
+        logger.warning("Не удалось засеять scoring_rules: %s", e)
 
     if inserted:
         logger.info("Загружено настроек по умолчанию: %d", inserted)
@@ -148,6 +167,8 @@ def run_reset() -> None:
     with db._conn() as conn:
         cur = conn.cursor()
         for tbl in [
+            "kb_templates", "kb_risk_rules", "kb_equipment",
+            "kb_competencies", "kb_contracts", "scoring_rules",
             "filter_scores", "decisions", "tender_changes", "runs",
             "customers", "price_corridors", "settings", "schema_migrations",
             "tenders",

@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Поиск тендеров</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#06060B; --surf:#0D0D15; --surf2:#13131E; --surf3:#1A1A28;
+  --border:#1E1E2E; --border2:#2A2A3E; --text:#E8E8F4; --dim:#6060A0; --dimmer:#30305A;
+  --go:#22C55E; --go-bg:rgba(34,197,94,.08); --go-bdr:rgba(34,197,94,.25);
+  --caution:#F59E0B; --caution-bg:rgba(245,158,11,.08); --caution-bdr:rgba(245,158,11,.25);
+  --nogo:#EF4444; --nogo-bg:rgba(239,68,68,.08); --nogo-bdr:rgba(239,68,68,.25);
+  --accent:#818CF8; --mono:'IBM Plex Mono', monospace; --display:'Bebas Neue', sans-serif;
+}
+html { background:var(--bg); color:var(--text); font-family:var(--mono); min-height:100%; font-size:14px; }
+body { min-height:100vh; padding-bottom:60px; }
+a { color:var(--accent); }
+
+/* header / tabs */
+.head { padding:18px 24px 0; }
+.head h1 { font-family:var(--display); font-size:2rem; letter-spacing:1px; font-weight:400; }
+.head .sub { color:var(--dim); font-size:.72rem; margin-top:2px; }
+.tabs { display:flex; gap:6px; flex-wrap:wrap; padding:14px 24px 0; border-bottom:1px solid var(--border); }
+.tab { background:var(--surf2); border:1px solid var(--border); color:var(--dim);
+  padding:7px 13px; border-radius:7px 7px 0 0; font-size:.7rem; text-decoration:none; cursor:pointer; }
+.tab.active { background:var(--surf3); color:var(--text); border-bottom-color:var(--surf3); }
+.tab:hover { color:var(--text); }
+
+.wrap { display:grid; grid-template-columns:340px 1fr; gap:18px; padding:18px 24px; align-items:start; }
+@media (max-width:980px){ .wrap{ grid-template-columns:1fr; } }
+
+.panel { background:var(--surf); border:1px solid var(--border); border-radius:10px; padding:14px; }
+.panel h2 { font-size:.78rem; text-transform:uppercase; letter-spacing:1px; color:var(--accent); margin-bottom:10px; }
+.panel h3 { font-size:.7rem; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; margin:12px 0 6px; }
+
+/* phrase chips */
+.chips { display:flex; flex-wrap:wrap; gap:5px; }
+.chip { background:var(--surf2); border:1px solid var(--border2); color:var(--text);
+  padding:4px 9px; border-radius:14px; font-size:.66rem; cursor:pointer; user-select:none; }
+.chip:hover { border-color:var(--accent); color:var(--accent); }
+.chip.added { background:var(--go-bg); border-color:var(--go-bdr); color:var(--go); }
+.btn-link { background:none; border:none; color:var(--accent); font-size:.66rem; cursor:pointer; font-family:var(--mono); padding:0; }
+
+textarea, input[type=text], input[type=number] {
+  width:100%; background:var(--surf2); border:1px solid var(--border2); color:var(--text);
+  border-radius:7px; padding:8px 9px; font-family:var(--mono); font-size:.72rem; }
+textarea { min-height:120px; resize:vertical; line-height:1.5; }
+
+.row { display:flex; gap:8px; }
+.row > * { flex:1; }
+label.fld { display:block; font-size:.64rem; color:var(--dim); margin:8px 0 3px; text-transform:uppercase; letter-spacing:.5px; }
+.checks { display:flex; gap:14px; margin-top:8px; }
+.checks label { font-size:.7rem; color:var(--text); cursor:pointer; }
+
+.actions { display:flex; gap:8px; margin-top:14px; }
+.btn { flex:1; padding:10px; border-radius:8px; border:1px solid var(--border2); cursor:pointer;
+  font-family:var(--mono); font-size:.74rem; font-weight:600; letter-spacing:.5px; }
+.btn-start { background:var(--go-bg); border-color:var(--go-bdr); color:var(--go); }
+.btn-start:hover { background:rgba(34,197,94,.16); }
+.btn-stop { background:var(--nogo-bg); border-color:var(--nogo-bdr); color:var(--nogo); }
+.btn-stop:hover { background:rgba(239,68,68,.16); }
+.btn:disabled { opacity:.4; cursor:not-allowed; }
+
+/* progress */
+.prog-head { display:flex; justify-content:space-between; align-items:center; font-size:.7rem; color:var(--dim); margin-bottom:8px; }
+.dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--dimmer); margin-right:6px; }
+.dot.running { background:var(--accent); animation:pulse 1s infinite; }
+.dot.done { background:var(--go); }
+.dot.error { background:var(--nogo); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+.plist { display:flex; flex-direction:column; gap:3px; max-height:280px; overflow:auto; }
+.pitem { display:flex; align-items:center; gap:8px; font-size:.68rem; padding:4px 6px; border-radius:6px; background:var(--surf2); }
+.pitem .ph { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pitem .ic { width:16px; text-align:center; }
+.pitem .cnt { color:var(--dim); font-size:.62rem; }
+.pitem.done { color:var(--go); }
+.pitem.error { color:var(--nogo); }
+.pitem.running { color:var(--accent); }
+
+/* results */
+.toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; }
+.toolbar select, .toolbar input { width:auto; flex:0 0 auto; }
+.sortbtn { background:var(--surf2); border:1px solid var(--border2); color:var(--dim);
+  padding:5px 9px; border-radius:6px; font-size:.66rem; cursor:pointer; font-family:var(--mono); }
+.sortbtn.active { color:var(--accent); border-color:var(--accent); }
+table { width:100%; border-collapse:collapse; font-size:.68rem; }
+th { text-align:left; color:var(--dim); font-weight:500; padding:7px 8px; border-bottom:1px solid var(--border2);
+  text-transform:uppercase; letter-spacing:.4px; font-size:.6rem; position:sticky; top:0; background:var(--surf); }
+td { padding:8px; border-bottom:1px solid var(--border); vertical-align:top; }
+tr.trow { cursor:pointer; }
+tr.trow:hover { background:var(--surf2); }
+.badge { display:inline-block; padding:2px 7px; border-radius:5px; font-size:.6rem; font-weight:600; }
+.b-go { background:var(--go-bg); color:var(--go); border:1px solid var(--go-bdr); }
+.b-caution { background:var(--caution-bg); color:var(--caution); border:1px solid var(--caution-bdr); }
+.b-nogo { background:var(--nogo-bg); color:var(--nogo); border:1px solid var(--nogo-bdr); }
+.score { font-weight:600; }
+.kw { color:var(--dim); font-size:.6rem; }
+.muted { color:var(--dim); }
+.detail-row td { background:var(--surf2); padding:14px; }
+.detail-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; }
+.detail-box h4 { font-size:.64rem; text-transform:uppercase; letter-spacing:.5px; color:var(--accent); margin-bottom:6px; }
+.detail-box .kv { font-size:.66rem; color:var(--text); margin:2px 0; }
+.detail-box .kv b { color:var(--dim); font-weight:500; }
+.detail-box pre { white-space:pre-wrap; font-size:.62rem; color:var(--dim); max-height:200px; overflow:auto;
+  background:var(--surf); border:1px solid var(--border); border-radius:6px; padding:8px; margin-top:6px; }
+.empty { text-align:center; color:var(--dim); padding:30px; font-size:.74rem; }
+.spin { display:inline-block; width:12px; height:12px; border:2px solid var(--border2);
+  border-top-color:var(--accent); border-radius:50%; animation:rot .7s linear infinite; }
+@keyframes rot { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>🔍 Поиск тендеров</h1>
+  <div class="sub">Сохранённые поисковые фразы · фоновый поиск · сортировка и фильтры по БД</div>
+</div>
+
+<nav class="tabs">
+  <a href="/" class="tab">Дашборд</a>
+  <a href="/search" class="tab active">Поиск</a>
+  <a href="/analytics" class="tab">📊 Аналитика</a>
+  <a href="/control" class="tab">⚙ Управление</a>
+  <a href="/rules" class="tab">🧮 Правила</a>
+  <a href="/kb" class="tab">📚 База знаний</a>
+</nav>
+
+<div class="wrap">
+
+  <!-- ── Левая колонка: конструктор поиска + прогресс ── -->
+  <div>
+    <div class="panel">
+      <h2>Поисковые фразы</h2>
+
+      <h3>Ключевые слова <button class="btn-link" onclick="addAll('kw')">+ добавить все</button></h3>
+      <div class="chips" id="chips-kw">
+        {% for k in keywords %}<span class="chip" data-v="{{ k }}" onclick="toggleChip(this)">{{ k }}</span>{% endfor %}
+      </div>
+
+      {% if okpd2 %}
+      <h3>ОКПД2 <button class="btn-link" onclick="addAll('okpd2')">+ добавить все</button></h3>
+      <div class="chips" id="chips-okpd2">
+        {% for c in okpd2 %}<span class="chip" data-v="{{ c }}" onclick="toggleChip(this)">{{ c }}</span>{% endfor %}
+      </div>
+      {% endif %}
+
+      <label class="fld">Поисковое окно (по фразе на строку)</label>
+      <textarea id="phrasebox" placeholder="Добавьте фразы кликом по чипам выше или впишите вручную…"></textarea>
+
+      <label class="fld">Цена, ₽</label>
+      <div class="row">
+        <input type="number" id="price_min" value="{{ defaults.price_min }}" placeholder="от">
+        <input type="number" id="price_max" value="{{ defaults.price_max }}" placeholder="до">
+      </div>
+
+      <div class="row">
+        <div>
+          <label class="fld">Глубина, дней</label>
+          <input type="number" id="days_back" value="{{ defaults.days_back }}">
+        </div>
+        <div>
+          <label class="fld">Страниц / фразу</label>
+          <input type="number" id="pages" value="2">
+        </div>
+      </div>
+
+      <div class="checks">
+        <label><input type="checkbox" id="fz44" {% if defaults.fz44 %}checked{% endif %}> 44-ФЗ</label>
+        <label><input type="checkbox" id="fz223" {% if defaults.fz223 %}checked{% endif %}> 223-ФЗ</label>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-start" id="btn-start" onclick="startSearch()">▶ Старт</button>
+        <button class="btn btn-stop" id="btn-stop" onclick="stopSearch()" disabled>■ Стоп</button>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px;">
+      <div class="prog-head">
+        <span><span class="dot" id="run-dot"></span><span id="run-status">ожидание</span></span>
+        <span id="run-totals"></span>
+      </div>
+      <div class="plist" id="plist">
+        <div class="empty" style="padding:14px;">Запустите поиск — здесь появятся фразы с галочками</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Правая колонка: результаты из БД ── -->
+  <div class="panel">
+    <h2>Тендеры в базе</h2>
+    <div class="toolbar">
+      <select id="f-decision" onchange="loadTenders()">
+        <option value="">все решения</option>
+        <option value="GO">GO</option>
+        <option value="CAUTION">CAUTION</option>
+        <option value="NO-GO">NO-GO</option>
+      </select>
+      <input type="text" id="f-kw" placeholder="фильтр по фразе" style="width:150px" onchange="loadTenders()">
+      <input type="number" id="f-pmin" placeholder="цена от" style="width:90px" onchange="loadTenders()">
+      <input type="number" id="f-pmax" placeholder="цена до" style="width:90px" onchange="loadTenders()">
+      <span class="muted" style="font-size:.62rem;">сорт.:</span>
+      <button class="sortbtn active" data-sort="score" onclick="setSort('score')">score ▾</button>
+      <button class="sortbtn" data-sort="price" onclick="setSort('price')">цена</button>
+      <button class="sortbtn" data-sort="date"  onclick="setSort('date')">дата</button>
+      <button class="sortbtn" onclick="loadTenders()" title="Обновить">⟳</button>
+    </div>
+    <div style="max-height:72vh; overflow:auto;">
+      <table>
+        <thead><tr>
+          <th>Тендер</th><th>Заказчик</th><th style="text-align:right">Цена</th>
+          <th>Дата</th><th>Score</th><th>Решение</th><th>Фраза</th>
+        </tr></thead>
+        <tbody id="tbody"><tr><td colspan="7" class="empty">Загрузка…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let SORT = "score", ORDER = "desc", pollTimer = null;
+
+/* ── конструктор фраз ── */
+function currentPhrases() {
+  return document.getElementById("phrasebox").value
+    .split("\n").map(s => s.trim()).filter(Boolean);
+}
+function setPhrases(list) {
+  document.getElementById("phrasebox").value = list.join("\n");
+  syncChips();
+}
+function toggleChip(el) {
+  const v = el.dataset.v, list = currentPhrases();
+  const i = list.indexOf(v);
+  if (i === -1) list.push(v); else list.splice(i, 1);
+  setPhrases(list);
+}
+function addAll(group) {
+  const list = currentPhrases();
+  document.querySelectorAll("#chips-" + group + " .chip").forEach(c => {
+    if (!list.includes(c.dataset.v)) list.push(c.dataset.v);
+  });
+  setPhrases(list);
+}
+function syncChips() {
+  const set = new Set(currentPhrases());
+  document.querySelectorAll(".chip").forEach(c =>
+    c.classList.toggle("added", set.has(c.dataset.v)));
+}
+document.getElementById("phrasebox").addEventListener("input", syncChips);
+
+/* ── старт / стоп ── */
+async function startSearch() {
+  const phrases = currentPhrases();
+  if (!phrases.length) { alert("Добавьте хотя бы одну поисковую фразу"); return; }
+  const body = {
+    phrases,
+    price_min: numVal("price_min"), price_max: numVal("price_max"),
+    days_back: numVal("days_back"), pages: numVal("pages"),
+    fz44: document.getElementById("fz44").checked,
+    fz223: document.getElementById("fz223").checked,
+  };
+  const r = await fetch("/api/search/start", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body),
+  });
+  if (r.status === 409) { const j = await r.json(); alert("Поиск уже идёт (" + j.reason + ")"); return; }
+  startPolling();
+}
+async function stopSearch() {
+  await fetch("/api/search/stop", {method: "POST"});
+}
+function numVal(id) { const v = document.getElementById(id).value; return v === "" ? null : Number(v); }
+
+/* ── прогресс ── */
+function startPolling() { if (!pollTimer) pollTimer = setInterval(pollProgress, 1500); pollProgress(); }
+function stopPolling()  { clearInterval(pollTimer); pollTimer = null; }
+
+async function pollProgress() {
+  const s = await (await fetch("/api/search/progress")).json();
+  renderProgress(s);
+  loadTenders();
+  if (s.status !== "running") {
+    document.getElementById("btn-start").disabled = false;
+    document.getElementById("btn-stop").disabled = true;
+    stopPolling();
+  } else {
+    document.getElementById("btn-start").disabled = true;
+    document.getElementById("btn-stop").disabled = false;
+  }
+}
+const STAT_IC = {pending:"·", running:'<span class="spin"></span>', done:"✓", error:"✕", stopped:"⏹"};
+function renderProgress(s) {
+  const dot = document.getElementById("run-dot");
+  dot.className = "dot " + (s.status === "running" ? "running" : s.status === "error" ? "error" : s.status === "done" ? "done" : "");
+  document.getElementById("run-status").textContent = ({
+    idle:"ожидание", running:"идёт поиск…", done:"завершено", stopped:"остановлено", error:"ошибка"
+  })[s.status] || s.status;
+  document.getElementById("run-totals").textContent =
+    (s.phrases && s.phrases.length) ? `найдено ${s.found||0} · сохранено ${s.saved||0}` : "";
+  const box = document.getElementById("plist");
+  if (!s.phrases || !s.phrases.length) {
+    box.innerHTML = '<div class="empty" style="padding:14px;">Запустите поиск — здесь появятся фразы с галочками</div>';
+    return;
+  }
+  box.innerHTML = s.phrases.map(p => `
+    <div class="pitem ${p.status}">
+      <span class="ic">${STAT_IC[p.status] || "·"}</span>
+      <span class="ph" title="${esc(p.phrase)}">${esc(p.phrase)}</span>
+      <span class="cnt">${p.status === "done" ? `${p.found}/${p.saved}` + (p.candidates ? ` ★${p.candidates}` : "") : ""}</span>
+    </div>`).join("");
+}
+
+/* ── результаты ── */
+function setSort(col) {
+  if (SORT === col) ORDER = (ORDER === "desc" ? "asc" : "desc");
+  else { SORT = col; ORDER = "desc"; }
+  document.querySelectorAll(".sortbtn[data-sort]").forEach(b => {
+    const act = b.dataset.sort === SORT;
+    b.classList.toggle("active", act);
+    b.textContent = b.dataset.sort + (act ? (ORDER === "desc" ? " ▾" : " ▴") : "");
+  });
+  loadTenders();
+}
+async function loadTenders() {
+  const q = new URLSearchParams({sort_by: SORT, order: ORDER, limit: "200"});
+  const dec = document.getElementById("f-decision").value;
+  const kw  = document.getElementById("f-kw").value.trim();
+  const pmin = document.getElementById("f-pmin").value;
+  const pmax = document.getElementById("f-pmax").value;
+  if (dec) q.set("decision", dec);
+  if (kw)  q.set("matched_keyword", kw);
+  if (pmin) q.set("price_min", pmin);
+  if (pmax) q.set("price_max", pmax);
+  const rows = await (await fetch("/api/tenders?" + q)).json();
+  renderTenders(rows);
+}
+function renderTenders(rows) {
+  const tb = document.getElementById("tbody");
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">Нет тендеров под фильтр</td></tr>'; return; }
+  tb.innerHTML = rows.map(t => {
+    const dec = t.filter_decision || "NO-GO";
+    const bcls = dec === "GO" ? "b-go" : dec === "CAUTION" ? "b-caution" : "b-nogo";
+    const kw = (t.matched_keywords || "").split(";").filter(Boolean).slice(0,3).join(", ");
+    return `<tr class="trow" onclick="toggleDetail(this,'${t.purchase_number}')">
+      <td><a href="/tender/${t.purchase_number}" onclick="event.stopPropagation()">${t.purchase_number}</a>
+          <div class="muted">${esc((t.title||"").slice(0,70))}</div></td>
+      <td class="muted">${esc((t.customer||"").slice(0,40))}</td>
+      <td style="text-align:right">${fmtPrice(t.price)}</td>
+      <td class="muted">${fmtDate(t.created_at)}</td>
+      <td class="score">${t.filter_total ?? 0}</td>
+      <td><span class="badge ${bcls}">${dec}</span></td>
+      <td class="kw">${esc(kw)}</td>
+    </tr>`;
+  }).join("");
+}
+
+/* ── разворот деталей лота ── */
+async function toggleDetail(tr, pnum) {
+  const next = tr.nextElementSibling;
+  if (next && next.classList.contains("detail-row")) { next.remove(); return; }
+  const row = document.createElement("tr");
+  row.className = "detail-row";
+  row.innerHTML = `<td colspan="7"><span class="spin"></span> загрузка деталей…</td>`;
+  tr.after(row);
+  try {
+    const j = await (await fetch(`/api/tender/${pnum}/details`)).json();
+    row.querySelector("td").innerHTML = renderDetails(j.details || {});
+  } catch (e) {
+    row.querySelector("td").innerHTML = '<span class="muted">не удалось загрузить детали</span>';
+  }
+}
+function renderDetails(d) {
+  const ex = d.execution || {}, fin = d.financing || {}, obj = d.object || {};
+  const pref = d.preferences || {}, sec = d.contract_security || {};
+  const yesno = v => v === true ? "Да" : v === false ? "Нет" : "—";
+  let html = '<div class="detail-grid">';
+
+  // 1. Сроки
+  html += `<div class="detail-box"><h4>1 · Сроки исполнения</h4>
+    <div class="kv"><b>Дата начала:</b> ${ex.start_days ?? "—"} кал. дней</div>
+    <div class="kv"><b>Срок исполнения:</b> ${ex.duration_days ?? "—"} кал. дней</div>
+    <div class="kv"><b>Собственные средства:</b> ${yesno(ex.own_funds)}</div></div>`;
+
+  // 2. Финансирование по периодам (нулевые периоды не показываем — вне контракта)
+  const years = (fin.years||[]).filter(y => y.amount).map(y =>
+    `<div class="kv"><b>${esc(y.label)}:</b> ${fmtPrice(y.amount)}</div>`).join("");
+  html += `<div class="detail-box"><h4>2 · Финансирование по периодам</h4>
+    ${years || '<div class="kv muted">разбивка не распознана</div>'}
+    <div class="kv"><b>Всего:</b> ${fin.total != null ? fmtPrice(fin.total) : "—"}</div></div>`;
+
+  // 3. Объект закупки: тип лота · услуга (полностью) · цена + НМЦК (= всего финансирования)
+  const nmck = fin.total;
+  const pos = (obj.positions||[]).map(p => `
+    <div class="kv"><b>Код:</b> ${esc(p.code||"—")}</div>
+    <div class="kv"><b>Услуга:</b><br>${esc(p.name||"—").replace(/\n/g,"<br>")}</div>
+    ${(p.unit || p.unit_price != null) ? `<div class="kv"><b>Цена за ед.:</b> ${esc(p.unit||"")} · ${p.unit_price != null ? fmtPrice(p.unit_price) : "—"}</div>` : ""}`).join("");
+  html += `<div class="detail-box"><h4>3 · Объект закупки</h4>
+    ${obj.type_comment ? `<div class="kv"><b>Тип лота:</b> ${esc(obj.type_comment)}</div>` : (obj.unit_price_contract === false ? `<div class="kv"><b>Тип лота:</b> Фиксированная цена</div>` : "")}
+    ${pos || '<div class="kv muted">позиции не распознаны</div>'}
+    <div class="kv"><b>НМЦК (макс. цена):</b> ${nmck != null ? fmtPrice(nmck) : "—"}</div></div>`;
+
+  // 4. Преимущества / требования (типовые ст.31 не показываем — это и есть «спец. нет»)
+  const special = d.requirements_special;
+  const reqs = special ? (d.requirements||[]).map((r,i) => `<div class="kv">${i+1}. ${esc(r)}</div>`).join("") : "";
+  // Требования из документов (фаза fetch_docs) — содержательные: опыт/лицензии/СРО/доптреб.
+  const docreq = (d.doc_requirements||[]).map(r =>
+    `<div class="kv">📄 <b>${esc(r.label||r.type)}</b><br><span class="muted" style="font-size:.58rem">${esc((r.snippet||"").slice(0,160))}</span></div>`).join("");
+  html += `<div class="detail-box"><h4>4 · Преимущества / требования</h4>
+    <div class="kv"><b>Преимущества:</b> ${yesno(pref.established)} <span class="muted">(${esc(pref.text||"—")})</span></div>
+    <div class="kv"><b>Спец. требования:</b> ${yesno(special)}</div>
+    ${reqs}
+    ${docreq ? `<div class="kv" style="margin-top:6px"><b>Из документов:</b></div>${docreq}` : (d.doc_requirements ? '<div class="kv muted">в документах требований не найдено</div>' : '<div class="kv muted">документы ещё не сканировались (fetch_docs)</div>')}</div>`;
+
+  // 5. Обеспечение исполнения контракта
+  let secAmt = sec.amount != null ? fmtPrice(sec.amount) : "—";
+  if (sec.percent != null) secAmt += ` (${sec.percent} %)`;
+  html += `<div class="detail-box"><h4>5 · Обеспечение исполнения</h4>
+    <div class="kv"><b>Требуется:</b> ${yesno(sec.required)}</div>
+    <div class="kv"><b>Размер:</b> ${secAmt}</div></div>`;
+
+  html += "</div>";
+  return html;
+}
+
+/* ── утилиты ── */
+function esc(s) { return (s||"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function fmtPrice(v) { if (v == null || v === "") return "—"; return Math.round(Number(v)).toLocaleString("ru-RU") + " ₽"; }
+function fmtDate(v) { if (!v) return "—"; const m = String(v).match(/(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}.${m[2]}.${m[1]}` : String(v).slice(0,10); }
+
+/* ── init ── */
+loadTenders();
+pollProgress();   // подхватываем уже идущий поиск при перезагрузке страницы
+</script>
+</body>
+</html>

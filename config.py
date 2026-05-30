@@ -56,9 +56,36 @@ TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID",   "YOUR_CHAT_ID")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL      = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
 
+# --- LLM-провайдер (OpenRouter по умолчанию) ---
+# LLM_PROVIDER: "openrouter" (универсальный шлюз, ключ OPENROUTER_API_KEY) либо
+#              "anthropic" (прямой Claude API, ключ ANTHROPIC_API_KEY).
+# Модели задаются слагами OpenRouter (см. https://openrouter.ai/models) и
+# редактируются на лету в /control и .env — выбираешь любую сам.
+LLM_PROVIDER        = os.getenv("LLM_PROVIDER", "openrouter")
+OPENROUTER_API_KEY  = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+# Дешёвая модель для массового триажа карточек на Stage 1.
+OPENROUTER_TRIAGE_MODEL = os.getenv("OPENROUTER_TRIAGE_MODEL", "openai/gpt-4o-mini")
+# Сильная модель для детального разбора ТЗ на Stage 2.
+OPENROUTER_DEEP_MODEL   = os.getenv("OPENROUTER_DEEP_MODEL",   "openai/gpt-4o")
+# Триаж по карточке (Stage 1): включён/выключен, лимит карточек за прогон, объём текста.
+LLM_TRIAGE_ENABLED    = os.getenv("LLM_TRIAGE_ENABLED", "1") != "0"
+LLM_TRIAGE_MAX_CARDS  = int(os.getenv("LLM_TRIAGE_MAX_CARDS", "300"))
+LLM_TRIAGE_TEXT_CHARS = int(os.getenv("LLM_TRIAGE_TEXT_CHARS", "2500"))
+LLM_HTTP_TIMEOUT      = int(os.getenv("LLM_HTTP_TIMEOUT", "60"))
+
 # --- Диапазон цен (₽) ---
+# PRICE_MIN/PRICE_MAX — границы ПОИСКА в ЕИС (что вообще скачиваем).
 PRICE_MIN = int(os.getenv("PRICE_MIN", "200000"))
 PRICE_MAX = int(os.getenv("PRICE_MAX", "5000000"))
+
+# Ценовой коридор для СКОРИНГА (фильтр №2), независимо от границ поиска:
+#   [PRICE_TARGET_LO, PRICE_TARGET_HI] — целевая зона (бонус),
+#   (0, PRICE_HARD_MAX] вне целевой зоны — штраф 1 балл,
+#   > PRICE_HARD_MAX — отсекаем (стоп-фактор → NO-GO: не хватит обеспечения).
+PRICE_TARGET_LO = int(os.getenv("PRICE_TARGET_LO", "100000"))
+PRICE_TARGET_HI = int(os.getenv("PRICE_TARGET_HI", "500000"))
+PRICE_HARD_MAX  = int(os.getenv("PRICE_HARD_MAX",  "1100000"))
 
 # --- Деньги на вход ---
 MAX_APPLICATION_SECURITY = float(os.getenv("MAX_APPLICATION_SECURITY", "50000"))
@@ -107,37 +134,17 @@ LLM_TEXT_CHARS            = int(os.getenv("LLM_TEXT_CHARS",            "12000"))
 #   "настройка сервера" → широко, низкая точность
 
 SEARCH_KEYWORDS = [
-    # Битрикс — точные фразы
     "1С-Битрикс",
-    "Битрикс24",
-    "Bitrix",
-
-    # Сайты
-    "сопровождение сайта",
-    "доработка сайта",
-    "техническая поддержка сайта",
-    "модернизация сайта",
-    "администрирование сайта",
-
-    # Интеграции — только с явным указанием системы
-    "интеграция с 1С",
-    "интеграция 1С",
-
-    # Серверы / инфраструктура
-    "администрирование сервера",
-    "резервное копирование",
-    "техническое сопровождение информационной системы",
-
-    # Личные кабинеты / порталы
     "личный кабинет",
-
-    # Перекуп с настройкой — конкретные предметы
-    "терминал сбора данных",
-    "сканер штрихкода",
-    "принтер этикеток",
-    "сетевое оборудование",
-    "видеонаблюдение",
-    "СКУД",
+    "техническое сопровождение информационной системы",
+    "техническая поддержка сайта",
+    "сопровождение сайта",
+    "резервное копирование",
+    "администрирование сервера",
+    "модернизация сайта",
+    "интеграция 1С",
+    "администрирование сайта",
+    "доработка сайта",
 ]
 
 # ============================================================
@@ -223,7 +230,15 @@ PRICE_BONUS_RANGES = [
 #   62.09   — прочая деятельность в области ИТ
 #   63.11   — обработка данных, хостинг
 
-OKPD2_SEARCH_ENABLED = os.getenv("OKPD2_SEARCH_ENABLED", "1") != "0"
+OKPD2_SEARCH_ENABLED = os.getenv("OKPD2_SEARCH_ENABLED", "0") != "0"
+
+# ============================================================
+# ДОПОЛНИТЕЛЬНЫЕ ИСТОЧНИКИ (сверх ЕИС)
+# ============================================================
+# B2B-Center — коммерческие закупки и 223-ФЗ, которых нет в ЕИС.
+# Открытая витрина, поиск по тем же SEARCH_KEYWORDS.
+SOURCE_B2B_ENABLED = os.getenv("SOURCE_B2B_ENABLED", "0") != "0"
+B2B_SEARCH_PAGES   = int(os.getenv("B2B_SEARCH_PAGES", "1"))
 
 OKPD2_CODES = [
     "62.01",    # разработка ПО

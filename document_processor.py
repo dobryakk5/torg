@@ -265,6 +265,50 @@ def extract_financial_terms(text: str) -> dict:
     return result
 
 
+# Маркеры содержательных требований к участнику (лежат в ИК/ТЗ/проекте контракта,
+# а не на странице common-info, где только формулярные ссылки ст. 31 / ст. 14).
+_REQUIREMENT_MARKERS: list[tuple[str, str, str]] = [
+    ("experience",  r"опыт[а-я ]{0,25}(?:исполнен|поставк|оказан|выполнен|аналогич|сопоставим)",
+     "Опыт исполнения аналогичных контрактов"),
+    ("license",     r"наличи[ея][^.]{0,40}лиценз|лицензи[ия][^.]{0,40}(?:фстэк|фсб|деятельност)",
+     "Лицензия (ФСТЭК/ФСБ/иная)"),
+    ("sro",         r"\bсро\b|саморегулируем",
+     "Членство в СРО"),
+    ("add_req_31_2", r"ч\.?\s*2\s*ст\.?\s*31|дополнительны[ех]\s+требовани|постановлени[ея][^.]{0,40}2571|пп\s*рф\s*2571|№\s*2571",
+     "Доптребования (ч. 2 ст. 31 / ПП РФ 2571)"),
+    ("qualification", r"квалификац|квалифицированн|сертифицированн[ыйаяое]|сертификат\s+(?:соответстви|специалист)",
+     "Квалификация / сертификаты"),
+    ("staff",       r"штатн[аыо][^.]{0,30}(?:специалист|сотрудник|персонал)|наличи[ея][^.]{0,30}специалист",
+     "Требования к персоналу"),
+    ("bid_security", r"обеспечени[ея]\s+заявк",
+     "Обеспечение заявки"),
+]
+
+
+def extract_participant_requirements(text: str) -> list[dict]:
+    """
+    Ищет в тексте документов (ИК/ТЗ/проект контракта) содержательные требования
+    к участнику по маркерам. Возвращает список {type, label, snippet}.
+
+    Это не юридически точный разбор, а сигнал «тут есть доптребование/опыт/лицензия» —
+    чтобы requirements_special стал осмысленным (на странице common-info этого нет).
+    """
+    if not text:
+        return []
+    compact = re.sub(r"\s+", " ", text.lower())
+    found: list[dict] = []
+    seen: set[str] = set()
+    for key, pattern, label in _REQUIREMENT_MARKERS:
+        m = re.search(pattern, compact)
+        if not m or key in seen:
+            continue
+        seen.add(key)
+        i = m.start()
+        snippet = compact[max(0, i - 50): i + 160].strip()
+        found.append({"type": key, "label": label, "snippet": snippet})
+    return found
+
+
 def _find_money_near(text: str, markers: list[str]) -> float | None:
     for marker in markers:
         idx = text.find(marker)
