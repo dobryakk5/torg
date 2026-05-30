@@ -603,8 +603,68 @@ def ensure_extra_columns() -> None:
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS llm_triage_reason TEXT",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS llm_triage_model TEXT",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS llm_triage_at TIMESTAMPTZ",
+            # MVP2: кеш LLM-объяснения карточки решения (без bump SCHEMA_VERSION).
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS novice_explain JSONB",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS novice_explain_hash TEXT",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS novice_explain_model TEXT",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS novice_explain_created_at TIMESTAMPTZ",
         ):
             cur.execute(ddl)
+
+
+def get_novice_explain(purchase_number: str) -> Optional[dict[str, Any]]:
+    """Возвращает кеш LLM-объяснения карточки: {explain, hash, model, created_at} или None."""
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT novice_explain, novice_explain_hash, novice_explain_model,
+                      novice_explain_created_at
+                 FROM tenders WHERE purchase_number = %s""",
+            (purchase_number,),
+        )
+        row = cur.fetchone()
+    if not row or row[0] is None:
+        return None
+    explain = row[0]
+    if isinstance(explain, str):
+        try:
+            explain = json.loads(explain)
+        except Exception:
+            return None
+    return {
+        "explain": explain,
+        "hash": row[1],
+        "model": row[2],
+        "created_at": row[3].isoformat() if hasattr(row[3], "isoformat") else row[3],
+    }
+
+
+def save_novice_explain(purchase_number: str, explain: dict[str, Any],
+                        cache_hash: str, model: str) -> None:
+    """Сохраняет (кеширует) LLM-объяснение карточки решения."""
+    if not purchase_number:
+        return
+    _with_db_retries(
+        "save_novice_explain",
+        lambda: _save_novice_explain_once(purchase_number, explain, cache_hash, model),
+    )
+
+
+def _save_novice_explain_once(purchase_number: str, explain: dict[str, Any],
+                              cache_hash: str, model: str) -> None:
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """UPDATE tenders
+                  SET novice_explain = %s,
+                      novice_explain_hash = %s,
+                      novice_explain_model = %s,
+                      novice_explain_created_at = NOW(),
+                      updated_at = NOW()
+                WHERE purchase_number = %s""",
+            (json.dumps(explain or {}, ensure_ascii=False, default=str),
+             cache_hash, model, purchase_number),
+        )
 
 
 def save_tender_details(purchase_number: str, details: dict[str, Any]) -> None:

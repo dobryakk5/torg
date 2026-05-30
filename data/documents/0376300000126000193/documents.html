@@ -1,0 +1,3225 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+        
+        
+        
+        
+        
+        
+        
+        
+        
+    
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
+
+
+  
+
+
+
+  
+
+
+
+    
+
+
+<!DOCTYPE html>
+<html>
+
+
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+  <meta name="apple-itunes-app" content="app-id=1457694118">
+  <meta name="google-play-app" content="app-id=ru.gov.zakupki.mobile">
+
+  <title>Сведения закупки</title>
+
+  <script type="text/javascript">
+      var contextPath = "/epz/order/notice";
+  </script>
+
+  <script type="text/javascript" src="/static/useractivityrecordplugin/js/recordSupportSystem.js"></script>
+
+  
+    
+    
+      <link type="text/css" rel="stylesheet" media="all" href="/epz/static/css/app.css"/>
+      <link type="text/css" rel="stylesheet" href="/epz/static/css/jquery_msgbox.css"/>
+    
+  
+
+  <script type="text/javascript" src="/epz/static/js/jquery-3.3.1.min.js"></script>
+  <script type="text/javascript" src="/epz/static/js/jquery.cookie.min.js"></script>
+  <script type="text/javascript" src="/epz/static/js/js.cookie.js"></script>
+  <script type="text/javascript" src="/epz/static/js/jquery_msgBox.js"></script>
+  <script type="text/javascript">
+    
+    $(window).ready(function() {
+      $('body').animate({opacity:'1'},300);
+    });
+      function sessionTimeOutMsg(){
+          $.msgBox({
+              type:"error",
+              content:"Время ожидания соединения истекло",
+              title: "Сообщение",
+              afterClose: function(result) {
+                  document.location.href = ""
+              }
+          });
+      }
+
+      var isRegisteredUserObozApp = Boolean("");
+      var sessionMaxInactiveInterval = "600";
+      $(document).ready(function(){
+          var notUsual = (($.cookie("usePoorVisionOption") == 'true') && $(".goodVisionLink").length == 0);
+          var notPoorVision = (($.cookie("usePoorVisionOption") != 'true') && $(".poorVisionLink").length == 0);
+          if (notUsual || notPoorVision){
+              location.reload();
+          }
+      });
+  </script>
+  <script>window.jQuery || document.write('<script src="/epz/static/js/jquery-3.3.1.min.js"><\/script>')</script>
+  <script type="text/javascript" src="/epz/static/js/ui_autocomplete.js"></script>
+  
+  
+  <script type="text/javascript" src="/epz/static/js/mustache.min.js"></script>
+  <script type="text/javascript" src="/epz/static/js/jquery.price_format.1.7.js"></script>
+  
+  <script type="text/javascript" src="/epz/static/js/moment.min.js"></script>
+  <script type="text/javascript" src="/epz/static/js/moment-timezone.min.js"></script>
+
+  <script type="text/javascript" src="/epz/static/js/action-switch.js"></script>
+  <script type="text/javascript" src="/epz/static/js/browser.js"></script>
+  
+    
+    
+      <script type="text/javascript" src="/epz/static/js/app.js"></script>
+    
+  
+  <script type="text/javascript" src="/epz/static/js/script.js"></script>
+  <script type="text/javascript" src="/epz/static/js/cards_keyboard_control_script.js"></script>
+  <script type="text/javascript" src="/epz/static/js/custom.js"></script>
+  <script type="text/javascript" src="/epz/static/js/URI.js"></script>
+  <script type="text/javascript" src="/epz/static/js/common/hints.js"></script>
+  <script type="text/javascript" src="/epz/static/js/common/config.js"></script>
+  <script type="text/javascript" src="/epz/static/js/common/analytics.js"></script>
+  <script type="text/javascript" src="/epz/static/js/cardBaseLayout.js"></script>
+  <script type="text/javascript" src="/epz/static/js/customScrollbar.js"></script>
+  <script type="text/javascript" src="/epz/static/js/common/ssl-checker.js"></script>
+  
+      
+      
+          <script type="text/javascript" src="/epz/static/js/keyboardNavigationRules.js"></script>
+      
+  
+  <script type="text/javascript" src="/epz/static/js/keyboardControl.js"></script>
+  <script type="text/javascript" src="/epz/static/js/jquery-migrate-3.0.1.min.js"></script>
+  <script type="text/javascript">
+      var contextPath = "/epz/order/notice";
+      var epzMainPublicUrl = "/epz/main/public/";
+  </script>
+  <script type="text/javascript" src="/epz/static/js/checkNotice.js"></script>
+  <script type="text/javascript" src="/epz/static/js/common/attachments-common-tab.js"></script>
+  <script type="text/javascript" src="/epz/static/js/generalPagination.js"></script>
+  <script type="text/javascript" src="/epz/static/js/generalChevron.js"></script>
+
+  
+
+
+
+<script type="text/javascript">
+    epzCommonConfig.initCommonConfig({
+        contextPath: '/epz/order/notice',
+        smartSearchEnable: true,
+
+        urls: {
+            epzMainPublicUrl: '/epz/main/public/',
+            epzNsiUrl: '/epz/nsi/',
+            epzOrderUrl: '/epz/order/',
+            epzOrderPlanUrl: '/epz/orderplan/',
+            epzOrderClauseUrl: '/epz/orderclause/',
+            epzContractUrl: '/epz/contract/',
+            epzContractFz223Url: '/epz/contractfz223/',
+            epzContractReportingUrl: '/epz/contractreporting/',
+            epzCustomerReportsUrl: '/epz/customerreports/',
+            epzOrganizationUrl: '/epz/organization/',
+            epzDishonestSupplierUrl: '/epz/dishonestsupplier/',
+            epzComplaintUrl: '/epz/complaint/',
+            epzBankGuaranteeUrl: '/epz/bankguarantee/',
+            epzInspectionPlanUrl: '/epz/inspectionplan/',
+            epzUnscheduledInspectionUrl: '/epz/unscheduledinspection/',
+            epzControlResultUrl: '/epz/controlresult/',
+            epzDizkUrl: '/epz/dizk/',
+            epzEsUrl: '/analytics/_doc/',
+            epzFarmUrl: '/epz/farm/'
+        }
+    });
+</script>
+
+</head>
+<body class="cardLayout">
+
+<script type="text/javascript">
+  if ($.cookie('usePoorVisionOption') === 'true') {
+    var body = $('body');
+    var style = '';
+    var cookie = $.cookie('colorSpectrumForPoorVision');
+    if (cookie) {
+      body.addClass(cookie + 'ColorSpectrum');
+      switch (cookie) {
+        case 'white':
+          style = '#ffffff';
+          break;
+        case 'black':
+          style = '#000000';
+          break;
+        case 'blue':
+          style = '#9DD1FF';
+          break;
+        case 'brown':
+          style = '#442713';
+          break;
+        case 'biege':
+          style = '#F7F3D6';
+          break;
+        default:
+          break;
+      }
+      body.css({backgroundColor: style});
+    }
+
+    var fontZize = $.cookie('fontSizeForPoorVision');
+    if (fontZize) {
+      body.addClass('fontSizeForPoorVision' + fontZize);
+    }
+  }
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+        
+        
+        
+        
+        
+        
+        
+        
+        
+    
+
+
+
+
+
+
+
+
+
+
+
+<style>
+    .header-logo {
+        top: -5px;
+        background: none;
+    }
+</style>
+
+<div id="critical_notice"></div>
+
+    
+    
+        <header class="header header-top">
+            <div class="container">
+                <div class="row align-items-center">
+                    <div class="col-5" style="z-index: 1;">
+                        <span class="logo text-base-micro">Официальный сайт Единой информационной системы в сфере закупок</span>
+                    </div>
+                    <div class="col-1"></div>
+                    <div class="col-3">
+                        <a data-modalup href="/epz/nsi/kladr/chooseRegion.html">
+                            <div class="region d-flex align-items-center pr-0" data-toggle="modal-region"
+                                 data-target=".modal-region">
+                      <span class="region-city w-space-nowrap">
+                        <span class="region-city__icon">
+                          <img src="/epz/static/img/icons/icon_region.svg"
+                               title="Информация о местоположении пользователя используется в поисковых запросах для динамической детализации результатов поиска.">
+                        </span>
+                        <span class="region-city__text region-city__text_base text-base-micro">Мой регион: </span>
+                      </span>
+                                <span id = "chooseRegion">
+                                <span class="region-city pl-1">
+                        <span class="region-city__text region-city__text_prime text-base-micro region_name"
+                              id="popUpUserRegion">
+                        </span>
+                      </span>
+                                <span class="region-city__icon pl-1">
+                            <img src="/epz/static/img/icons/icon_arrow_region.svg" alt="">
+                      </span>
+                                </span>
+                            </div>
+                        </a>
+                    </div>
+                    <div class="col-1">
+                        <div class="header-links-group offset-block">
+                            <a href="#" class="header-link header-link_top">
+                                <span class="header-link__icon poorVisionLink">
+                                  <img class="glass-icon" src="/epz/static/img/icons/icon_eye.svg" alt="">
+                                </span>
+                            </a>
+                        </div>
+                    </div>
+                    <div class="col-2">
+                        <div class="account">
+                            <div class="account-block">
+                        <span class="icon">
+                            <img src="/epz/static/img/icons/icon_user.svg" alt="">
+                        </span>
+                                <span class="text padLeft4">Личный кабинет</span>
+                                <span class="button-open icon">
+                            <img src="/epz/static/img/icons/icon_arrow_lk.svg" alt="">
+                        </span>
+                            </div>
+                            <ul class="account-vars">
+                                <li class="account__var" data-toggle="modal-account44">
+                                    <a class="account__link" data-modalup
+                                       href="/epz/main/public/chooseAuth44.html" target="_blank">
+                                <span class="icon">
+                                  <img src="/epz/static/img/icons/arrow.svg" alt="">
+                                </span>
+                                        <span class="text text_bottom">Личный кабинет</span>
+                                        <span class="subtext">44-Ф3</span>
+                                    </a>
+                                </li>
+                                <li class="account__var" data-toggle="modal-account223">
+                                    <a class="account__link" data-modalup
+                                       href="/epz/main/public/chooseAuth223.html" target="_blank">
+                                <span class="icon">
+                                  <img src="/epz/static/img/icons/arrow.svg" alt="">
+                                </span>
+                                        <span class="text text_bottom">Личный кабинет</span>
+                                        <span class="subtext">223-ФЗ</span>
+                                    </a>
+                                </li>
+                                <li class="account__var" data-toggle="modal-account-private">
+                                    <a href="https://zakupki.gov.ru/auth/welcome" class="account__link">
+                                <span class="icon">
+                                  <img src="/epz/static/img/icons/arrow.svg" alt="">
+                                </span>
+                                        <span class="text text_bottom">Личный кабинет участника закупок</span>
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+        <header class="header header-mid">
+            <div class="container">
+                <div class="row">
+                    <div class="col-6">
+                        <svg width="200" height="48" viewBox="0 0 200 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <g clip-path="url(#clip0_129_4694)">
+                                <a href="/epz/main/public/home.html">
+                                    <rect width="100" height="60" x="0" y="-5" fill="#00000000" pointer-events="all"></rect>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M77.5818 15.4964V17.0585H79.1425V15.4964H77.5818Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M77.5818 7.75768V9.31973H79.1425V7.75768H77.5818Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M56.8945 43.8791V45.4357H58.4548V43.8791H56.8945Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M46.5481 43.8791V45.4357H48.1139V43.8791H46.5481Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M87.9285 43.8791V45.4357H89.4886V43.8791H87.9285Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M87.9285 15.4964V17.0585H89.4886V15.4964H87.9285Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M90.5125 15.4964V17.0585H92.0726V15.4964H90.5125Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M67.2356 43.8791V45.4357H68.8017V43.8791H67.2356Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M25.8606 15.4964V17.0585H27.4209V15.4964H25.8606Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M41.375 12.9187V14.4752H42.9408V12.9187H41.375Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M41.375 15.4964V17.0585H42.9408V15.4964H41.375Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M82.7551 15.4964V17.0585H84.3159V15.4964H82.7551Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M82.7551 7.75768V9.31973H84.3159V7.75768H82.7551Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M87.9285 7.75768V9.31973H89.4886V7.75768H87.9285Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M62.0674 43.8791V45.4357H63.6281V43.8791H62.0674Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M51.7214 43.8791V45.4357H53.2817V43.8791H51.7214Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M72.4087 43.8791V45.4357H73.9748V43.8791H72.4087Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M72.4087 15.4964V17.0585H73.9748V15.4964H72.4087Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M72.4087 12.9187V14.4752H73.9748V12.9187H72.4087Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M36.2073 23.2406V24.7971H37.7675V23.2406H36.2073Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M77.5818 23.2406V24.7971H79.1425V23.2406H77.5818Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M56.8945 23.2406V24.7971H58.4548V23.2406H56.8945Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M15.5144 23.2406V24.7971H17.0802V23.2406H15.5144Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M46.5481 23.2406V24.7971H48.1139V23.2406H46.5481Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M67.2356 23.2406V24.7971H68.8017V23.2406H67.2356Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M25.8606 23.2406V24.7971H27.4209V23.2406H25.8606Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M41.375 23.2406V24.7971H42.9408V23.2406H41.375Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M41.375 7.75768V9.31973H42.9408V7.75768H41.375Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M82.7551 23.2406V24.7971H84.3159V23.2406H82.7551Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M62.0674 23.2406V24.7971H63.6281V23.2406H62.0674Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M20.6875 23.2406V24.7971H22.2533V23.2406H20.6875Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M51.7214 23.2406V24.7971H53.2817V23.2406H51.7214Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M51.7214 18.0797V19.6362H53.2817V18.0797H51.7214Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M72.4087 23.2406V24.7971H73.9748V23.2406H72.4087Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M31.0339 23.2406V24.7971H32.5943V23.2406H31.0339Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M36.2073 15.4964V17.0585H37.7675V15.4964H36.2073Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M80.1714 15.4964V17.0585H81.7315V15.4964H80.1714Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M80.1714 7.75768V9.31973H81.7315V7.75768H80.1714Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M59.4785 43.8791V45.4357H61.0441V43.8791H59.4785Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M49.1377 43.8791V45.4357H50.698V43.8791H49.1377Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M69.8252 43.8791V45.4357H71.3853V43.8791H69.8252Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M69.8252 15.4964V17.0585H71.3853V15.4964H69.8252Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M28.4443 15.4964V17.0585H30.0102V15.4964H28.4443Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M43.9646 12.9187V14.4752H45.5249V12.9187H43.9646Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M43.9646 43.8791V45.4357H45.5249V43.8791H43.9646Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M85.3394 15.4964V17.0585H86.9049V15.4964H85.3394Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M85.3394 7.75768V9.31973H86.9049V7.75768H85.3394Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M90.5125 7.75768V9.31973H92.078V7.75768H90.5125Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M93.0439 7.75722V9.31934H94.6095V7.75722H93.0439Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M90.5125 5.17992V6.73646H92.078V5.17992H90.5125Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M93.0439 5.18196V6.73856H94.6095V5.18196H93.0439Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M93.0439 5.18196V6.73856H94.6095V5.18196H93.0439Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M64.6516 43.8791V45.4357H66.2117V43.8791H64.6516Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M64.6516 15.4964V17.0585H66.2117V15.4964H64.6516Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M54.3054 43.8791V45.4357H55.8712V43.8791H54.3054Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M54.3054 15.4964V17.0585H55.8712V15.4964H54.3054Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M56.8945 15.4964V17.0585H58.4548V15.4964H56.8945Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M54.3054 12.9187V14.4752H55.8712V12.9187H54.3054Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M74.9983 15.4964V17.0585H76.5584V15.4964H74.9983Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M38.791 23.2406V24.7971H40.3513V23.2406H38.791Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M80.1714 23.2406V24.7971H81.7315V23.2406H80.1714Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M59.4785 23.2406V24.7971H61.0441V23.2406H59.4785Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M18.1035 23.2406V24.7971H19.6638V23.2406H18.1035Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M49.1377 23.2406V24.7971H50.698V23.2406H49.1377Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M69.8252 23.2406V24.7971H71.3853V23.2406H69.8252Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M28.4443 23.2406V24.7971H30.0102V23.2406H28.4443Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M43.9646 23.2406V24.7971H45.5249V23.2406H43.9646Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M43.9646 7.75768V9.31973H45.5249V7.75768H43.9646Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M64.6516 23.2406V24.7971H66.2117V23.2406H64.6516Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M23.2769 23.2406V24.7971H24.8371V23.2406H23.2769Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M54.3054 23.2406V24.7971H55.8712V23.2406H54.3054Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M74.9983 23.2406V24.7971H76.5584V23.2406H74.9983Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M33.6179 23.2406V24.7971H35.1837V23.2406H33.6179Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M36.2073 33.5571V35.1192H37.7675V33.5571H36.2073Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M77.5818 33.5571V35.1192H79.1425V33.5571H77.5818Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M56.8945 33.5571V35.1192H58.4548V33.5571H56.8945Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M15.5144 33.5571V35.1192H17.0802V33.5571H15.5144Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M46.5481 33.5571V35.1192H48.1139V33.5571H46.5481Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M87.9285 33.5571V35.1192H89.4886V33.5571H87.9285Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M87.9285 30.9793V32.5359H89.4886V30.9793H87.9285Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M67.2356 33.5571V35.1192H68.8017V33.5571H67.2356Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M25.8606 33.5571V35.1192H27.4209V33.5571H25.8606Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M41.375 33.5571V35.1192H42.9408V33.5571H41.375Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M62.0674 33.5571V35.1192H63.6281V33.5571H62.0674Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M20.6875 33.5571V35.1192H22.2533V33.5571H20.6875Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M20.6875 36.1403V37.6969H22.2533V36.1403H20.6875Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M51.7214 33.5571V35.1192H53.2817V33.5571H51.7214Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M72.4087 33.5571V35.1192H73.9748V33.5571H72.4087Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M31.0339 33.5571V35.1192H32.5943V33.5571H31.0339Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M38.791 33.5571V35.1192H40.3513V33.5571H38.791Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M80.1714 33.5571V35.1192H81.7315V33.5571H80.1714Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M59.4785 33.5571V35.1192H61.0441V33.5571H59.4785Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M18.1035 33.5571V35.1192H19.6638V33.5571H18.1035Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M49.1377 33.5571V35.1192H50.698V33.5571H49.1377Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M90.5125 33.5571V35.1192H92.0726V33.5571H90.5125Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M69.8252 33.5571V35.1192H71.3853V33.5571H69.8252Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M28.4443 33.5571V35.1192H30.0102V33.5571H28.4443Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M43.9646 33.5571V35.1192H45.5249V33.5571H43.9646Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M85.3394 33.5571V35.1192H86.9049V33.5571H85.3394Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M82.7551 33.5571V35.1192H84.3159V33.5571H82.7551Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M64.6516 33.5571V35.1192H66.2117V33.5571H64.6516Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M23.2769 33.5571V35.1192H24.8371V33.5571H23.2769Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M23.2769 36.1403V37.6969H24.8371V36.1403H23.2769Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M54.3054 33.5571V35.1192H55.8712V33.5571H54.3054Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M12.9304 33.5571V35.1192H14.4907V33.5571H12.9304Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M74.9983 33.5571V35.1192H76.5584V33.5571H74.9983Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M33.6179 33.5571V35.1192H35.1837V33.5571H33.6179Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M36.2073 38.7181V40.2747H37.7675V38.7181H36.2073Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M77.5818 10.341V11.8975H79.1425V10.341H77.5818Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M56.8945 38.7181V40.2747H58.4548V38.7181H56.8945Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M56.8945 46.4568V48.0189H58.4548V46.4568H56.8945Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M15.5144 38.7181V40.2747H17.0802V38.7181H15.5144Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M18.1035 38.7181V40.2747H19.6638V38.7181H18.1035Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M46.5481 38.7181V40.2747H48.1139V38.7181H46.5481Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M46.5481 46.4568V48.0189H48.1139V46.4568H46.5481Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M87.9285 38.7181V40.2747H89.4886V38.7181H87.9285Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M67.2356 38.7181V40.2747H68.8017V38.7181H67.2356Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M67.2356 46.4568V48.0189H68.8017V46.4568H67.2356Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M25.8606 38.7181V40.2747H27.4209V38.7181H25.8606Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M41.375 38.7181V40.2747H42.9408V38.7181H41.375Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M82.7551 38.7181V40.2747H84.3159V38.7181H82.7551Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M82.7551 10.341V11.8975H84.3159V10.341H82.7551Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M87.9285 10.341V11.8975H89.4886V10.341H87.9285Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M82.7551 2.59666V4.15876H84.3159V2.59666H82.7551Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M87.9285 2.59666V4.15876H89.4886V2.59666H87.9285Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M87.9285 0.0189209V1.5755H89.4886V0.0189209H87.9285Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M62.0674 38.7181V40.2747H63.6281V38.7181H62.0674Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M51.7214 38.7181V40.2747H53.2817V38.7181H51.7214Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M51.7214 46.4568V48.0189H53.2817V46.4568H51.7214Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M10.3467 38.7181V40.2747H11.9069V38.7181H10.3467Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M7.75708 38.7181V40.2747H9.32286V38.7181H7.75708Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M72.4087 38.7181V40.2747H73.9748V38.7181H72.4087Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M31.0339 38.7181V40.2747H32.5943V38.7181H31.0339Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M77.5818 18.0797V19.6362H79.1425V18.0797H77.5818Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M56.8945 18.0797V19.6362H58.4548V18.0797H56.8945Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M87.9285 18.0797V19.6362H89.4886V18.0797H87.9285Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M90.5125 18.0797V19.6362H92.0726V18.0797H90.5125Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M93.1016 18.0797V19.6362H94.6623V18.0797H93.1016Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M90.5125 20.6574V22.2195H92.0726V20.6574H90.5125Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M93.1016 20.6574V22.2195H94.6623V20.6574H93.1016Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M25.8606 18.0797V19.6362H27.4209V18.0797H25.8606Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M82.7551 18.0797V19.6362H84.3159V18.0797H82.7551Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M85.3394 18.0797V19.6362H86.9049V18.0797H85.3394Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M62.0674 18.0797V19.6362H63.6281V18.0797H62.0674Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M59.4785 18.0797V19.6362H61.0441V18.0797H59.4785Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M20.6875 18.0797V19.6362H22.2533V18.0797H20.6875Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M72.4087 18.0797V19.6362H73.9748V18.0797H72.4087Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M31.0339 18.0797V19.6362H32.5943V18.0797H31.0339Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M38.791 38.7181V40.2747H40.3513V38.7181H38.791Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M80.1714 38.7181V40.2747H81.7315V38.7181H80.1714Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M80.1714 10.341V11.8975H81.7315V10.341H80.1714Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M80.1714 2.59666V4.15876H81.7315V2.59666H80.1714Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M85.3394 2.59666V4.15876H86.9049V2.59666H85.3394Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M85.3394 0.0189209V1.5755H86.9049V0.0189209H85.3394Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M59.4785 38.7181V40.2747H61.0441V38.7181H59.4785Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M49.1377 38.7181V40.2747H50.698V38.7181H49.1377Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M49.1377 46.4568V48.0189H50.698V46.4568H49.1377Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M69.8252 38.7181V40.2747H71.3853V38.7181H69.8252Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M28.4443 38.7181V40.2747H30.0102V38.7181H28.4443Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M43.9646 38.7181V40.2747H45.5249V38.7181H43.9646Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M85.3394 38.7181V40.2747H86.9049V38.7181H85.3394Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M85.3394 10.341V11.8975H86.9049V10.341H85.3394Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M90.5125 10.341V11.8975H92.078V10.341H90.5125Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M95.4453 10.3384V11.895H97.0109V10.3384H95.4453Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M64.6516 38.7181V40.2747H66.2117V38.7181H64.6516Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M54.3054 38.7181V40.2747H55.8712V38.7181H54.3054Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M54.3054 46.4568V48.0189H55.8712V46.4568H54.3054Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M12.9304 38.7181V40.2747H14.4907V38.7181H12.9304Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M12.9304 46.4568V48.0189H14.4907V46.4568H12.9304Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M33.6179 38.7181V40.2747H35.1837V38.7181H33.6179Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M36.2073 18.0797V19.6362H37.7675V18.0797H36.2073Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M80.1714 18.0797V19.6362H81.7315V18.0797H80.1714Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M95.6855 20.6574V22.2195H97.2457V20.6574H95.6855Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M69.8252 18.0797V19.6362H71.3853V18.0797H69.8252Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M28.4443 18.0797V19.6362H30.0102V18.0797H28.4443Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M23.2769 18.0797V19.6362H24.8371V18.0797H23.2769Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M54.3054 18.0797V19.6362H55.8712V18.0797H54.3054Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M74.9983 18.0797V19.6362H76.5584V18.0797H74.9983Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M36.2073 28.3961V29.9582H37.7675V28.3961H36.2073Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M77.5818 28.3961V29.9582H79.1425V28.3961H77.5818Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M56.8945 28.3961V29.9582H58.4548V28.3961H56.8945Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M15.5144 28.3961V29.9582H17.0802V28.3961H15.5144Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M46.5481 28.3961V29.9582H48.1139V28.3961H46.5481Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M67.2356 28.3961V29.9582H68.8017V28.3961H67.2356Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M25.8606 28.3961V29.9582H27.4209V28.3961H25.8606Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M41.375 28.3961V29.9582H42.9408V28.3961H41.375Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M62.0674 28.3961V29.9582H63.6281V28.3961H62.0674Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M20.6875 28.3961V29.9582H22.2533V28.3961H20.6875Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M51.7214 28.3961V29.9582H53.2817V28.3961H51.7214Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M72.4087 28.3961V29.9582H73.9748V28.3961H72.4087Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M12.9304 28.3961V29.9582H14.4907V28.3961H12.9304Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M31.0339 28.3961V29.9582H32.5943V28.3961H31.0339Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M38.791 28.3961V29.9582H40.3513V28.3961H38.791Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M80.1714 28.3961V29.9582H81.7315V28.3961H80.1714Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M59.4785 28.3961V29.9582H61.0441V28.3961H59.4785Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M18.1035 28.3961V29.9582H19.6638V28.3961H18.1035Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M49.1377 28.3961V29.9582H50.698V28.3961H49.1377Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M69.8252 28.3961V29.9582H71.3853V28.3961H69.8252Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M28.4443 28.3961V29.9582H30.0102V28.3961H28.4443Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M43.9646 28.3961V29.9582H45.5249V28.3961H43.9646Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M64.6516 28.3961V29.9582H66.2117V28.3961H64.6516Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M23.2769 28.3961V29.9582H24.8371V28.3961H23.2769Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M54.3054 28.3961V29.9582H55.8712V28.3961H54.3054Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M74.9983 28.3961V29.9582H76.5584V28.3961H74.9983Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M33.6179 28.3961V29.9582H35.1837V28.3961H33.6179Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M77.5818 12.9187V14.4752H79.1425V12.9187H77.5818Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M77.5818 5.17992V6.73646H79.1425V5.17992H77.5818Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M56.8945 41.3013V42.8579H58.4548V41.3013H56.8945Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M46.5481 41.3013V42.8579H48.1139V41.3013H46.5481Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M87.9285 41.3013V42.8579H89.4886V41.3013H87.9285Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M87.9285 12.9187V14.4752H89.4886V12.9187H87.9285Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M67.2356 41.3013V42.8579H68.8017V41.3013H67.2356Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M67.2356 12.9187V14.4752H68.8017V12.9187H67.2356Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M67.2356 10.341V11.8975H68.8017V10.341H67.2356Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M41.375 41.3013V42.8579H42.9408V41.3013H41.375Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M82.7551 12.9187V14.4752H84.3159V12.9187H82.7551Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M82.7551 5.17992V6.73646H84.3159V5.17992H82.7551Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M87.9285 5.17992V6.73646H89.4886V5.17992H87.9285Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M62.0674 41.3013V42.8579H63.6281V41.3013H62.0674Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M51.7214 41.3013V42.8579H53.2817V41.3013H51.7214Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M10.3467 41.3013V42.8579H11.9069V41.3013H10.3467Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M72.4087 41.3013V42.8579H73.9748V41.3013H72.4087Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M36.2073 20.6574V22.2195H37.7675V20.6574H36.2073Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M77.5818 20.6574V22.2195H79.1425V20.6574H77.5818Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M56.8945 20.6574V22.2195H58.4548V20.6574H56.8945Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M46.5481 20.6574V22.2195H48.1139V20.6574H46.5481Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M87.9285 20.6574V22.2195H89.4886V20.6574H87.9285Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M67.2356 20.6574V22.2195H68.8017V20.6574H67.2356Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M67.2356 18.0797V19.6362H68.8017V18.0797H67.2356Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M25.8606 20.6574V22.2195H27.4209V20.6574H25.8606Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M41.375 20.6574V22.2195H42.9408V20.6574H41.375Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M82.7551 20.6574V22.2195H84.3159V20.6574H82.7551Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M85.3394 20.6574V22.2195H86.9049V20.6574H85.3394Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M62.0674 20.6574V22.2195H63.6281V20.6574H62.0674Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M20.6875 20.6574V22.2195H22.2533V20.6574H20.6875Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M51.7214 20.6574V22.2195H53.2817V20.6574H51.7214Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M51.7214 15.4964V17.0585H53.2817V15.4964H51.7214Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M51.7214 10.341V11.8975H53.2817V10.341H51.7214Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M72.4087 20.6574V22.2195H73.9748V20.6574H72.4087Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M31.0339 20.6574V22.2195H32.5943V20.6574H31.0339Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M38.791 41.3013V42.8579H40.3513V41.3013H38.791Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M80.1714 12.9187V14.4752H81.7315V12.9187H80.1714Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M80.1714 5.17992V6.73646H81.7315V5.17992H80.1714Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M85.3394 5.17992V6.73646H86.9049V5.17992H85.3394Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M59.4785 41.3013V42.8579H61.0441V41.3013H59.4785Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M49.1377 41.3013V42.8579H50.698V41.3013H49.1377Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M69.8252 41.3013V42.8579H71.3853V41.3013H69.8252Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M28.4443 41.3013V42.8579H30.0102V41.3013H28.4443Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M43.9646 41.3013V42.8579H45.5249V41.3013H43.9646Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M85.3394 41.3013V42.8579H86.9049V41.3013H85.3394Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M85.3394 12.9187V14.4752H86.9049V12.9187H85.3394Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M64.6516 41.3013V42.8579H66.2117V41.3013H64.6516Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M54.3054 41.3013V42.8579H55.8712V41.3013H54.3054Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M54.3054 10.341V11.8975H55.8712V10.341H54.3054Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M12.9304 41.3013V42.8579H14.4907V41.3013H12.9304Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M74.9983 12.9187V14.4752H76.5584V12.9187H74.9983Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M38.791 20.6574V22.2195H40.3513V20.6574H38.791Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M38.791 15.4964V17.0585H40.3513V15.4964H38.791Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M80.1714 20.6574V22.2195H81.7315V20.6574H80.1714Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M59.4785 20.6574V22.2195H61.0441V20.6574H59.4785Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M59.4785 15.4964V17.0585H61.0441V15.4964H59.4785Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M18.1035 20.6574V22.2195H19.6638V20.6574H18.1035Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M49.1377 20.6574V22.2195H50.698V20.6574H49.1377Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M95.6855 23.2406V24.7971H97.2457V23.2406H95.6855Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M69.8252 20.6574V22.2195H71.3853V20.6574H69.8252Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M28.4443 20.6574V22.2195H30.0102V20.6574H28.4443Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M10.3467 20.6574V22.2195H11.9069V20.6574H10.3467Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M43.9646 20.6574V22.2195H45.5249V20.6574H43.9646Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M64.6516 20.6574V22.2195H66.2117V20.6574H64.6516Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M64.6516 18.0797V19.6362H66.2117V18.0797H64.6516Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M23.2769 20.6574V22.2195H24.8371V20.6574H23.2769Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M54.3054 20.6574V22.2195H55.8712V20.6574H54.3054Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M74.9983 20.6574V22.2195H76.5584V20.6574H74.9983Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M33.6179 20.6574V22.2195H35.1837V20.6574H33.6179Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M15.5144 20.6574V22.2195H17.0802V20.6574H15.5144Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M36.2073 30.9793V32.5359H37.7675V30.9793H36.2073Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M77.5818 30.9793V32.5359H79.1425V30.9793H77.5818Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M56.8945 30.9793V32.5359H58.4548V30.9793H56.8945Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M15.5144 30.9793V32.5359H17.0802V30.9793H15.5144Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M15.5144 41.3013V42.8579H17.0802V41.3013H15.5144Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M46.5481 30.9793V32.5359H48.1139V30.9793H46.5481Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M67.2356 30.9793V32.5359H68.8017V30.9793H67.2356Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M25.8606 30.9793V32.5359H27.4209V30.9793H25.8606Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M41.375 30.9793V32.5359H42.9408V30.9793H41.375Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M62.0674 30.9793V32.5359H63.6281V30.9793H62.0674Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M20.6875 30.9793V32.5359H22.2533V30.9793H20.6875Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M51.7214 30.9793V32.5359H53.2817V30.9793H51.7214Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M72.4087 30.9793V32.5359H73.9748V30.9793H72.4087Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M12.9304 30.9793V32.5359H14.4907V30.9793H12.9304Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M31.0339 30.9793V32.5359H32.5943V30.9793H31.0339Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M38.791 30.9793V32.5359H40.3513V30.9793H38.791Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M80.1714 30.9793V32.5359H81.7315V30.9793H80.1714Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M59.4785 30.9793V32.5359H61.0441V30.9793H59.4785Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M18.1035 30.9793V32.5359H19.6638V30.9793H18.1035Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M49.1377 30.9793V32.5359H50.698V30.9793H49.1377Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M69.8252 30.9793V32.5359H71.3853V30.9793H69.8252Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M28.4443 30.9793V32.5359H30.0102V30.9793H28.4443Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M43.9646 30.9793V32.5359H45.5249V30.9793H43.9646Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M64.6516 30.9793V32.5359H66.2117V30.9793H64.6516Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M23.2769 30.9793V32.5359H24.8371V30.9793H23.2769Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M54.3054 30.9793V32.5359H55.8712V30.9793H54.3054Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M74.9983 30.9793V32.5359H76.5584V30.9793H74.9983Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M33.6179 30.9793V32.5359H35.1837V30.9793H33.6179Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M36.2073 36.1403V37.6969H37.7675V36.1403H36.2073Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M77.5818 36.1403V37.6969H79.1425V36.1403H77.5818Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M56.8945 36.1403V37.6969H58.4548V36.1403H56.8945Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M15.5144 36.1403V37.6969H17.0802V36.1403H15.5144Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M46.5481 36.1403V37.6969H48.1139V36.1403H46.5481Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M87.9285 36.1403V37.6969H89.4886V36.1403H87.9285Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M67.2356 36.1403V37.6969H68.8017V36.1403H67.2356Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M25.8606 36.1403V37.6969H27.4209V36.1403H25.8606Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M41.375 36.1403V37.6969H42.9408V36.1403H41.375Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M82.7551 36.1403V37.6969H84.3159V36.1403H82.7551Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M62.0674 36.1403V37.6969H63.6281V36.1403H62.0674Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M51.7214 36.1403V37.6969H53.2817V36.1403H51.7214Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M10.3467 36.1403V37.6969H11.9069V36.1403H10.3467Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M72.4087 36.1403V37.6969H73.9748V36.1403H72.4087Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M31.0339 36.1403V37.6969H32.5943V36.1403H31.0339Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M38.791 36.1403V37.6969H40.3513V36.1403H38.791Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M80.1714 36.1403V37.6969H81.7315V36.1403H80.1714Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M59.4785 36.1403V37.6969H61.0441V36.1403H59.4785Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M18.1035 36.1403V37.6969H19.6638V36.1403H18.1035Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M49.1377 36.1403V37.6969H50.698V36.1403H49.1377Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M90.5125 36.1403V37.6969H92.0726V36.1403H90.5125Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M69.8252 36.1403V37.6969H71.3853V36.1403H69.8252Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M28.4443 36.1403V37.6969H30.0102V36.1403H28.4443Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M43.9646 36.1403V37.6969H45.5249V36.1403H43.9646Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M85.3394 36.1403V37.6969H86.9049V36.1403H85.3394Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M64.6516 36.1403V37.6969H66.2117V36.1403H64.6516Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M54.3054 36.1403V37.6969H55.8712V36.1403H54.3054Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M12.9304 36.1403V37.6969H14.4907V36.1403H12.9304Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M12.9304 43.8791V45.4357H14.4907V43.8791H12.9304Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M74.9983 36.1403V37.6969H76.5584V36.1403H74.9983Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M33.6179 36.1403V37.6969H35.1837V36.1403H33.6179Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M36.2073 25.8183V27.3748H37.7675V25.8183H36.2073Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M77.5818 25.8183V27.3748H79.1425V25.8183H77.5818Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M56.8945 25.8183V27.3748H58.4548V25.8183H56.8945Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M15.5144 25.8183V27.3748H17.0802V25.8183H15.5144Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M46.5481 25.8183V27.3748H48.1139V25.8183H46.5481Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M67.2356 25.8183V27.3748H68.8017V25.8183H67.2356Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M25.8606 25.8183V27.3748H27.4209V25.8183H25.8606Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M5.1731 36.1403V37.6969H6.73334V36.1403H5.1731Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M41.375 25.8183V27.3748H42.9408V25.8183H41.375Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M62.0674 25.8183V27.3748H63.6281V25.8183H62.0674Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M20.6875 25.8183V27.3748H22.2533V25.8183H20.6875Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M0 36.1403V37.6969H1.56028V36.1403H0Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M51.7214 25.8183V27.3748H53.2817V25.8183H51.7214Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M72.4087 25.8183V27.3748H73.9748V25.8183H72.4087Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M31.0339 25.8183V27.3748H32.5943V25.8183H31.0339Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M38.791 25.8183V27.3748H40.3513V25.8183H38.791Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M80.1714 25.8183V27.3748H81.7315V25.8183H80.1714Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M59.4785 25.8183V27.3748H61.0441V25.8183H59.4785Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M18.1035 25.8183V27.3748H19.6638V25.8183H18.1035Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M49.1377 25.8183V27.3748H50.698V25.8183H49.1377Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M69.8252 25.8183V27.3748H71.3853V25.8183H69.8252Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M28.4443 25.8183V27.3748H30.0102V25.8183H28.4443Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M43.9646 25.8183V27.3748H45.5249V25.8183H43.9646Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M64.6516 25.8183V27.3748H66.2117V25.8183H64.6516Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M23.2769 25.8183V27.3748H24.8371V25.8183H23.2769Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M54.3054 25.8183V27.3748H55.8712V25.8183H54.3054Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M74.9983 25.8183V27.3748H76.5584V25.8183H74.9983Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M33.6179 25.8183V27.3748H35.1837V25.8183H33.6179Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M10.2998 30.9793V32.5359H11.8601V30.9793H10.2998Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M5.12671 30.9793V32.5359H6.68695V30.9793H5.12671Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M2.6355 38.7181V40.2747H4.2013V38.7181H2.6355Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M2.6355 36.1403V37.6969H4.2013V36.1403H2.6355Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M2.6355 30.9793V32.5359H4.19576V30.9793H2.6355Z" fill="#0065DD"/>
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M7.71045 30.9793V32.5359H9.27629V30.9793H7.71045Z" fill="#0065DD"/>
+                            </a>
+                                <g id="eis-advice" pointer-events="all">
+                                    <rect width="100" height="45" x="105" y="0" fill="#00000000"></rect>
+                                <path d="M108.817 17.2177H117.079V18.6077H107.32V4.66866H116.875V6.06837H108.817V10.6467H115.281V12.0367H108.817V17.2177Z" fill="#0065DD"/>
+                                <path d="M131.796 18.6077H130.308V7.36121L121.745 18.6077H120.452V4.66866H121.949V15.9249L130.503 4.66866H131.796V18.6077Z" fill="#0065DD"/>
+                                <path d="M137.579 16.7122C136.186 15.319 135.489 13.6276 135.489 11.6381C135.489 9.64875 136.186 7.95739 137.579 6.56413C138.972 5.17086 140.663 4.47423 142.653 4.47423C143.359 4.47423 144.036 4.57467 144.685 4.77556C145.332 4.96997 145.867 5.2065 146.288 5.48515C146.716 5.7638 147.089 6.04572 147.406 6.3308C147.73 6.61593 147.963 6.85899 148.106 7.05984L148.329 7.36119L147.328 8.25549C147.29 8.19066 147.231 8.10644 147.153 8.00271C147.075 7.89256 146.894 7.70143 146.609 7.42926C146.324 7.15709 146.013 6.91727 145.676 6.70994C145.345 6.49606 144.908 6.30168 144.364 6.1267C143.82 5.95173 143.249 5.86425 142.653 5.86425C141.059 5.86425 139.714 6.41832 138.619 7.52644C137.524 8.63457 136.976 10.0051 136.976 11.6381C136.976 13.2712 137.524 14.6418 138.619 15.7499C139.714 16.858 141.059 17.4121 142.653 17.4121C143.249 17.4121 143.82 17.3311 144.364 17.1691C144.908 17.0006 145.359 16.7997 145.715 16.5664C146.078 16.3331 146.395 16.1031 146.667 15.8763C146.94 15.643 147.134 15.4388 147.251 15.2639L147.436 15.0209L148.427 15.9249C148.375 16.0026 148.294 16.1063 148.184 16.2359C148.08 16.359 147.844 16.5859 147.474 16.9163C147.111 17.2468 146.725 17.5417 146.317 17.8009C145.909 18.0601 145.371 18.2934 144.704 18.5008C144.043 18.7017 143.359 18.8021 142.653 18.8021C140.663 18.8021 138.972 18.1055 137.579 16.7122Z" fill="#0065DD"/>
+                                <path d="M112.998 34.4649C113.076 34.4779 113.176 34.5103 113.299 34.5622C113.429 34.6075 113.659 34.7209 113.989 34.9023C114.32 35.0773 114.615 35.2847 114.874 35.5245C115.133 35.7642 115.366 36.1012 115.574 36.5354C115.781 36.963 115.885 37.4361 115.885 37.9545C115.885 39.0433 115.408 39.9959 114.456 40.8124C113.51 41.6224 112.292 42.0274 110.801 42.0274C110.192 42.0274 109.602 41.9529 109.032 41.8039C108.462 41.6483 107.989 41.4669 107.613 41.2595C107.243 41.0456 106.916 40.8318 106.631 40.6179C106.346 40.4041 106.145 40.2259 106.028 40.0833L105.824 39.8403L106.825 38.8488C106.865 38.9007 106.919 38.9687 106.991 39.0529C107.069 39.1307 107.231 39.2733 107.477 39.4806C107.73 39.6816 107.998 39.863 108.284 40.025C108.569 40.1805 108.941 40.3231 109.401 40.4527C109.862 40.5759 110.328 40.6374 110.801 40.6374C111.903 40.6374 112.774 40.3717 113.416 39.8403C114.064 39.309 114.388 38.6803 114.388 37.9545C114.388 37.1704 114.064 36.5095 113.416 35.9716C112.774 35.4337 111.903 35.1648 110.801 35.1648H109.216V33.7748H110.801C111.754 33.7748 112.505 33.5512 113.056 33.1041C113.614 32.6569 113.892 32.1158 113.892 31.4808C113.892 30.8068 113.617 30.2398 113.066 29.7797C112.515 29.3196 111.76 29.0895 110.801 29.0895C110.153 29.0895 109.541 29.2224 108.964 29.4881C108.387 29.7538 107.966 30.0194 107.7 30.2851L107.321 30.6837L106.33 29.6922C106.369 29.6404 106.43 29.5691 106.515 29.4783C106.599 29.3812 106.783 29.2191 107.069 28.9924C107.354 28.7655 107.655 28.5679 107.973 28.3994C108.296 28.2244 108.711 28.0656 109.216 27.9231C109.728 27.774 110.257 27.6995 110.801 27.6995C112.194 27.6995 113.306 28.0559 114.135 28.7687C114.965 29.4751 115.38 30.3467 115.38 31.3836C115.38 31.8372 115.295 32.2487 115.127 32.6181C114.965 32.9874 114.767 33.2823 114.534 33.5026C114.307 33.723 114.077 33.9108 113.843 34.0664C113.611 34.2154 113.406 34.3223 113.231 34.3872L112.998 34.4649Z" fill="#334059"/>
+                                <path d="M126.713 36.5548L124.03 29.9839L121.337 36.5548H126.713ZM127.315 37.9546H120.745L119.15 41.833H117.556L123.33 27.894H124.72L130.494 41.833H128.91L127.315 37.9546Z" fill="#334059"/>
+                                <path d="M134.985 35.7578L142.148 27.894H144.034L138.766 33.6679L144.54 41.833H142.742L137.765 34.7663L134.985 37.7505V41.833H133.488V27.894H134.985V35.7578Z" fill="#334059"/>
+                                <path d="M151.606 36.0591L155.387 27.894H156.981L151.8 38.7517C151.23 39.944 150.65 40.7897 150.061 41.2887C149.47 41.7812 148.689 42.0274 147.718 42.0274C147.504 42.0274 147.29 42.0112 147.076 41.9788C146.869 41.9465 146.713 41.9108 146.609 41.8719L146.425 41.833V40.443C146.755 40.5727 147.154 40.6374 147.62 40.6374C148.242 40.6374 148.735 40.4949 149.098 40.2097C149.467 39.9246 149.837 39.4386 150.206 38.7517L150.808 37.6533C150.381 36.8432 149.571 35.3204 148.379 33.0847C147.186 30.849 146.269 29.1188 145.627 27.894H147.222L151.606 36.0591Z" fill="#334059"/>
+                                <path d="M170.521 27.894V41.833H169.024V29.2937H161.268V41.833H159.771V27.894H170.521Z" fill="#334059"/>
+                                <path d="M176.596 35.7578L183.76 27.894H185.646L180.377 33.6679L186.152 41.833H184.353L179.376 34.7663L176.596 37.7505V41.833H175.099V27.894H176.596V35.7578Z" fill="#334059"/>
+                                <path d="M200.178 41.833H198.69V30.5865L190.127 41.833H188.834V27.894H190.331V39.1502L198.885 27.894H200.178V41.833Z" fill="#334059"/>
+                                </g>
+                            </g>
+                            <defs>
+                                <clipPath id="clip0_129_4694">
+                                    <rect width="200" height="48" fill="white"/>
+                                </clipPath>
+                            </defs>
+                        </svg>
+                        <div class="custom-tooltip-main blockMain btn-wrap-params">
+                            <span id="eis-tooltiptext" class="tooltiptext">  Официальный сайт единой информационной системы в сфере закупок в информационно-телекоммуникационной сети Интернет (далее – Официальный сайт ЕИС) предназначен для обеспечения свободного и безвозмездного доступа к полной и достоверной информации о контрактной системе в сфере закупок и закупках товаров, работ, услуг отдельными видами юридических лиц, а также для формирования, обработки и хранения такой информации.   Порядок размещения информации на Официальном сайте ЕИС и ее содержание регламентируется Федеральным законом от 05.04.2013 № 44-ФЗ «О контрактной системе в сфере закупок товаров, работ, услуг для обеспечения государственных и муниципальных нужд» и Федеральным законом от 18.07.2011 № 223-ФЗ «О закупках товаров, работ, услуг отдельными видами юридических лиц», а также соответствующими подзаконными актами.</span>
+                        </div>
+                    </div>
+                    <div class="col-sm-auto" style="font-size: 13px;">
+                        <a href="/epz/main/public/user-feedback.html">
+                            <img src="/epz/static/img/icons/icon_envelop_circle.svg" alt="">
+                            <span class="banners-top-item__title">Техническая поддержка</span>
+                        </a>
+                    </div>
+                    <div class="col-sm-auto pr-0" style="font-size: 13px;">
+                        <a href="/epz/main/public/qa/view.html">
+                            <img src="/epz/static/img/icons/icon_faq.svg" alt="">
+                            <span class="banners-top-item__title">Часто задаваемые вопросы</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </header>
+    
+
+
+<script type="text/javascript">
+    $('#eis-advice').hover(
+        function () {
+            $('#eis-tooltiptext').css('visibility', 'visible');
+        },
+        function () {
+            $('#eis-tooltiptext').css('visibility', 'hidden');
+        });
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+        
+        
+        
+        
+        
+        
+        
+        
+        
+    
+
+
+
+
+
+
+
+
+
+
+
+<header class="header header-bottom">
+    <div class="container">
+        <div class="row">
+            <div class="col-12">
+                <ul class="menu-mega mb-0">
+                    <ul class="menu-list">
+                        
+                        <li class="main-item" style="cursor: pointer;">
+                            <img src="/epz/static/img/icons/icon_sitemap.svg" alt="">
+                            <a href="/epz/main/public/siteMap.html"
+                               class="main-link">Все разделы</a>
+                        </li>
+                        
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+
+
+    <li class="main-item parent-node" style="cursor: pointer;">
+    <a
+         href="http://zakupki.gov.ru/epz/order/extendedsearch/results.html" 
+        class="main-link  _order "
+        data-law = "   "
+    >
+        Закупки
+    </a>
+    
+
+
+    
+    
+        
+    
+
+
+    
+    </li>
+
+
+    
+
+
+
+
+
+
+
+
+
+    <li class="main-item parent-node" style="cursor: pointer;">
+    <a
+        
+        class="main-link "
+        data-law = " "
+    >
+        Контракты и договоры
+    </a>
+    
+    <ul>
+    <li class="submenu-col">
+    
+
+
+    
+    
+        
+            
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+            <ul class="submenu-list menu-list child-node">
+        
+        <li class="submenu-list__item">
+            <a  href="http://zakupki.gov.ru/epz/contract/search/results.html" 
+                class="submenu-list__link  _contract  "
+            data-law="FZ44"
+            >
+            <span class="link__text">Реестр контрактов</span>
+            <span class="link__desc">44-ФЗ</span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="http://zakupki.gov.ru/epz/contractfz223/search/results.html" 
+                class="submenu-list__link  _contractfz223  "
+            data-law="FZ223"
+            >
+            <span class="link__text">Реестр договоров</span>
+            <span class="link__desc">223-ФЗ</span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="https://zakupki.gov.ru/epz/capitalrepairs/search/results.html" 
+                class="submenu-list__link  _capitalrepairs  "
+            data-law="PPRF615"
+            >
+            <span class="link__text">Реестр договоров о проведении капитального ремонта</span>
+            <span class="link__desc">ПП РФ-615</span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="https://zakupki.gov.ru/epz/dizk/search/results.html" 
+                class="submenu-list__link  _dizk  "
+            data-law="FZ44"
+            >
+            <span class="link__text">Дополнительная информация о контрактах</span>
+            <span class="link__desc">44-ФЗ</span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="http://zakupki.gov.ru/epz/btk/search/results.html" 
+                class="submenu-list__link  _btk  "
+            data-law="FZ44"
+            >
+            <span class="link__text">Библиотека типовых контрактов, типовых условий контрактов</span>
+            <span class="link__desc">44-ФЗ</span>
+        </a>
+        
+        </li>
+        
+            </ul>
+        
+    
+    
+
+
+
+        
+    
+
+
+    
+    </li>
+    </ul>
+    
+    </li>
+
+
+    
+
+
+
+
+
+
+
+
+
+    <li class="main-item parent-node" style="cursor: pointer;">
+    <a
+        
+        class="main-link "
+        data-law = " "
+    >
+        Планирование
+    </a>
+    
+    <ul>
+    <li class="submenu-col">
+    
+
+
+    
+    
+        
+            
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+            <ul class="submenu-list menu-list child-node">
+        
+        <li class="submenu-list__item">
+            <a  href="https://zakupki.gov.ru/epz/orderplan/search/results.html?morphology=on&search-filter=%D0%94%D0%B0%D1%82%D0%B5+%D1%80%D0%B0%D0%B7%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D1%8F&structured=true&fz44=on&customerPlaceWithNested=on&actualPeriodRangeYearFrom=2020&sortBy=BY_MODIFY_DATE&pageNumber=1&sortDirection=false&recordsPerPage=_10&searchType=false" 
+                class="submenu-list__link  _orderplan  "
+            data-law="FZ44"
+            >
+            <span class="link__text">Планы-графики закупок</span>
+            <span class="link__desc">44-ФЗ</span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="http://zakupki.gov.ru/epz/orderplan/search/results.html?morphology=on&structured=true&searchType=false&fz223=on&region_regions_5277335=region_regions_5277335&regionDeleted=false&sortBy=BY_MODIFY_DATE&pageNumber=1&sortDirection=false&recordsPerPage=_10" 
+                class="submenu-list__link  _orderplan  "
+            data-law="FZ223"
+            >
+            <span class="link__text">Планы закупки</span>
+            <span class="link__desc">223-ФЗ</span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="https://zakupki.gov.ru/epz/oboz/search/results.html" 
+                class="submenu-list__link  _oboz  "
+            data-law="FZ44"
+            >
+            <span class="link__text">Обязательное общественное обсуждение закупок</span>
+            <span class="link__desc">44-ФЗ</span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="http://zakupki.gov.ru/epz/pricereq/search/results.html" 
+                class="submenu-list__link  _pricereq  "
+            data-law="FZ44"
+            >
+            <span class="link__text">Запросы цен товаров, работ, услуг</span>
+            <span class="link__desc">44-ФЗ</span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="http://zakupki.gov.ru/epz/normalizationrules/search/results.html" 
+                class="submenu-list__link  _normalizationrules  "
+            data-law="FZ44"
+            >
+            <span class="link__text">Правила нормирования в сфере закупок</span>
+            <span class="link__desc">44-ФЗ</span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="https://zakupki.gov.ru/epz/orderclause/search/results.html" 
+                class="submenu-list__link  _orderclause  "
+            data-law="FZ223"
+            >
+            <span class="link__text">Положения о закупке</span>
+            <span class="link__desc">223-ФЗ</span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="https://zakupki.gov.ru/epz/typalclause/search/results.html" 
+                class="submenu-list__link  _typalclause  "
+            data-law="FZ223"
+            >
+            <span class="link__text">Типовые положения о закупке</span>
+            <span class="link__desc">223-ФЗ</span>
+        </a>
+        
+        </li>
+        
+            </ul>
+        
+    
+    
+
+
+
+        
+    
+
+
+    
+    </li>
+    </ul>
+    
+    </li>
+
+
+    
+
+
+
+
+
+
+
+
+
+    <li class="main-item parent-node" style="cursor: pointer;">
+    <a
+         href="http://zakupki.gov.ru/epz/ktru/start/startPage.html" 
+        class="main-link  _ktru "
+        data-law = " FZ44  "
+    >
+        Каталог
+    </a>
+    
+
+
+    
+    
+        
+    
+
+
+    
+    </li>
+
+
+    
+
+
+
+
+
+
+
+
+
+    <li class="main-item parent-node" style="cursor: pointer;">
+    <a
+        
+        class="main-link "
+        data-law = " "
+    >
+        Документы
+    </a>
+    
+    <ul>
+    <li class="submenu-col">
+    
+
+
+    
+    
+        
+            
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+            <ul class="submenu-list menu-list child-node">
+        
+        <li class="submenu-list__item">
+            <a  href="http://zakupki.gov.ru/epz/main/public/document/view.html?sectionId=1255" 
+                class="submenu-list__link  _document  "
+            data-law="1255"
+            >
+            <span class="link__text">Законодательство в сфере закупок</span>
+            <span class="link__desc"></span>
+        </a>
+        
+            
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+            <ul class="submenu-list menu-list child-node">
+        
+        <li class="submenu-list__item">
+            <a  href="http://zakupki.gov.ru/epz/main/public/document/view.html?sectionId=907" 
+                class="submenu-list__link  _document  "
+            data-law="907"
+            >
+            <span class="link__text">Нормативные правовые акты</span>
+            <span class="link__desc">44-ФЗ</span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="http://zakupki.gov.ru/epz/main/public/document/view.html?sectionId=908" 
+                class="submenu-list__link  _document  "
+            data-law="908"
+            >
+            <span class="link__text">Нормативные правовые акты</span>
+            <span class="link__desc">223-ФЗ</span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="http://zakupki.gov.ru/epz/main/public/document/view.html?sectionId=1261" 
+                class="submenu-list__link  _document  "
+            data-law="1261"
+            >
+            <span class="link__text">Национальный режим</span>
+            <span class="link__desc"></span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="http://zakupki.gov.ru/epz/main/public/document/view.html?sectionId=910" 
+                class="submenu-list__link  _document  "
+            data-law="910"
+            >
+            <span class="link__text">Разъяснения законодательства</span>
+            <span class="link__desc"></span>
+        </a>
+        
+        </li>
+        
+            </ul>
+        
+    
+    
+
+
+
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="https://zakupki.gov.ru/epz/legalacts/search/results.html" 
+                class="submenu-list__link  _legalacts  "
+            data-law=""
+            >
+            <span class="link__text">Нормативно-методическая информация, предусмотренная для размещения в ЕИС</span>
+            <span class="link__desc"></span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="http://zakupki.gov.ru/epz/main/public/document/view.html?sectionId=1254" 
+                class="submenu-list__link  _document  "
+            data-law="1254"
+            >
+            <span class="link__text">Сведения о банках и финансовых организациях</span>
+            <span class="link__desc"></span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="http://zakupki.gov.ru/epz/main/public/document/view.html?sectionId=1253" 
+                class="submenu-list__link  _document  "
+            data-law="1253"
+            >
+            <span class="link__text">Материалы для работы в ЕИС</span>
+            <span class="link__desc"></span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="http://zakupki.gov.ru/epz/main/public/document/view.html?sectionId=1252" 
+                class="submenu-list__link  _document  "
+            data-law="1252"
+            >
+            <span class="link__text">Техническая информация</span>
+            <span class="link__desc"></span>
+        </a>
+        
+        </li>
+        
+    
+    
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+    
+        
+        <li class="submenu-list__item">
+            <a  href="https://zakupki.gov.ru/epz/main/public/document/view.html?searchString=&sectionId=2369&strictEqual=false" 
+                class="submenu-list__link  _document  "
+            data-law="2369"
+            >
+            <span class="link__text">Информация о привлечении участника закупки к административной ответственности<br>по ст. 19.28 КоАП</span>
+            <span class="link__desc"></span>
+        </a>
+        
+        </li>
+        
+            </ul>
+        
+    
+    
+
+
+
+        
+    
+
+
+    
+    </li>
+    </ul>
+    
+    </li>
+
+
+    
+
+
+
+
+
+
+
+
+
+    <li class="main-item parent-node" style="cursor: pointer;">
+    <a
+         href="http://zakupki.gov.ru/epz/main/public/news/news-search.html" 
+        class="main-link  _news "
+        data-law = " FZ44,FZ223,PPRF615  "
+    >
+        Новости
+    </a>
+    
+
+
+    
+    
+        
+    
+
+
+    
+    </li>
+
+
+                    </ul>
+                </ul>
+            </div>
+        </div>
+    </div>
+</header>
+
+<script type="text/javascript">
+    function selectCurrentMenuItem() {
+        var sectionSelector = '._' + getregistryName();
+
+        var fz44 = getURLParam('fz44'),
+            fz94 = getURLParam('fz44'),
+            fz223 = getURLParam('fz223'),
+            ppRf615 = getURLParam('fz44'),
+            documentSection = getURLParam('sectionId');
+
+        if ($(sectionSelector).length > 1) {
+            var selector = null;
+
+            $(sectionSelector).each(function () {
+                if ($(this).attr('data-law') !== undefined) {
+                    if (fz44 !== null && fz44 === 'on' && $(this).attr('data-law').trim() === 'FZ44') {selector = this; return true;}
+                    if (fz223 !== null && fz223 === 'on' && $(this).attr('data-law').trim() === 'FZ223') {selector = this; return true;}
+                    if (fz94 !== null && fz94 === 'on' && $(this).attr('data-law').trim() === 'FZ94') {selector = this; return true;}
+                    if (ppRf615 !== null && ppRf615 === 'on' && $(this).attr('data-law').trim() === 'PPRF615') {selector = this; return true;}
+                    if (documentSection !== null && documentSection !== '' && $(this).attr('data-law').trim() === documentSection) {selector = this; return true;}
+                }
+            });
+
+            if (selector !== null) {
+                if (!$(selector).parent().hasClass('parent-node'))
+                    $(selector).addClass('submenu-list__link--active');
+
+                $(selector).closest('li.main-item').css('border-bottom', '3px solid #0065dd');
+            }else{
+                $(sectionSelector).first().css('background-color', '#8c96ad');
+                $(sectionSelector).first().closest('li.main-item').css('border-bottom', '3px solid #0065dd');
+            }
+        } else {
+            if (!$(sectionSelector).parent().hasClass('parent-node') && checkStopListSelect(getregistryName()))
+                $(sectionSelector).addClass('submenu-list__link--active');
+
+            $(sectionSelector).closest('li.main-item').css('border-bottom', '3px solid #0065dd');
+        }
+    }
+
+    function checkStopListSelect(selector) {
+        var tempBitLink = window.location.pathname.split("/" + selector + "/");
+        return !(tempBitLink.length > 1 && tempBitLink[1].match("private"));
+    }
+
+    $(document).ready(function () {
+        selectCurrentMenuItem();
+    });
+</script>
+
+<div class="cardWrapper outerWrapper">
+
+  <div class="wrapper">
+    <div class="cardHeaderBlock">
+      
+
+
+
+
+
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        var poorVisionSettingsBlock = $('.poorVisionSettingsBlock');
+
+        
+        
+        
+        var poorVisionLink = poorVisionSettingsBlock.find('.poorVisionLink');
+
+        poorVisionLink.click(function (e) {
+            e.preventDefault();
+            $.cookie('usePoorVisionOption', 'true', {path: '/', expires: 365*100});
+            location.reload();
+        });
+        
+        
+    });
+
+</script>
+
+<div class="poorVisionSettingsBlock">
+    
+        
+        
+            <span>
+                <a class="poorVisionLink poorVisionBannerCards"></a>
+            </span>
+        
+    
+</div>
+
+      
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+        
+        
+        
+        
+        
+        
+        
+        
+        
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="container">
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    
+
+
+
+
+    
+
+
+
+<div class="breadcrumb rowSpaceBetween flex-wrap">
+    <div class="navBreadcrumb time-zone_block">
+        <div class="navBreadcrumb__item navBreadcrumb__item_first">
+            <a
+                        
+                            onclick="goToSearchUrl(true, '/epz/order/extendedsearch/results.html')"
+                        
+                        
+                    class="navBreadcrumb__icon navBreadcrumb__icon_back align-middle cursor-pointer">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8.66014 3.33333L7.32813 2L1.33398 8.00001L7.32804 14L8.66006 12.6667L4.93989 8.94282H15.334V7.05721H4.93995L8.66014 3.33333Z" fill="#0065DD"/>
+                </svg>
+            </a>
+            <a
+                        
+                            onclick="goToSearchUrl(true, '/epz/order/extendedsearch/results.html')"
+                        
+                        
+                    class="navBreadcrumb__text cursor-pointer">
+                Назад к результатам поиска
+            </a>
+        </div>
+        
+        
+            <div class="navBreadcrumb__item navBreadcrumb__item_active">
+                <span class="navBreadcrumb__icon align-middle">
+                    <svg width="4" height="8" viewBox="0 0 4 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M0 7.33301L4 3.99967L7.94992e-08 0.666341L0 7.33301Z" fill="#909EBB"/>
+                    </svg>
+                </span>
+                <span class="navBreadcrumb__text">
+                    
+                        № 0376300000126000193
+                    
+                    
+            </span>
+        </div>
+        
+    </div>
+    
+        <div class="breadcrumb__addition time-zone">
+            <div class="time-zone__title">
+                Информация указана по местному времени организации, осуществляющей закупку
+            </div>
+            <div class="time-zone__value">
+                <span>Москва МСК (UTC+3)</span>
+            </div>
+        </div>
+    
+    
+        <div class="breadcrumb__addition subscribeRss mt-4">
+            
+                
+                    <a class="subscribeRss__link" href="/epz/order/notice/rss?regNumber=0376300000126000193" target="_blank">
+                        Подписаться на RSS
+                    </a>
+                
+                
+            
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="subscribeRss__icon">
+                <path d="M0.5 3.5C7.125 3.5 12.5 8.875 12.5 15.5H15.5C15.5 7.25 8.75 0.5 0.5 0.5V3.5ZM0.5 5.625V8.625C4.25 8.625 7.375 11.75 7.375 15.5H10.375C10.375 10 6 5.625 0.5 5.625ZM4.625 13.5C4.625 14.625 3.75 15.5 2.625 15.5C1.375 15.5 0.5 14.625 0.5 13.5C0.5 12.375 1.375 11.5 2.5 11.5C3.625 11.5 4.625 12.375 4.625 13.5Z" fill="#E8523D"/>
+            </svg>
+        </div>
+    
+</div>
+
+<script>
+    $(document).ready(saveReferrerUrl());
+</script>
+
+    <div class="cardMainInfo row">
+        <div class="sectionMainInfo borderRight col-6">
+            <div class="sectionMainInfo__header">
+                <div class="rowSpaceBetween">
+                    <div class="cardMainInfo__title d-flex text-truncate"
+                         
+                    >44-ФЗ
+                        <span class="cardMainInfo__title distancedText ml-1">
+                            Запрос котировок в электронной форме
+                            
+                            
+                                <div class="d-inline-block" data-tooltip='<span class="custom-tooltiptext">Закупка является централизованной</span>'>
+                                    <img class="icon-order-group" src="/epz/static/img/icons/icon_centralized.svg" alt="">
+                                </div>
+                            
+                            
+                        </span>
+                    </div>
+                    <div class="blockIcon">
+                        <a data-modalup href="/epz/order/notice/printForm/listModal.html?regNumber=0376300000126000193" class="distancedText">
+                            <img src="/epz/static/img/icons/icon_key.svg" alt=""/>
+                        </a>
+                        
+                        <a href="/epz/order/notice/printForm/view.html?regNumber=0376300000126000193" target="_blank">
+                            <img src="/epz/static/img/icons/icon_print_small.svg" alt=""/>
+                        </a>
+                        
+                    </div>
+                </div>
+                <div class="cardMainInfo__status">
+                    <span class="cardMainInfo__purchaseLink distancedText">
+                        <a href="#" target="_blank">№ 0376300000126000193</a>
+                    </span>
+                    
+                        <span class="cardMainInfo__state distancedText">Подача заявок</span>
+                    
+                </div>
+            </div>
+            <div class="sectionMainInfo__body">
+                
+                
+                
+                    <div class="cardMainInfo__section">
+                        <span class="cardMainInfo__title">Объект закупки</span>
+                        <span class="cardMainInfo__content">Оказание услуг по разработке, технической поддержке и обслуживанию туристско-информационного сайта</span>
+                    </div>
+                
+                <div class="cardMainInfo__section">
+                    <span class="cardMainInfo__title">
+                        
+                            
+                                Организация, осуществляющая размещение
+                            
+                            
+                        
+                    </span>
+                    <span class="cardMainInfo__content">
+                        <a href="https://zakupki.gov.ru/epz/organization/view/info.html?organizationCode=03763000001" target="_blank">АДМИНИСТРАЦИЯ МУНИЦИПАЛЬНОГО ОБРАЗОВАНИЯ "ГОРОД МАЙКОП"</a>
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="sectionMainInfo borderRight col-3 colSpaceBetween">
+            <div class="price">
+                
+                    <span class="cardMainInfo__title">
+                        Начальная цена
+                        
+                        
+                    </span>
+                    <span class="cardMainInfo__content cost">
+                        251 200,00 &#8381;
+                    </span>
+                
+            </div>
+            <div class="date">
+                <div class="row">
+                    <div class="cardMainInfo__section col-6">
+                        <span class="cardMainInfo__title">Размещено</span>
+                        <span class="cardMainInfo__content">
+                            25.05.2026 
+                        </span>
+                    </div>
+                    <div class="cardMainInfo__section col-6">
+                        <span class="cardMainInfo__title">Обновлено</span>
+                        <span class="cardMainInfo__content">
+                            25.05.2026 
+                        </span>
+                    </div>
+                </div>
+                <div class="cardMainInfo__section">
+                    
+                        <span class="cardMainInfo__title">Окончание подачи заявок</span>
+                        <span class="cardMainInfo__content">02.06.2026 </span>
+                    
+                </div>
+            </div>
+        </div>
+        <div class="sectionMainInfo col-3 colSpaceBetween mt-auto rel-links">
+            <div></div>
+            <div class="rel-links">
+                
+                    
+                    
+                        
+                    
+                
+                <a href="/epz/order/notice/view/common-info.html?regNumber=0376300000126000193#positionKTRU">Позиция КТРУ</a>
+                
+                    <a class="cursorPointer" onclick="openPlanGraphSearchUrl('0376300000126000193')">Позиция
+                        плана-графика</a>
+                
+                <a class="cursorPointer" onclick="openContractUrl('0376300000126000193')">Контракт</a>
+                
+                <a class="cursorPointer" onclick="openComplaintSearch('0376300000126000193')">Жалоба</a>
+                <a class="cursorPointer" onclick="openUnscheduledInspection('0376300000126000193')">Внеплановая
+                    проверка</a>
+                
+            </div>
+        </div>
+    </div>
+</div>
+<script type="text/javascript">
+    function openComplaintSearch(number) {
+        var url = "/epz/complaint/search/search_eis.html?searchString=" +
+            number +
+            "&strictEqual=on&fz94=on&cancelled=on&considered=on&regarded=on";
+        window.open(url);
+    }
+
+    function bankGuaranteeUrl(recordNotificationNumber) {
+        var regex = /(<([^>]+)>)/ig;
+        var removeXML = recordNotificationNumber.replace(regex, "");
+        var url = "/epz/bankguarantee/search/results.html?searchString=&orderNumber=" + removeXML + "&openMode=USE_DEFAULT_PARAMS";
+        url += "&published=on&rejected=on&terminated=on&stopped=on&application=on&contract=on&currencyId=1";
+        window.open(url);
+    }
+
+    function openContractUrl(number) {
+        var url = "/epz/contract/search/results.html?searchString=&orderNumber=" + number + "&openMode=USE_DEFAULT_PARAMS";
+        url += "&fz44=on&priceFrom=0&priceTo=200000000000&contractStageList=0%2C1%2C2%2C3&budgetaryFunds=on&extraBudgetaryFunds=on";
+        window.open(url);
+    }
+
+    function openPlanGraphSearchUrl(notificationNumber) {
+        const url = "/epz/orderplan/search/results.html?notificationNumber=" + notificationNumber;
+        window.open(url);
+    }
+
+    function openUnscheduledInspection(notificationNumber) {
+        var url = "/epz/unscheduledinspection/search/results.html?order=" + notificationNumber;
+        window.open(url);
+    }
+
+    function openRdik(rdikLink) {
+        var url = rdikLink;
+        window.open(url);
+    }
+
+    function openOrderRdik(notificationNumber) {
+        var url = window.location.href.split('/view')[0] + "/view/supplier-results.html?regNumber=" + notificationNumber + "#rdik";
+        window.open(url);
+    }
+</script>
+
+
+      
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+        
+        
+        
+        
+        
+        
+        
+        
+        
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="container">
+    <div class="tabsNav d-flex align-items-end">
+        
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
+
+
+
+    
+
+
+
+
+    
+
+
+
+
+    <a href="/epz/order/notice/zk20/view/common-info.html?regNumber=0376300000126000193"
+            
+                
+                
+                    class="tabsNav__item"
+                
+            
+    >
+        
+            
+            
+            
+                
+            
+        
+        Общая информация
+    </a>
+
+
+
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
+
+
+    
+
+
+
+
+    
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
+
+
+
+    
+
+
+
+
+    
+
+
+
+
+    <a href="/epz/order/notice/zk20/view/documents.html?regNumber=0376300000126000193"
+            
+                
+                    class="tabsNav__item tabsNav__item_active"
+                
+                
+            
+    >
+        
+            
+            
+            
+                
+            
+        
+        Документы
+    </a>
+
+
+        
+
+        
+
+        
+
+        
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
+
+
+
+    
+
+
+
+
+    
+
+
+
+
+    <a href="/epz/order/notice/zk20/view/event-journal.html?regNumber=0376300000126000193"
+            
+                
+                
+                    class="tabsNav__item"
+                
+            
+    >
+        
+            
+            
+            
+                
+            
+        
+        Журнал событий
+    </a>
+
+
+        
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('.contentTabsWrapper td[tab = "PURCHASE_DOCS"]').addClass('currentTab');
+        
+        if ($('.contentTabsWrapper tr').width() > 980 && false) {
+            $('[tab="EVENT_LOG"]').css('display', 'none');
+        }
+        
+    });
+</script>
+<script type="text/javascript" src="/epz/order/notice/js/card/view/medExport.js"></script>
+
+    </div>
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+        
+        
+        
+        
+        
+        
+        
+        
+        
+    
+
+
+
+
+
+
+
+
+
+    
+        <div class="container">
+            <div class="blockInfo">
+                <label class="switch classSelectorClickAttach">
+                    <input type="checkbox" class="inactive-redaction-toggle">
+                    <span class="slider round"></span>
+                    <span class="slider-text" id="revisionViewToggle">Отображать недействующие редакции</span>
+                </label>
+            </div>
+        </div>
+
+        <hr class="graySeparator">
+    
+
+
+<div class="container">
+    <div class="col-sm-12 blockInfo">
+        <h2 class="blockInfo__title">Извещение, изменение извещения о проведении запроса котировок в электронной форме</h2>
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+    
+    
+        
+        
+        
+            <div class="row no-gutters notice-documents blockInfo__section first-row-active-documents closedInactiveDocuments borderNone">
+                
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+    
+        <div class="col-sm-6 b-r">
+            <div class="row no-gutters">
+                <div class="col-sm-2">
+                    
+                        <div class="float-left">
+                            <a data-modalup href="/epz/order/notice/signview/listModal.html?entityType=notice&entityId=43064836&source=">
+                                <span class="icon icon-big icon-cryptoSign"></span>
+                            </a>
+                        </div>
+                    
+                    
+                        <div class="float-right">
+                            <a href="/epz/order/notice/printForm/view.html?entityType=notice&entityId=43064836&source=" title="Печатная форма" target="_blank">
+                                <span class="icon icon-big icon-print"></span>
+                            </a>
+                        </div>
+                    
+                </div>
+                <div class="col-sm-10">
+                    <div class="col">
+                        <div class="section__value docName">
+                            
+                                
+                                
+                                
+                                    <span class="">
+                                            Извещение о проведении запроса котировок в электронной форме от 25.05.2026 №0376300000126000193
+                                        
+                                    </span>
+                                
+                            
+                        </div>
+                        <div class="row">
+                            
+                                <div class="col-sm">
+                                    <div class="section__attrib">Размещено</div>
+                                    <div class="section__value ">
+                                        25.05.2026 16:25 <span class='timeZoneName' title='Москва, стандартное время'>(МСК)</span>
+                                    </div>
+                                </div>
+                            
+                            
+                                <div class="col-sm">
+                                    <div class="section__attrib">Редакция</div>
+                                    <div class="section__value ">
+                                        
+                                            
+                                            Действующая
+                                        
+                                    </div>
+                                    
+                                </div>
+                            
+                            
+                        </div>
+                        
+                            <div class="">
+                                <div class="row">
+                                    <div class="col-sm-12">
+                                        <br>
+                                        <div style="font-size: 14px">Пройден контроль по ч.5.1 ст. 99 44-ФЗ</div>
+                                        <div style="font-size: 14px">(автоматизированный контроль средствами ЕИС)</div>
+                                    </div>
+                                </div>
+                            </div>
+                        
+                        
+                            <div class="">
+                                <div class="row">
+                                    <div class="col-sm-12">
+                                        <br>
+                                        
+                                            
+                                                <div style="font-size: 14px">
+                                                    Пройден контроль по целевому расходованию средств
+                                                </div>
+                                            
+                                            
+                                        
+                                        
+                                            <span class="icon-autopay-order"></span>
+                                        
+                                    </div>
+                                </div>
+                            </div>
+                        
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+            <div class="col-sm-6">
+                <div class="blockFilesTabDocs">
+                    <div class="section__title mb-3">Прикрепленные файлы</div>
+                    
+                        
+                        
+                        <div class="attachment row ">
+                            <div class="col clipText">
+                                
+                                    <a data-modalup class="pWidth_840 vAlignMiddle margRight5 cryptoSignsSmall" href="/epz/order/notice/signview/listModal.html?attachmentId=215486858">
+                                        <span class="icon icon-small icon-cryptoSign_small vAlignMiddle"></span>
+                                    </a>
+                                
+                                <img alt="Microsoft Word Document" src="/epz/static/img/icons/type/docx.svg" class="vAlignMiddle margRight5" data-tooltip="<span class='custom-tooltiptext'>Microsoft Word Document</span>"/>
+                                <span class="section__value">
+                                    <a href="https://zakupki.gov.ru/44fz/filestore/public/1.0/download/priz/file.html?uid=FA756EDFAF234F2D92098A9F2AAC3547" title="Пр 3. Требование к заявке.  Создание сайта и ТП.docx">
+                                        Пр 3. Требование к заявке.  Создание сайта и ТП
+                                    </a>
+                                </span>
+                            </div>
+                        </div>
+                    
+                        
+                        
+                        <div class="attachment row ">
+                            <div class="col clipText">
+                                
+                                    <a data-modalup class="pWidth_840 vAlignMiddle margRight5 cryptoSignsSmall" href="/epz/order/notice/signview/listModal.html?attachmentId=215486788">
+                                        <span class="icon icon-small icon-cryptoSign_small vAlignMiddle"></span>
+                                    </a>
+                                
+                                <img alt="Microsoft Word Document" src="/epz/static/img/icons/type/docx.svg" class="vAlignMiddle margRight5" data-tooltip="<span class='custom-tooltiptext'>Microsoft Word Document</span>"/>
+                                <span class="section__value">
+                                    <a href="https://zakupki.gov.ru/44fz/filestore/public/1.0/download/priz/file.html?uid=D4D6DC528B934157A568482AA5945920" title="Пр 2. Обоснование НМЦК.  Создание сайта и ТП..docx">
+                                        Пр 2. Обоснование НМЦК.  Создание сайта и ТП.
+                                    </a>
+                                </span>
+                            </div>
+                        </div>
+                    
+                        
+                        
+                        <div class="attachment row ">
+                            <div class="col clipText">
+                                
+                                    <a data-modalup class="pWidth_840 vAlignMiddle margRight5 cryptoSignsSmall" href="/epz/order/notice/signview/listModal.html?attachmentId=215486806">
+                                        <span class="icon icon-small icon-cryptoSign_small vAlignMiddle"></span>
+                                    </a>
+                                
+                                <img alt="Microsoft Word Document" src="/epz/static/img/icons/type/docx.svg" class="vAlignMiddle margRight5" data-tooltip="<span class='custom-tooltiptext'>Microsoft Word Document</span>"/>
+                                <span class="section__value">
+                                    <a href="https://zakupki.gov.ru/44fz/filestore/public/1.0/download/priz/file.html?uid=E426FFA8C6E648D1820724FFF879DF44" title="Пр 4. Проект контракта. Создание сайта и ТП.docx">
+                                        Пр 4. Проект контракта. Создание сайта и ТП
+                                    </a>
+                                </span>
+                            </div>
+                        </div>
+                    
+                        
+                        
+                        <div class="attachment row ">
+                            <div class="col clipText">
+                                
+                                    <a data-modalup class="pWidth_840 vAlignMiddle margRight5 cryptoSignsSmall" href="/epz/order/notice/signview/listModal.html?attachmentId=215486831">
+                                        <span class="icon icon-small icon-cryptoSign_small vAlignMiddle"></span>
+                                    </a>
+                                
+                                <img alt="Microsoft Word Document" src="/epz/static/img/icons/type/docx.svg" class="vAlignMiddle margRight5" data-tooltip="<span class='custom-tooltiptext'>Microsoft Word Document</span>"/>
+                                <span class="section__value">
+                                    <a href="https://zakupki.gov.ru/44fz/filestore/public/1.0/download/priz/file.html?uid=C0B74C1C25F64FF78A998896359E5CFC" title="Пр 1. Описание объекта закупки.  Создание сайта и ТП..docx">
+                                        Пр 1. Описание объекта закупки.  Создание сайта и ТП.
+                                    </a>
+                                </span>
+                            </div>
+                        </div>
+                    
+                    
+                </div>
+            </div>
+        
+    
+
+
+            </div>
+            
+                
+                
+                
+                
+                    
+                    
+                    
+                
+                
+            
+            
+                
+            
+        
+    
+
+
+    </div>
+</div>
+
+<hr class="graySeparator">
+
+<div class="container">
+    <div class="col-sm-12 blockInfo">
+        <h2 class="blockInfo__title">Изменение организации, осуществляющей размещение</h2>
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+    
+        
+            <span class="section__title">Информация отсутствует</span>
+        
+    
+    
+
+
+    </div>
+</div>
+
+<hr class="graySeparator">
+
+<div class="container">
+    <div class="col-sm-12 blockInfo">
+        <h2 class="blockInfo__title">Квитанции результатов согласования извещения на проведение запроса котировок в электронной форме</h2>
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+    
+        
+            <span class="section__title">Информация отсутствует</span>
+        
+    
+    
+
+
+    </div>
+</div>
+
+<hr class="graySeparator">
+
+<div class="container">
+    <div class="col-sm-12 blockInfo">
+        <h2 class="blockInfo__title">Отмена определения поставщика (подрядчика, исполнителя)</h2>
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+    
+        
+            <span class="section__title">Информация отсутствует</span>
+        
+    
+    
+
+
+    </div>
+</div>
+
+<hr class="graySeparator">
+
+<div class="container">
+    <div class="col-sm-12 blockInfo">
+        <h2 class="blockInfo__title">Протоколы работы комиссии</h2>
+        
+
+
+
+
+
+
+
+
+
+
+    
+        <span class="section__title">Сведения отсутствуют</span>
+    
+    
+
+
+    </div>
+</div>
+
+<hr class="graySeparator">
+
+<script type="text/javascript" src="/epz/static/js/card/view/documentsButtonPanelNew.js"></script>
+
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+        
+        
+        
+        
+        
+        
+        
+        
+        
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<footer class="footer">
+    <div class="wrapperFooter">
+        
+            
+            
+                
+                    <div class="container">
+                        <div class="poll-banner">
+                            <div class="row align-items-center">
+                                <div class="col-9">
+                                    <div class="figure-footer d-flex align-items-center noselect">
+                                        <div class="figure-footer__icon">
+                                            <img src="/epz/static/img/icons/ico_sub.svg" alt="" class="icon">
+                                        </div>
+                                        <div class="figure-footer__text">
+                                            <h4 class="heading-h4 poll-title">Поделитесь мнением о качестве работы единой
+                                                информационной системы</h4>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-3 text-right">
+                                    <a href="/epz/main/public/quiz/list.html"
+                                       class="btn btn-default poll-button">
+                                        <span class="separator"></span>
+                                        <span class="btn-text">Перейти к опросу</span>
+                                    </a>
+                                </div>
+                            </div>
+                            <figure class="poll__logo">
+                                <img src="/epz/static/img/icons/icon-footer-eagle.svg" alt="">
+                            </figure>
+                        </div>
+                    </div>
+                
+                <div class="container">
+                    <div class="partners-wrap">
+                        <div class="partners partners-slider">
+                            <figure class="partner">
+                                <p class="partner-logo-wrap">
+                                    <a target="_blank" href="http://www.sberbank-ast.ru/"><img class="partner__logo"
+                                                                                               src="/epz/static/img/partners/sberbank_new.svg"
+                                                                                               alt=""></a>
+                                </p>
+                                <figcaption class="partner__desc"> Система торгов <br> Сбербанк-АСТ
+                                </figcaption>
+                                <a target="_blank" href="http://www.sberbank-ast.ru/"
+                                   class="partner__link">SBERBANK-AST.RU</a>
+                            </figure>
+                            <figure class="partner">
+                                <p class="partner-logo-wrap">
+                                    <a target="_blank" href="http://www.roseltorg.ru/"><img class="partner__logo"
+                                                                                            src="/epz/static/img/partners/rostorg_new.svg"
+                                                                                            alt=""></a>
+                                </p>
+                                <figcaption class="partner__desc"> Единая электронная торговая <br> площадка
+                                </figcaption>
+                                <a target="_blank" href="http://www.roseltorg.ru/"
+                                   class="partner__link">ROSELTORG.RU</a>
+                            </figure>
+                            <figure class="partner">
+                                <p class="partner-logo-wrap">
+                                    <a target="_blank" href="http://etp.zakazrf.ru/"><img class="partner__logo"
+                                                                                          src="/epz/static/img/partners/etp.svg"
+                                                                                          alt=""></a>
+                                </p>
+                                <figcaption class="partner__desc"> Общероссийская система <br> электронной торговли
+                                </figcaption>
+                                <a target="_blank" href="http://etp.zakazrf.ru/"
+                                   class="partner__link">ETP.ZAKAZRF.RU</a>
+                            </figure>
+                            <figure class="partner">
+                                <p class="partner-logo-wrap">
+                                    <a target="_blank" href="http://www.rts-tender.ru/"><img class="partner__logo"
+                                                                                             src="/epz/static/img/partners/rts.svg"
+                                                                                             alt=""></a>
+                                </p>
+                                <figcaption class="partner__desc"> Электронная площадка <br> России
+                                </figcaption>
+                                <a target="_blank" href="http://www.rts-tender.ru/"
+                                   class="partner__link">RTS-TENDER.RU</a>
+                            </figure>
+                            <figure class="partner">
+                                <p class="partner-logo-wrap">
+                                    <a target="_blank" href="https://www.fabrikant.ru/"><img class="partner__logo"
+                                                                                      src="/epz/static/img/partners/ets.svg"
+                                                                                      alt=""></a>
+                                </p>
+                                <figcaption class="partner__desc"> Электронная торговая <br> площадка «Фабрикант»
+                                </figcaption>
+                                <a target="_blank" href="https://www.fabrikant.ru/"
+                                   class="partner__link">FABRIKANT.RU</a>
+                            </figure>
+                            <figure class="partner">
+                                <p class="partner-logo-wrap">
+                                    <a target="_blank" href="https://gz.lot-online.ru/"><img class="partner__logo"
+                                                                                            src="/epz/static/img/partners/newGZ.svg"
+                                                                                            alt=""></a>
+                                </p>
+                                <figcaption class="partner__desc"> Всероссийская <br> универсальная площадка
+                                </figcaption>
+                                <a target="_blank" href="https://gz.lot-online.ru/"
+                                   class="partner__link">GZ.LOT-ONLINE.RU</a>
+                            </figure>
+                            <figure class="partner">
+                                <p class="partner-logo-wrap">
+                                    <a target="_blank" href="https://www.tektorg.ru/"><img class="partner__logo"
+                                                                                           src="/epz/static/img/partners/tektorg_new.svg"
+                                                                                           alt=""></a>
+                                </p>
+                                <figcaption class="partner__desc"> Федеральная электронная<br/>площадка ТЭК-Торг
+
+                                </figcaption>
+                                <a target="_blank" href="https://www.tektorg.ru/"
+                                   class="partner__link">TEKTORG.RU</a>
+                            </figure>
+                            <figure class="partner">
+                                <p class="partner-logo-wrap">
+                                    <a target="_blank" href="https://etpgpb.ru/"><img class="partner__logo"
+                                                                                      src="/epz/static/img/partners/etpgpb.svg"
+                                                                                      alt=""></a>
+                                </p>
+                                <figcaption class="partner__desc"> Электронная торговая<br/>площадка ГПБ
+                                </figcaption>
+                                <a target="_blank" href="https://etpgpb.ru/"
+                                   class="partner__link">ETPGPB.RU</a>
+                            </figure>
+                            <figure class="partner">
+                                <p class="partner-logo-wrap">
+                                    <a target="_blank" href="https://new.etpgpb.ru/products/strateg/"><img class="partner__logo"
+                                                                                             src="/epz/static/img/partners/etpgpbspec.svg"
+                                                                                             alt=""></a>
+                                </p>
+                                <figcaption class="partner__desc"> Специализированная электронная<br/>торговая площадка ГПБ
+                                </figcaption>
+                                <a target="_blank" href="https://new.etpgpb.ru/products/strateg/"
+                                   class="partner__link">etpgpb.ru</a>
+                            </figure>
+                            <figure class="partner">
+                                <p class="partner-logo-wrap">
+                                    <a target="_blank" href="http://www.astgoz.ru/"><img class="partner__logo"
+                                                                                         src="/epz/static/img/partners/astgoz.svg"
+                                                                                         alt=""></a>
+                                </p>
+                                <figcaption class="partner__desc"> Автоматизированная система торгов государственного
+                                    оборонного
+                                    заказа <br></figcaption>
+                                <a target="_blank" href="http://www.astgoz.ru/"
+                                   class="partner__link">ASTGOZ.RU</a>
+                            </figure>
+                            <figure class="partner">
+                                <p class="partner-logo-wrap">
+                                    <a target="_blank" href="https://etprf.ru/"><img class="partner__logo"
+                                                                                            src="/epz/static/img/partners/etprf.svg"
+                                                                                            alt=""></a>
+                                </p>
+                                <figcaption class="partner__desc">Специализированная электронная площадка</figcaption>
+                                <a target="_blank" href="https://etprf.ru/"
+                                   class="partner__link">ETPRF.RU</a>
+                            </figure>
+                        </div>
+                        <span class="partners-slider__btn partners-slider__btn_prev">
+                    <img src="/epz/static/img/icons/arrow_blue.svg" alt="">
+                </span> 
+                        <span class="partners-slider__btn partners-slider__btn_next">
+                    <img src="/epz/static/img/icons/arrow_blue.svg" alt="">
+                </span> 
+                    </div>
+                </div>
+                <section class="footer-nav">
+                    <div class="container">
+                        <div class="row">
+                            <div class="col-md-12 col-lg-12">
+                                <ul class="footer-nav-list">
+                                    <li class="footer-nav__item">
+                                        <a href="/epz/main/public/news/news-search.html" class="footer-nav__link">Новости</a>
+                                    </li>
+                                    <li class="footer-nav__item">
+                                        <a href="/epz/main/public/siteMap.html?section=suppliers" class="footer-nav__link">Поставщикам</a>
+                                    </li>
+                                    <li class="footer-nav__item">
+                                        <a href="/epz/main/public/siteMap.html?section=customers" class="footer-nav__link">Заказчикам</a>
+                                    </li>
+                                    <li class="footer-nav__item">
+                                        <a href="/epz/main/public/siteMap.html?section=control-bodies" class="footer-nav__link">Органам контроля</a>
+                                    </li>
+                                    <li class="footer-nav__item">
+                                        <a href="/epz/main/public/quiz/list.html" class="footer-nav__link">Опросы</a>
+                                    </li>
+                                    <li class="footer-nav__item">
+                                        <a href="/epz/main/public/home.html#statAnchor" class="footer-nav__link">Статистика</a>
+                                    </li>
+                                    <li class="footer-nav__item">
+                                        <a href="/epz/main/public/siteMap.html" class="footer-nav__link">Карта сайта</a>
+                                    </li>
+                                    <li class="footer-nav__item">
+                                        <a href="https://zakupki.gov.ru/rpt/cat02/zakupki-traffic.xlsx" class="footer-nav__link">Отчет о посещаемости</a>
+                                    </li>
+                                    <li class="footer-nav__item">
+                                        <a href="/epz/main/public/qa/view.html" class="footer-nav__link">Часто задаваемые вопросы</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                <section class="footer-links">
+                    <div class="container">
+                        <div class="row">
+                            <div class="col-4 col-sm-4 col-md-4 col-lg-4">
+                                <figure class="logo">
+                                    <img src="/epz/static/img/header/emblem.svg" alt="">
+                                    <figcaption class="logo__name filterParametrs"> Единая информационная система<br> в сфере закупок</figcaption>
+                                </figure>
+                                <div class="copyright">
+                                    <small class="copyright__text">© Федеральное казначейство, 2026</small>
+                                    <small class="copyright__text"> Версия hotfix/16.1.1.139 rev505eb28f от 28.05.2026</small>
+                                </div>
+                            </div>
+                            <div class="col-4 col-sm-4 col-md-4 col-lg-4">
+                                <nav class="usefull-links">
+                                    <span class="list-title">Официальные ресурсы</span>
+                                    <ul class="list">
+                                        <li class="list-item">
+                                            <a target="_blank" href="http://www.kremlin.ru" class="list-item__link">Президент Российской Федерации</a>
+                                        </li>
+                                        <li class="list-item">
+                                            <a target="_blank" href="http://www.government.ru" class="list-item__link">Правительство Российской Федерации</a>
+                                        </li>
+                                        <li class="list-item">
+                                            <a target="_blank" href="http://www.economy.gov.ru" class="list-item__link">Министерство экономического развития Российской Федерации</a>
+                                        </li>
+                                        <li class="list-item">
+                                            <a target="_blank" href="https://minfin.gov.ru" class="list-item__link">Министерство финансов Российской Федерации</a>
+                                        </li>
+                                        <li class="list-item">
+                                            <a target="_blank" href="http://www.fas.gov.ru" class="list-item__link">Федеральная антимонопольная служба</a>
+                                        </li>
+                                        <li class="list-item">
+                                            <a target="_blank" href="http://roskazna.gov.ru" class="list-item__link">Федеральное казначейство</a>
+                                        </li>
+                                    </ul>
+                                </nav>
+                            </div>
+                            <div class="col-4 col-sm-4 col-md-4 col-lg-4">
+                                <nav class="usefull-links">
+                                    <span class="list-title">Техническая информация</span>
+                                    <ul class="list">
+                                        <li class="list-item">
+                                            <a href="/epz/main/public/user-feedback.html" class="list-item__link">Техническая поддержка</a>
+                                        </li>
+                                        <li class="list-item">
+                                            <a data-modalup href="/epz/main/public/userFeedback/openFeedbackForm.html" class="list-item__link">Ваши идеи по улучшению сайта</a>
+                                        </li>
+                                    </ul>
+                                </nav>
+                                <figure class="btn-on-top">
+                                    <a class="btn-on-top__link">
+                                        <img class="btn-on-top__image" src="/epz/static/img/icons/arrow-on-top.svg" alt="">
+                                    </a>
+                                </figure>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            
+        
+        <div class="clear"></div>
+    </div>
+</footer>
+<script src="/epz/static/js/openstreetmap.js"></script>
+<script src="/epz/static/js/openStreetMapCommonFunctions.js"></script>
+
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript" >
+    (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+        m[i].l=1*new Date();k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+    (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+
+    ym(36706425, "init", {
+        clickmap:true,
+        trackLinks:true,
+        accurateTrackBounce:true,
+        webvisor:true
+    });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/36706425" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+
+
+
+<script type="text/javascript">if (window.epzAnalytics) window.epzAnalytics.track();
+$(document).ready(function () {
+        checkNotice();
+});
+</script>
+
+
+<div id="custom-tooltip"></div>
+</body>
+
+</html>

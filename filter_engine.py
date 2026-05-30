@@ -684,6 +684,121 @@ def _is_resale_without_service(text: str) -> bool:
     return not any(m in text for m in _SERVICE_MARKERS)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Детекторы для помощника решения (decision_aid.py)
+#
+# detect_flags() — не часть скоринга 8 фильтров; это отдельные сигналы для
+# карточки решения новичка: национальный режим / реестр ПО и возможность
+# удалённой работы. Все маркеры пишутся уже нормализованными (нижний регистр,
+# «ё»→«е»), т.к. сравниваются с _normalize(text).
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Признак того, что в закупке вообще затронут национальный режим / реестр ПО.
+_NR_MARKERS = [
+    "национальный режим", "ст. 14 44-фз", "статья 14 44-фз", "постановление 1875",
+    "пп рф №1875", "пп №1875", "постановление 1236", "пп №1236",
+    "реестр российского по", "реестр российского программного обеспечения",
+    "реестр евразийского по", "реестр евразийского программного обеспечения",
+    "реестровая запись", "российское происхождение",
+    "доверенное программное обеспечение",
+]
+# Якоря: рядом с ними слова «запрет/ограничение/преимущество» считаем мерой
+# нацрежима (а не, например, «запрет привлекать субподрядчика»).
+_NR_ANCHORS = [
+    "национальный режим", "ст. 14", "статья 14", "постановление 1875", "№1875",
+    "реестр российского", "реестр евразийского", "реестровая запись",
+    "российское происхождение",
+]
+_NR_BAN = ["запрет допуска", "запрет на допуск", "запрещен допуск", "запрет закупки"]
+_NR_RESTRICTION = ["ограничение допуска", "ограничения допуска", "ограничение закупки"]
+_NR_PREFERENCE = ["преимущество", "ценовая преференция", "пятнадцатипроцент", "преференци"]
+
+_REGISTRY_RU = [
+    "реестр российского по", "реестр российского программного обеспечения",
+    "российское происхождение", "реестровая запись",
+]
+_REGISTRY_EAEU = ["реестр евразийского по", "реестр евразийского программного обеспечения"]
+_TRUSTED_SW = ["доверенное программное обеспечение", "доверенное по"]
+
+_REMOTE_MARKERS = [
+    "дистанционно", "удаленный доступ", "удаленно", "по vpn", "без выезда",
+    "электронная приемка",
+]
+_ONSITE_MARKERS = [
+    "выезд на объект", "на территории заказчика", "по месту нахождения заказчика",
+    "очное обследование", "монтаж на объекте", "выезд специалиста",
+]
+
+
+def _measure_in_context(text: str, terms: Iterable[str], anchors: Iterable[str],
+                        window: int = 400) -> bool:
+    """True, если одно из `terms` встречается в окне ±window рядом с якорем `anchors`."""
+    anchors = list(anchors)
+    for term in terms:
+        start = 0
+        while True:
+            idx = text.find(term, start)
+            if idx == -1:
+                break
+            lo = max(0, idx - window)
+            hi = min(len(text), idx + len(term) + window)
+            ctx = text[lo:hi]
+            if any(a in ctx for a in anchors):
+                return True
+            start = idx + len(term)
+    return False
+
+
+def detect_flags(text: str) -> dict:
+    """Сигналы нацрежима/реестра ПО и удалёнки для карточки решения.
+
+    Возвращает dict с булевыми/строковыми полями. На пустом тексте — нейтральные
+    значения (ничего не обнаружено), решение об «unknown» принимает decision_aid.
+    """
+    t = _normalize(text or "")
+    empty = not t
+    nr_detected = (not empty) and any(m in t for m in _NR_MARKERS)
+
+    measure = "unknown"
+    if nr_detected:
+        if _measure_in_context(t, _NR_BAN, _NR_ANCHORS):
+            measure = "ban"
+        elif _measure_in_context(t, _NR_RESTRICTION, _NR_ANCHORS):
+            measure = "restriction"
+        elif _measure_in_context(t, _NR_PREFERENCE, _NR_ANCHORS):
+            measure = "preference"
+
+    registry_ru = (not empty) and any(m in t for m in _REGISTRY_RU)
+    registry_eaeu = (not empty) and any(m in t for m in _REGISTRY_EAEU)
+    registry_record = (not empty) and ("реестровая запись" in t or "реестровый номер" in t)
+    trusted = (not empty) and any(m in t for m in _TRUSTED_SW)
+    software_registry_required = bool(
+        registry_ru or registry_eaeu or registry_record
+        or (nr_detected and measure in ("ban", "restriction"))
+    )
+
+    remote = (not empty) and any(m in t for m in _REMOTE_MARKERS)
+    onsite = (not empty) and any(m in t for m in _ONSITE_MARKERS)
+    if remote and onsite:
+        remote = False  # выезд важнее: не показываем «можно удалённо»
+
+    return {
+        "national_regime_detected": nr_detected,
+        "national_regime_measure": measure,
+        "software_registry_required": software_registry_required,
+        "registry_record_required": registry_record,
+        "domestic_software_required": registry_ru,
+        "trusted_software_required": trusted,
+        "registry_type": (
+            "russian_software" if registry_ru
+            else "eurasian_software" if registry_eaeu
+            else "unknown"
+        ),
+        "remote_possible": remote,
+        "onsite_required": onsite,
+    }
+
+
 def _apply_triage(profile: "FilterScore", triage: dict) -> "FilterScore":
     """Мягкая корректировка Ф1 по вердикту LLM-триажа (±1–2 балла)."""
     verdict = str(triage.get("verdict", "")).upper()

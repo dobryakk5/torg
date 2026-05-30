@@ -306,6 +306,61 @@ body::before {
 .eco-box .eco-result { color: var(--go); font-weight: 600; }
 .eco-box .eco-warn   { color: var(--caution); }
 
+/* ── Карточка решения (помощник новичка) ── */
+.decide {
+  border-radius: 12px; padding: 1.1rem 1.3rem; margin: 1rem 0 1.5rem;
+  border: 1px solid var(--border);
+}
+.decide.v-TAKE { background: var(--go-bg);      border-color: var(--go-bdr); }
+.decide.v-THINK{ background: var(--caution-bg); border-color: var(--caution-bdr); }
+.decide.v-SKIP { background: var(--nogo-bg);    border-color: var(--nogo-bdr); }
+.decide-head { display:flex; align-items:center; gap:.8rem; flex-wrap:wrap; }
+.decide-verdict { font-size:1.25rem; font-weight:700; letter-spacing:.04em; }
+.v-TAKE  .decide-verdict { color: var(--go); }
+.v-THINK .decide-verdict { color: var(--caution); }
+.v-SKIP  .decide-verdict { color: var(--nogo); }
+.decide-reason { color: var(--text); font-size:.85rem; flex:1 1 240px; }
+.decide-conf { font-size:.7rem; color: var(--dim); white-space:nowrap; }
+.decide-grid { display:grid; grid-template-columns:1fr 1fr; gap:.8rem; margin-top:1rem; }
+.decide-block { background: var(--surf); border:1px solid var(--border); border-radius:8px; padding:.7rem .85rem; }
+.decide-block h4 { margin:0 0 .5rem; font-size:.68rem; letter-spacing:.08em; color:var(--dim); text-transform:uppercase; }
+.gate { display:flex; gap:.5rem; align-items:flex-start; font-size:.78rem; line-height:1.5; margin:.3rem 0; }
+.gate .gi { flex:0 0 auto; }
+.gate .gl { color: var(--text); }
+.gate .ge { color: var(--dim); }
+.flag { font-size:.78rem; line-height:1.5; margin:.25rem 0; }
+.flag.green { color: var(--go); }
+.flag.red   { color: var(--nogo); }
+.fin-row { display:flex; justify-content:space-between; font-size:.78rem; margin:.25rem 0; color:var(--text); }
+.fin-row .muted { color: var(--dim); }
+.fin-na { color: var(--dim); font-style: italic; }
+.tag { display:inline-block; font-size:.62rem; padding:.1rem .4rem; border-radius:4px; border:1px solid var(--border2); color:var(--dim); }
+.tag.warn { color:var(--caution); border-color:var(--caution-bdr); }
+.chip { display:inline-block; font-size:.68rem; padding:.12rem .45rem; margin:.12rem; border-radius:4px; background:var(--surf3); color:var(--text); }
+.chip.gap { color:var(--caution); }
+@media (max-width: 700px) { .decide-grid { grid-template-columns: 1fr; } }
+
+/* ── LLM-объяснение (MVP2) ── */
+.decide-explain { margin-top: 1rem; }
+.explain-btn {
+  font-family: var(--mono); font-size: .8rem; cursor: pointer;
+  color: var(--text); background: var(--surf3);
+  border: 1px solid var(--border2); border-radius: 8px; padding: .55rem 1rem;
+  transition: background .15s, border-color .15s;
+}
+.explain-btn:hover { background: var(--surf); border-color: var(--accent); }
+.explain-btn:disabled { opacity: .6; cursor: default; }
+.explain-result { margin-top: .9rem; }
+.explain-result h4 {
+  margin: .9rem 0 .4rem; font-size: .7rem; letter-spacing: .08em;
+  color: var(--dim); text-transform: uppercase;
+}
+.explain-result p { font-size: .85rem; line-height: 1.6; color: var(--text); margin: 0; }
+.explain-result ul { margin: .2rem 0; padding-left: 1.1rem; }
+.explain-result li { font-size: .8rem; line-height: 1.55; color: var(--text); margin: .2rem 0; }
+.explain-err { font-size: .8rem; color: var(--caution); }
+.explain-meta { font-size: .65rem; color: var(--dim); margin-top: .5rem; }
+
 /* ── URL row ── */
 .url-row {
   display: flex; align-items: center; gap: .75rem;
@@ -329,6 +384,7 @@ body::before {
   .page { padding: 1rem 1rem 4rem; }
 }
 </style>
+{% include "_theme.html" %}
 </head>
 <body>
 <div class="page">
@@ -385,6 +441,90 @@ body::before {
       {% endif %}
     </div>
   </div>
+
+  <!-- ── Карточка решения для новичка (decision_aid) ── -->
+  {% if card %}
+  {% set conf_label = 'высокая' if card.confidence >= 0.7 else ('средняя' if card.confidence >= 0.4 else 'низкая') %}
+  <div class="decide v-{{ card.verdict }}">
+    <div class="decide-head">
+      <span class="decide-verdict">
+        {% if card.verdict == 'TAKE' %}✅{% elif card.verdict == 'THINK' %}🤔{% else %}⛔{% endif %}
+        {{ card.verdict_label }}
+      </span>
+      <span class="decide-reason">{{ card.verdict_reason }}</span>
+      <span class="decide-conf">уверенность оценки: {{ conf_label }}</span>
+    </div>
+
+    <div class="decide-grid">
+      <!-- Допуск-чеклист -->
+      <div class="decide-block">
+        <h4>Допуск — можно ли участвовать</h4>
+        {% for g in card.gates %}
+        {% set gi = '✅' if g.status=='ok' else ('⚠️' if g.status=='warn' else ('⛔' if g.status=='block' else '❓')) %}
+        <div class="gate">
+          <span class="gi">{{ gi }}</span>
+          <span><span class="gl">{{ g.label }}.</span> <span class="ge">{{ g.explain }}</span></span>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Смогу ли сделать -->
+      <div class="decide-block">
+        <h4>Смогу ли сделать</h4>
+        {% set cd = card.can_do %}
+        {% if cd.status == 'unknown' %}
+        <div class="fin-na">{{ cd.note or 'Недостаточно данных для оценки.' }}</div>
+        {% else %}
+        <div class="gate">
+          <span class="gi">{{ '✅' if cd.status=='ok' else '⚠️' }}</span>
+          <span class="gl">Совпадение с компетенциями{% if cd.score is not none %}: {{ cd.score }}%{% endif %}</span>
+        </div>
+        {% if cd.matched %}<div style="margin-top:.4rem">{% for m in cd.matched %}<span class="chip">{{ m }}</span>{% endfor %}</div>{% endif %}
+        {% if cd.gaps %}<div style="margin-top:.3rem"><span class="ge">не хватает:</span> {% for m in cd.gaps %}<span class="chip gap">{{ m }}</span>{% endfor %}</div>{% endif %}
+        {% if cd.note and not cd.matched and not cd.gaps %}<div class="ge" style="margin-top:.3rem">{{ cd.note }}</div>{% endif %}
+        {% endif %}
+      </div>
+
+      <!-- Финмодель -->
+      <div class="decide-block">
+        <h4>Деньги (оценка
+          {% if card.finance.quality == 'weak' %}<span class="tag warn">грубая</span>{% else %}<span class="tag">{{ card.finance.quality }}</span>{% endif %})
+        </h4>
+        {% set f = card.finance %}
+        {% if f.nmck is none %}
+        <div class="fin-na">НМЦК не указана — расчёт невозможен.</div>
+        {% else %}
+        {% macro money(v) %}{% if v is none %}<span class="fin-na">не найдено</span>{% else %}{{ v | fmt_price }}{% endif %}{% endmacro %}
+        <div class="fin-row"><span class="muted">НМЦК</span><span>{{ money(f.nmck) }}</span></div>
+        <div class="fin-row"><span class="muted">Реком. ставка</span><span>{{ money(f.recommended_bid) }}</span></div>
+        <div class="fin-row"><span class="muted">Налог УСН 6%</span><span>− {{ money(f.tax_usn) }}</span></div>
+        <div class="fin-row"><span class="muted">Аванс</span><span>{% if f.advance_pct is none %}<span class="fin-na">не найден</span>{% else %}{{ f.advance_pct }}%{% endif %}</span></div>
+        <div class="fin-row"><span class="muted">Обеспеч. исполнения</span><span>{{ money(f.contract_security) }}</span></div>
+        <div class="fin-row"><span class="muted">Кассовый разрыв</span><span>{{ money(f.cash_gap) }}</span></div>
+        <div class="fin-row"><span class="muted">Чистая маржа</span>
+          <span style="color:{{ 'var(--go)' if f.verdict=='выгодно' else ('var(--caution)' if f.verdict=='на грани' else 'var(--nogo)') }}">
+            {{ money(f.net_margin) }}{% if f.net_margin_pct is not none %} ({{ (f.net_margin_pct*100)|round|int }}%){% endif %} · {{ f.verdict }}
+          </span>
+        </div>
+        {% if f.assumptions %}<div class="ge" style="margin-top:.4rem;font-size:.7rem">⚠️ {{ f.assumptions | join(' ') }}</div>{% endif %}
+        {% endif %}
+      </div>
+
+      <!-- Флаги -->
+      <div class="decide-block">
+        <h4>На что обратить внимание</h4>
+        {% for fl in card.green_flags %}<div class="flag green">＋ {{ fl }}</div>{% endfor %}
+        {% for fl in card.red_flags %}<div class="flag red">－ {{ fl }}</div>{% endfor %}
+        {% if not card.green_flags and not card.red_flags %}<div class="fin-na">Особых флагов не найдено.</div>{% endif %}
+      </div>
+    </div><!-- /.decide-grid -->
+
+    <div class="decide-explain" data-pnum="{{ tender.purchase_number }}">
+      <button class="explain-btn" id="explainBtn" onclick="loadExplain(this)">💬 Объяснить простыми словами</button>
+      <div id="explainResult" class="explain-result" hidden></div>
+    </div>
+  </div><!-- /.decide -->
+  {% endif %}
 
   <!-- ── LLM-триаж (Stage 1) ── -->
   {% if tender.llm_triage_verdict %}
@@ -544,8 +684,8 @@ body::before {
   </div>
   {% endif %}
 
-  <!-- ── Economics hint ── -->
-  {% if tender.price %}
+  <!-- ── Economics hint (только если нет карточки решения) ── -->
+  {% if tender.price and not card %}
   {% set price = tender.price | float %}
   {% set tax   = (price * 0.06) | int %}
   {% set sec   = (price * 0.01) | int %}
@@ -595,5 +735,45 @@ body::before {
   {% endif %}
 
 </div>
+
+<script>
+function _ul(items) {
+  if (!items || !items.length) return '';
+  return '<ul>' + items.map(function(x){
+    return '<li>' + String(x).replace(/</g,'&lt;') + '</li>';
+  }).join('') + '</ul>';
+}
+async function loadExplain(btn) {
+  var box = btn.closest('.decide-explain');
+  var pnum = box.getAttribute('data-pnum');
+  var out = document.getElementById('explainResult');
+  btn.disabled = true;
+  var orig = btn.textContent;
+  btn.textContent = '⏳ Думаю…';
+  out.hidden = false;
+  out.innerHTML = '<div class="explain-meta">Запрос к LLM…</div>';
+  try {
+    var r = await fetch('/api/decide/' + encodeURIComponent(pnum) + '/explain', {method: 'POST'});
+    var data = await r.json();
+    if (data.error || !data.explain) {
+      out.innerHTML = '<div class="explain-err">⚠️ ' + (data.error || 'Объяснение недоступно.') + '</div>';
+      btn.textContent = orig; btn.disabled = false;
+      return;
+    }
+    var e = data.explain, html = '';
+    if (e.plain_explanation) html += '<h4>Почему такой вердикт</h4><p>' + e.plain_explanation.replace(/</g,'&lt;') + '</p>';
+    if (e.main_risks && e.main_risks.length) html += '<h4>Главные риски</h4>' + _ul(e.main_risks);
+    if (e.what_to_check_manually && e.what_to_check_manually.length) html += '<h4>Что проверить вручную</h4>' + _ul(e.what_to_check_manually);
+    if (e.questions_to_customer && e.questions_to_customer.length) html += '<h4>Вопросы заказчику</h4>' + _ul(e.questions_to_customer);
+    if (e.application_notes && e.application_notes.length) html += '<h4>Подготовка заявки</h4>' + _ul(e.application_notes);
+    html += '<div class="explain-meta">' + (data.cached ? 'из кеша' : 'сгенерировано LLM') + '</div>';
+    out.innerHTML = html;
+    btn.textContent = '✅ Объяснено';
+  } catch (err) {
+    out.innerHTML = '<div class="explain-err">⚠️ Ошибка запроса: ' + String(err).replace(/</g,'&lt;') + '</div>';
+    btn.textContent = orig; btn.disabled = false;
+  }
+}
+</script>
 </body>
 </html>

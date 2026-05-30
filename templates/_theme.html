@@ -1,0 +1,417 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: light;
+
+  --bg: #f4ecdf;
+  --surf: #fffaf2;
+  --surf2: #f0e3d1;
+  --surf3: #e3cfb5;
+  --border: #ddc9aa;
+  --border2: #c4a77f;
+  --text: #2f261d;
+  --dim: #74624d;
+  --dimmer: #a08b71;
+
+  --accent: #8a5a2b;
+  --green: #23764a;
+  --yellow: #9b6a13;
+  --red: #a6422f;
+  --blue: #2f668f;
+  --orange: #a55b21;
+  --purple: #73558a;
+
+  --go: var(--green);
+  --go-bg: rgba(35, 118, 74, .11);
+  --go-bdr: rgba(35, 118, 74, .28);
+  --caution: var(--yellow);
+  --caution-bg: rgba(155, 106, 19, .12);
+  --caution-bdr: rgba(155, 106, 19, .3);
+  --nogo: var(--red);
+  --nogo-bg: rgba(166, 66, 47, .11);
+  --nogo-bdr: rgba(166, 66, 47, .3);
+
+  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+  --mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+  --display: var(--font-sans);
+}
+
+*, *::before, *::after {
+  scrollbar-color: var(--border2) var(--surf2);
+}
+
+html,
+body {
+  background:
+    radial-gradient(circle at 20% -10%, rgba(255, 255, 255, .5), transparent 28rem),
+    linear-gradient(180deg, #f7f0e5 0%, var(--bg) 100%) !important;
+  color: var(--text) !important;
+  font-family: var(--font-sans) !important;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100%;
+}
+
+body::before {
+  display: none !important;
+}
+
+::selection {
+  background: rgba(138, 90, 43, .22);
+}
+
+a {
+  color: var(--accent) !important;
+}
+
+code,
+pre,
+.mono,
+.pnum,
+.score-cell,
+.metric-value,
+.stat-val,
+.stat-chip .val,
+.job-status,
+.job-meta,
+.tag,
+.chip,
+.badge {
+  font-family: var(--mono) !important;
+}
+
+h1,
+h2,
+h3,
+.head h1,
+.logo,
+.hero-title,
+.section-hdr h2,
+.section-label,
+.llm-verdict,
+.score-big,
+.fc-score-num,
+.corridor-main {
+  font-family: var(--font-sans) !important;
+  letter-spacing: 0 !important;
+}
+
+h1,
+.head h1,
+.hero-title {
+  line-height: 1.2 !important;
+}
+
+.header {
+  background: rgba(255, 250, 242, .92) !important;
+  border-bottom: 1px solid var(--border) !important;
+  box-shadow: 0 8px 24px rgba(72, 48, 26, .08);
+  backdrop-filter: blur(14px);
+}
+
+.header-inner {
+  min-height: 56px;
+}
+
+.logo {
+  color: var(--accent) !important;
+  font-size: .98rem !important;
+  font-weight: 800 !important;
+  white-space: nowrap;
+}
+
+.nav a,
+.tab,
+.sec-btn,
+.sortbtn,
+.btn,
+.btn-run,
+.btn-save,
+.btn-link,
+.back-btn,
+.lot-link,
+button {
+  font-family: var(--font-sans) !important;
+}
+
+.nav a,
+.tab,
+.sec-btn,
+.sortbtn {
+  color: var(--dim) !important;
+}
+
+.nav a:hover,
+.nav a.active,
+.tab:hover,
+.tab.active,
+.sec-btn:hover,
+.sec-btn.active {
+  background: var(--surf2) !important;
+  color: var(--text) !important;
+  text-decoration: none !important;
+}
+
+.tabs-wrap,
+.tabs {
+  background: rgba(255, 250, 242, .7) !important;
+  border-color: var(--border) !important;
+}
+
+.tab.active {
+  border-bottom-color: var(--accent) !important;
+}
+
+.main,
+.layout,
+.page,
+.wrap {
+  color: var(--text);
+}
+
+.page {
+  max-width: 1180px;
+}
+
+.tbl-wrap,
+.panel,
+.card,
+.hero,
+.filter-card,
+.info-card,
+.llm-box,
+.eco-box,
+.decide,
+.decide-block,
+.corridor-card,
+.card-header,
+.metric,
+.stat,
+.job-card,
+.sidebar,
+.modal,
+.notes-block,
+.example {
+  background: var(--surf) !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 10px 30px rgba(72, 48, 26, .07);
+}
+
+.stat,
+.metric,
+.job-card,
+.pitem,
+.chip,
+.stat-chip,
+.sec-badge,
+.bucket-pill,
+.fc-bar-bg,
+.corridor-bar,
+.detail-row td {
+  background: var(--surf2) !important;
+}
+
+table {
+  color: var(--text);
+  min-width: 760px;
+}
+
+.tbl-wrap table {
+  min-width: 1080px;
+}
+
+.tbl-wrap {
+  overflow-x: auto;
+}
+
+thead tr,
+th {
+  background: var(--surf2) !important;
+}
+
+th {
+  color: var(--dim) !important;
+  border-bottom-color: var(--border) !important;
+  font-size: .66rem !important;
+}
+
+td {
+  border-bottom-color: var(--border) !important;
+}
+
+tr:hover td,
+tr.trow:hover,
+.kb-table tr:hover td {
+  background: #f8efdf !important;
+}
+
+input,
+select,
+textarea {
+  background: var(--surf) !important;
+  border-color: var(--border2) !important;
+  color: var(--text) !important;
+  font-family: var(--font-sans) !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(138, 90, 43, .14);
+  outline: none;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--dimmer);
+}
+
+code,
+pre,
+.detail-box pre,
+.eco-box pre {
+  background: var(--surf2) !important;
+  color: var(--text) !important;
+}
+
+.btn-primary,
+.btn-accent,
+.btn-run,
+.btn-save {
+  background: var(--accent) !important;
+  color: #fffaf2 !important;
+}
+
+.btn-ghost,
+.back-btn,
+.sortbtn,
+.explain-btn,
+.lot-link {
+  background: var(--surf) !important;
+  border-color: var(--border2) !important;
+  color: var(--dim) !important;
+}
+
+.btn-ghost:hover,
+.back-btn:hover,
+.sortbtn:hover,
+.sortbtn.active,
+.explain-btn:hover,
+.lot-link:hover {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+
+.badge,
+.tag,
+.chip,
+.bucket-pill {
+  border-radius: 999px !important;
+}
+
+.badge-go,
+.b-go,
+.tag-1,
+.tag-boost,
+.job-status.done {
+  background: var(--go-bg) !important;
+  color: var(--go) !important;
+  border-color: var(--go-bdr) !important;
+}
+
+.badge-caution,
+.b-caution,
+.badge-yellow,
+.tag-warn,
+.job-status.running {
+  background: var(--caution-bg) !important;
+  color: var(--caution) !important;
+  border-color: var(--caution-bdr) !important;
+}
+
+.badge-nogo,
+.b-nogo,
+.badge-red,
+.tag-stop,
+.tag-err,
+.job-status.error {
+  background: var(--nogo-bg) !important;
+  color: var(--nogo) !important;
+  border-color: var(--nogo-bdr) !important;
+}
+
+.badge-green,
+.corridor-main,
+.score-num,
+.stat-val,
+.law-223,
+.info-val.law-223 {
+  color: var(--green) !important;
+}
+
+.law-44,
+.info-val.law-44,
+.sort-mark,
+.corridor-cat,
+.panel h2,
+.detail-box h4,
+.llm-text .llm-section-title {
+  color: var(--accent) !important;
+}
+
+.muted,
+.sub,
+.head .sub,
+.date-cell,
+.meta-row,
+.corridor-sub,
+.corridor-law,
+.corridor-meta,
+.corridor-samples,
+.field .hint,
+.empty,
+.empty-state {
+  color: var(--dim) !important;
+}
+
+.modal-backdrop {
+  background: rgba(47, 38, 29, .35) !important;
+}
+
+.toggle-slider {
+  background: var(--surf3) !important;
+}
+
+.toggle-slider:before {
+  background: var(--surf) !important;
+  box-shadow: 0 1px 3px rgba(47, 38, 29, .25);
+}
+
+.toggle input:checked + .toggle-slider {
+  background: var(--accent) !important;
+}
+
+@media (max-width: 800px) {
+  html,
+  body {
+    font-size: 14px;
+  }
+
+  .header,
+  .main,
+  .layout,
+  .wrap,
+  .page {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  .header-inner,
+  .nav {
+    flex-wrap: wrap;
+  }
+}
+</style>

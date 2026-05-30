@@ -22,6 +22,7 @@ API:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -540,8 +541,18 @@ async def tender_detail(request: Request, purchase_number: str):
     tender = db.get_tender(purchase_number)
     if not tender:
         raise HTTPException(404, "Тендер не найден")
+    card = None
+    criteria = None
+    try:
+        import decision_aid
+        import document_processor as dp
+        text = _decide_text(tender)
+        card = decision_aid.build_card(tender, text=text)
+        criteria = dp.extract_evaluation_criteria(text)
+    except Exception:
+        logger.exception("decision_aid/criteria build failed for %s", purchase_number)
     return templates.TemplateResponse("detail.html",
-        {"request": request, "tender": tender})
+        {"request": request, "tender": tender, "card": card, "criteria": criteria})
 
 
 @app.get("/rules", response_class=HTMLResponse)
@@ -944,6 +955,97 @@ async def api_rules_seed(request: Request):
     import filter_engine as fe
     fe.invalidate_rules_cache()
     return {"ok": True, "inserted": n}
+
+
+@app.get("/api/decide/{purchase_number}")
+async def api_decide(purchase_number: str):
+    """Быстрая детерминированная карточка решения (без LLM)."""
+    import decision_aid
+    tender = db.get_tender(purchase_number)
+    if not tender:
+        raise HTTPException(404, "Тендер не найден")
+    return JSONResponse(content=decision_aid.build_card(tender))
+
+
+def _decide_text(tender: dict) -> str:
+    return (
+        tender.get("document_text")
+        or tender.get("document_text_excerpt")
+        or tender.get("primary_text")
+        or tender.get("description")
+        or tender.get("title")
+        or ""
+    )
+
+
+def _explain_cache_key(purchase_number: str, text: str, card: dict) -> str:
+    """Ключ кеша: тендер + текст + карта + профиль + версия промпта."""
+    import llm_analyzer
+    try:
+        from knowledge_base import get_profile
+        profile_repr = json.dumps(get_profile(), ensure_ascii=False, sort_keys=True, default=str)
+    except Exception:
+        profile_repr = ""
+    card_repr = json.dumps(card, ensure_ascii=False, sort_keys=True, default=str)
+    parts = [
+        purchase_number,
+        hashlib.sha256((text or "").encode("utf-8")).hexdigest(),
+        hashlib.sha256(card_repr.encode("utf-8")).hexdigest(),
+        hashlib.sha256(profile_repr.encode("utf-8")).hexdigest(),
+        getattr(llm_analyzer, "EXPLAIN_PROMPT_VERSION", "v1"),
+    ]
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+@app.post("/api/decide/{purchase_number}/explain")
+async def api_decide_explain(purchase_number: str):
+    """LLM-объяснение карточки простым языком (дорогой, кешируется по hash).
+
+    Возвращает {card, explain, cached, error}. Карточка считается всегда; explain
+    может быть null, если LLM недоступна/вернула мусор — страница при этом не ломается.
+    """
+    import decision_aid
+    import llm_analyzer
+    import llm_provider
+
+    tender = db.get_tender(purchase_number)
+    if not tender:
+        raise HTTPException(404, "Тендер не найден")
+
+    text = _decide_text(tender)
+    card = decision_aid.build_card(tender, text=text)
+    cache_key = _explain_cache_key(purchase_number, text, card)
+
+    # 1. Кеш актуален?
+    try:
+        cached = db.get_novice_explain(purchase_number)
+    except Exception:
+        cached = None
+    if cached and cached.get("hash") == cache_key and cached.get("explain"):
+        logger.info("decision_aid_llm_explain_cached: %s", purchase_number)
+        return JSONResponse(content={"card": card, "explain": cached["explain"],
+                                     "cached": True, "error": None})
+
+    # 2. LLM доступна?
+    if not llm_provider.is_configured():
+        return JSONResponse(content={"card": card, "explain": None, "cached": False,
+                                     "error": "LLM недоступна — добавьте ключ API в /control."})
+
+    # 3. Вызов LLM
+    logger.info("decision_aid_llm_explain_started: %s", purchase_number)
+    explain = llm_analyzer.explain_for_novice(tender, card, text)
+    if not explain:
+        logger.info("decision_aid_llm_explain_failed: %s", purchase_number)
+        return JSONResponse(content={"card": card, "explain": None, "cached": False,
+                                     "error": "Не удалось получить объяснение (LLM вернула пустой ответ)."})
+
+    # 4. Сохранить в кеш
+    try:
+        db.save_novice_explain(purchase_number, explain, cache_key, llm_provider.deep_model())
+    except Exception:
+        logger.exception("save_novice_explain failed for %s", purchase_number)
+
+    return JSONResponse(content={"card": card, "explain": explain, "cached": False, "error": None})
 
 
 @app.get("/api/kb/match/{purchase_number}")

@@ -248,6 +248,283 @@ def _normalize_triage(data: dict) -> dict:
     }
 
 
+# ── MVP2: объяснение готовой карточки решения простым языком ──────────────────
+# LLM получает УЖЕ посчитанную карточку (decision_aid.build_card) и только объясняет
+# её новичку: ничего не пересчитывает, не меняет вердикт/деньги/гейты.
+
+# Версия промпта — часть ключа кеша. Меняй при правках формулировок ниже.
+EXPLAIN_PROMPT_VERSION = "v1"
+
+_EXPLAIN_SYSTEM = """\
+Ты — наставник для новичка в госзакупках (ИТ-подрядчик: 1С-Битрикс, сайты, интеграции,
+серверы, поставка ИТ-оборудования с настройкой). Тебе дают УЖЕ ГОТОВУЮ карточку решения
+по тендеру (вердикт, гейты допуска, финмодель, флаги), посчитанную кодом.
+
+ТВОЯ ЗАДАЧА — объяснить эту карточку простым языком. СТРОГО:
+- НЕ пересчитывай числа (НМЦК, маржу, обеспечение) — бери их как есть из карточки.
+- НЕ меняй вердикт (БЕРИ/ПОДУМАЙ/ПРОПУСТИ) — объясняй именно его.
+- Опирайся ТОЛЬКО на данные карточки и текст тендера, не выдумывай фактов.
+- Пиши коротко и по-человечески, как будто объясняешь новичку.
+
+Ответь СТРОГО одним JSON-объектом:
+{{"plain_explanation":"<2-4 предложения: почему такой вердикт>",
+"main_risks":["<риск>", "..."],
+"what_to_check_manually":["<что проверить в документации руками>", "..."],
+"questions_to_customer":["<вопрос заказчику>", "..."],
+"application_notes":["<на что обратить внимание при подготовке заявки>", "..."]}}
+"""
+
+_EXPLAIN_USER = """\
+КАРТОЧКА РЕШЕНИЯ (посчитана кодом, НЕ меняй её):
+Вердикт: {verdict_label} ({verdict})
+Почему (черновая причина): {verdict_reason}
+Уверенность: {confidence}
+
+Гейты допуска:
+{gates}
+
+Смогу ли сделать: {can_do}
+
+Финмодель (оценка {fin_quality}): {finance}
+
+Зелёные флаги: {green}
+Красные флаги: {red}
+
+ДАННЫЕ ТЕНДЕРА:
+Название: {title}
+Заказчик: {customer}
+НМЦК: {price}
+Закон: {law_type}
+Срок подачи: {deadline}
+
+Фрагмент текста документации:
+---
+{text}
+---
+"""
+
+
+def explain_for_novice(tender: dict, card: dict, page_text: str = "") -> Optional[dict]:
+    """LLM-объяснение готовой карточки решения. Возвращает dict или None.
+
+    Ключи результата: plain_explanation (str), main_risks/what_to_check_manually/
+    questions_to_customer/application_notes (list[str]).
+    """
+    import config
+    import llm_provider
+
+    if not llm_provider.is_configured():
+        return None
+
+    def _fmt_gates(gates):
+        out = []
+        for g in gates or []:
+            out.append(f"- [{g.get('status')}] {g.get('label')}: {g.get('explain')}")
+        return "\n".join(out) or "—"
+
+    def _fmt_can_do(cd):
+        if not cd or cd.get("status") == "unknown":
+            return "не определено"
+        parts = [f"статус={cd.get('status')}"]
+        if cd.get("score") is not None:
+            parts.append(f"совпадение {cd.get('score')}%")
+        if cd.get("matched"):
+            parts.append("умеем: " + ", ".join(cd["matched"][:8]))
+        if cd.get("gaps"):
+            parts.append("не хватает: " + ", ".join(cd["gaps"][:8]))
+        return "; ".join(parts)
+
+    def _fmt_finance(f):
+        if not f or f.get("nmck") is None:
+            return "НМЦК не указана — расчёт невозможен"
+        def m(v):
+            return "не найдено" if v is None else f"{v:,.0f} ₽".replace(",", " ")
+        return (f"ставка {m(f.get('recommended_bid'))}, налог {m(f.get('tax_usn'))}, "
+                f"обеспеч.исполн. {m(f.get('contract_security'))}, "
+                f"аванс {f.get('advance_pct') if f.get('advance_pct') is not None else 'не найден'}, "
+                f"кассовый разрыв {m(f.get('cash_gap'))}, "
+                f"маржа {m(f.get('net_margin'))} → {f.get('verdict')}")
+
+    def money(value):
+        return f"{value:,.0f} ₽".replace(",", " ") if value else "не указана"
+
+    finance = card.get("finance") or {}
+    user_message = _EXPLAIN_USER.format(
+        verdict=card.get("verdict", "—"),
+        verdict_label=card.get("verdict_label", "—"),
+        verdict_reason=card.get("verdict_reason", "—"),
+        confidence=card.get("confidence", "—"),
+        gates=_fmt_gates(card.get("gates")),
+        can_do=_fmt_can_do(card.get("can_do")),
+        fin_quality=finance.get("quality", "—"),
+        finance=_fmt_finance(finance),
+        green="; ".join(card.get("green_flags") or []) or "—",
+        red="; ".join(card.get("red_flags") or []) or "—",
+        title=tender.get("title", "—"),
+        customer=tender.get("customer", "—"),
+        price=money(tender.get("price")),
+        law_type=tender.get("law_type", "—"),
+        deadline=tender.get("deadline", "—"),
+        text=(page_text or "(текст не получен)")[: config.LLM_TEXT_CHARS],
+    )
+
+    raw = llm_provider.complete(
+        system=_EXPLAIN_SYSTEM,
+        user=user_message,
+        model=llm_provider.deep_model(),
+        max_tokens=1000,
+        temperature=0.3,
+        json_mode=True,
+    )
+    data = llm_provider.parse_json(raw)
+    if not data:
+        return None
+    return _normalize_explain(data)
+
+
+def _normalize_explain(data: dict) -> dict:
+    def _as_list(v):
+        if isinstance(v, list):
+            return [str(x).strip() for x in v if str(x).strip()][:6]
+        if isinstance(v, str) and v.strip():
+            return [v.strip()]
+        return []
+    return {
+        "plain_explanation": str(data.get("plain_explanation", "")).strip()[:800],
+        "main_risks": _as_list(data.get("main_risks")),
+        "what_to_check_manually": _as_list(data.get("what_to_check_manually")),
+        "questions_to_customer": _as_list(data.get("questions_to_customer")),
+        "application_notes": _as_list(data.get("application_notes")),
+    }
+
+
+# ── MVP3: разбор критериев оценки и черновик запроса на разъяснение ───────────
+
+_CRITERIA_SYSTEM = """\
+Ты — тендерный аналитик. Тебе дают ФРАГМЕНТЫ документации о закупке (вокруг раздела
+оценки заявок). Разбери критерии оценки для новичка.
+
+СТРОГО:
+- Не выдумывай критерии. Если в тексте нет критерия или его веса — ставь null/"unknown".
+- Опирайся только на присланный текст.
+
+Ответь СТРОГО одним JSON-объектом:
+{"procedure_hint":"конкурс|аукцион|котировки|unknown",
+"summary":"<простое объяснение для новичка, 1-3 предложения>",
+"criteria":[{"label":"<критерий>","weight":<число процентов или null>,
+"how_to_win":"<как набрать баллы>","what_to_prepare":"<что приложить к заявке>",
+"source_snippet":"<короткая цитата из текста>"}],
+"warnings":["<на что обратить внимание>"]}
+"""
+
+_CRITERIA_USER = """\
+Фрагменты документации:
+---
+{chunks}
+---
+"""
+
+
+def extract_criteria_llm(chunks) -> Optional[dict]:
+    """LLM-разбор критериев оценки по фрагментам текста (не по всему документу)."""
+    import config
+    import llm_provider
+
+    if not llm_provider.is_configured():
+        return None
+
+    if isinstance(chunks, (list, tuple)):
+        text = "\n\n---\n\n".join(str(c) for c in chunks if c)
+    else:
+        text = str(chunks or "")
+    if not text.strip():
+        return None
+    text = text[: config.LLM_TEXT_CHARS]
+
+    raw = llm_provider.complete(
+        system=_CRITERIA_SYSTEM,
+        user=_CRITERIA_USER.format(chunks=text),
+        model=llm_provider.deep_model(),
+        max_tokens=1000,
+        temperature=0.2,
+        json_mode=True,
+    )
+    data = llm_provider.parse_json(raw)
+    if not data:
+        return None
+
+    def _as_list(v):
+        if isinstance(v, list):
+            return v
+        return [v] if v else []
+
+    crits = []
+    for c in _as_list(data.get("criteria")):
+        if not isinstance(c, dict):
+            continue
+        w = c.get("weight")
+        try:
+            w = int(w) if w not in (None, "", "unknown", "null") else None
+        except (TypeError, ValueError):
+            w = None
+        crits.append({
+            "label": str(c.get("label", "")).strip()[:120],
+            "weight": w,
+            "how_to_win": str(c.get("how_to_win", "")).strip()[:300],
+            "what_to_prepare": str(c.get("what_to_prepare", "")).strip()[:300],
+            "source_snippet": str(c.get("source_snippet", "")).strip()[:300],
+        })
+    return {
+        "procedure_hint": str(data.get("procedure_hint", "unknown")).strip()[:20] or "unknown",
+        "summary": str(data.get("summary", "")).strip()[:600],
+        "criteria": crits,
+        "warnings": [str(x).strip() for x in _as_list(data.get("warnings")) if str(x).strip()][:6],
+    }
+
+
+_CLARIFY_SYSTEM = """\
+Ты помогаешь составить официальный запрос на разъяснение положений документации о закупке
+по 44-ФЗ/223-ФЗ. Тебе дают список вопросов. Оформи их в вежливый официальный запрос.
+
+СТРОГО:
+- НЕ добавляй новых вопросов сверх данных и не выдумывай факты.
+- Пиши по-деловому, кратко. Пронумеруй вопросы.
+- Верни только текст запроса (без markdown-разметки и пояснений).
+"""
+
+_CLARIFY_USER = """\
+Закупка №{pnum}: {title}
+Заказчик: {customer}
+
+Вопросы для запроса:
+{questions}
+"""
+
+
+def draft_clarification(tender: dict, questions: list[str],
+                        card: dict | None = None, criteria: dict | None = None) -> Optional[str]:
+    """LLM-полировка запроса на разъяснение из готового списка вопросов. None если LLM нет."""
+    import llm_provider
+
+    if not llm_provider.is_configured() or not questions:
+        return None
+
+    q_block = "\n".join(f"{i}. {q}" for i, q in enumerate(questions, 1))
+    raw = llm_provider.complete(
+        system=_CLARIFY_SYSTEM,
+        user=_CLARIFY_USER.format(
+            pnum=tender.get("purchase_number", "—"),
+            title=tender.get("title", "—"),
+            customer=tender.get("customer", "—"),
+            questions=q_block,
+        ),
+        model=llm_provider.deep_model(),
+        max_tokens=800,
+        temperature=0.3,
+    )
+    return raw.strip() if raw else None
+
+
 def extract_verdict(analysis: str) -> str:
     if not analysis:
         return "—"

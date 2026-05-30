@@ -309,6 +309,148 @@ def extract_participant_requirements(text: str) -> list[dict]:
     return found
 
 
+# ── Критерии оценки заявок («Как начисляются баллы») ─────────────────────────
+# Эвристика без LLM. Для конкурса/котировок ищем стоимостные/нестоимостные
+# критерии и их веса; для аукциона критериев нет — побеждает цена.
+
+# Маркеры, по которым понимаем, что в тексте есть раздел оценки заявок.
+_CRITERIA_MARKERS = [
+    "критерии оценки", "критерий оценки", "порядок оценки", "значимость критери",
+    "удельный вес", "коэффициент значимости", "стоимостные критери",
+    "нестоимостные критери", "нестоимостной критери", "показатели оценки",
+    "величина значимости",
+]
+
+# Известные ярлыки критериев → варианты их написания в документации.
+_CRITERIA_LABELS: list[tuple[str, list[str]]] = [
+    ("Цена контракта",            ["цена контракта", "цена договора", "стоимостн"]),
+    ("Квалификация участника",    ["квалификаци"]),
+    ("Опыт участника",            ["опыт"]),
+    ("Деловая репутация",         ["деловая репутация", "репутаци"]),
+    ("Обеспеченность ресурсами",  ["обеспеченность", "материально-техническ", "трудовыми ресурс"]),
+    ("Качество",                  ["качество выполнения", "качественн"]),
+]
+
+
+def _windows_around(text: str, markers: list[str], window: int = 600,
+                    max_total: int = 4000) -> list[str]:
+    """Вырезает фрагменты текста вокруг маркеров (для дешёвой отправки в LLM).
+
+    Возвращает список непустых уникальных окон; суммарно не длиннее max_total.
+    """
+    if not text:
+        return []
+    compact = re.sub(r"\s+", " ", text)
+    low = compact.lower()
+    spans: list[tuple[int, int]] = []
+    for marker in markers:
+        start = 0
+        while True:
+            idx = low.find(marker, start)
+            if idx == -1:
+                break
+            spans.append((max(0, idx - window // 3), min(len(compact), idx + window)))
+            start = idx + len(marker)
+    if not spans:
+        return []
+    # Слить пересекающиеся окна
+    spans.sort()
+    merged: list[list[int]] = [list(spans[0])]
+    for s, e in spans[1:]:
+        if s <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], e)
+        else:
+            merged.append([s, e])
+    chunks: list[str] = []
+    total = 0
+    for s, e in merged:
+        frag = compact[s:e].strip()
+        if frag and frag not in chunks:
+            chunks.append(frag)
+            total += len(frag)
+        if total >= max_total:
+            break
+    return chunks
+
+
+def extract_evaluation_criteria(text: str) -> dict:
+    """Эвристически определяет тип процедуры и критерии оценки заявок.
+
+    Возвращает безопасную структуру даже на пустом/нерелевантном тексте.
+    """
+    result = {
+        "procedure_hint": "unknown",
+        "has_criteria": False,
+        "criteria": [],
+        "note": "",
+    }
+    if not text:
+        result["note"] = "Текст документации не загружен — проверьте порядок оценки вручную."
+        return result
+
+    compact = re.sub(r"\s+", " ", text.lower())
+
+    # 1. Тип процедуры
+    if "электронный аукцион" in compact or "аукцион в электронной форме" in compact or "аукцион" in compact:
+        procedure = "аукцион"
+    elif "запрос котировок" in compact or "котировочн" in compact:
+        procedure = "котировки"
+    elif "конкурс" in compact:
+        procedure = "конкурс"
+    else:
+        procedure = "unknown"
+    result["procedure_hint"] = procedure
+
+    # 2. Для аукциона критериев оценки нет — решает цена
+    if procedure == "аукцион":
+        result["note"] = (
+            "Похоже на электронный аукцион: победитель определяется по цене, отдельные "
+            "критерии оценки обычно не применяются. Но требования к участнику и заявке всё "
+            "равно надо проверить."
+        )
+        return result
+
+    # 3. Ищем критерии и веса
+    has_markers = any(m in compact for m in _CRITERIA_MARKERS)
+    criteria: list[dict] = []
+    seen: set[str] = set()
+    for label, variants in _CRITERIA_LABELS:
+        for v in variants:
+            idx = compact.find(v)
+            if idx == -1:
+                continue
+            if label in seen:
+                break
+            seen.add(label)
+            win = compact[max(0, idx - 80): idx + 160]
+            wm = re.search(r"(\d{1,3})\s*%", win)
+            weight = int(wm.group(1)) if wm and 0 < int(wm.group(1)) <= 100 else None
+            criteria.append({"label": label, "weight": weight, "snippet": win.strip()[:200]})
+            break
+
+    result["criteria"] = criteria
+    result["has_criteria"] = bool(criteria) or has_markers
+
+    if criteria:
+        result["note"] = (
+            "Заявки оценивают по критериям ниже. Новичку важно усилить нестоимостные "
+            "(опыт, квалификация), а не только снижать цену."
+        )
+    elif procedure == "котировки":
+        result["note"] = "Запрос котировок: обычно решает цена контракта."
+    elif has_markers:
+        result["note"] = (
+            "В документации есть раздел оценки, но критерии не распознаны автоматически — "
+            "проверьте раздел «Критерии оценки» вручную или нажмите «Разобрать подробнее»."
+        )
+    else:
+        result["note"] = (
+            "Критерии оценки в тексте не найдены — возможно, это аукцион (решает цена) "
+            "или текст ТЗ ещё не загружен."
+        )
+    return result
+
+
 def _find_money_near(text: str, markers: list[str]) -> float | None:
     for marker in markers:
         idx = text.find(marker)
