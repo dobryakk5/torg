@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -379,6 +380,7 @@ def _filter_profile(tender: dict[str, Any], text: str, stage: str) -> FilterScor
     strong = _match_bucket(text, 1, "strong")
     medium = _match_bucket(text, 1, "medium")
     bad = _match_bucket(text, 1, "bad")
+    offprofile = _offprofile_markers(text)
 
     try:
         from knowledge_base import get_profile as _kb_profile
@@ -396,6 +398,15 @@ def _filter_profile(tender: dict[str, Any], text: str, stage: str) -> FilterScor
     if kb_strong:
         signals += [f"✓ [БЗ] компетенция: {x}" for x in kb_strong[:2]]
     signals += [f"⚠ не основной профиль: {x}" for x in bad[:3]]
+
+    if offprofile:
+        return FilterScore(
+            1,
+            name,
+            1,
+            [f"✗ не ИТ-разработка/поддержка: {x}" for x in offprofile[:3]],
+            stop_factor=True,
+        )
 
     if strong:
         score = 5 if len(strong) >= 2 else 4
@@ -425,6 +436,8 @@ def _filter_finance(tender: dict[str, Any], text: str, stage: str) -> FilterScor
     price = _num(tender.get("price"))
     app_sec = _num(tender.get("application_security_amount"))
     contract_sec = _num(tender.get("contract_security_amount"))
+    if contract_sec is None:
+        contract_sec = _contract_security_from_details(tender)
     warranty_sec = _num(tender.get("warranty_security_amount"))
     advance = _num(tender.get("advance_percent"))
 
@@ -635,6 +648,8 @@ def _filter_contract_risks(tender: dict[str, Any], text: str, stage: str) -> Fil
     # НЕ включаем: "штраф", "пени", "приемка" — они есть в 100% контрактов по 44-ФЗ
     # и снижают балл за нормальные закупки.
     real_risk = _match_bucket(text, 8, "real_risk")
+    if "казначейское сопровождение" in real_risk and _treasury_support_not_required(tender, text):
+        real_risk = [risk for risk in real_risk if risk != "казначейское сопровождение"]
     warn_risk = _match_bucket(text, 8, "warn_risk")
     good = _match_bucket(text, 8, "good")
 
@@ -675,6 +690,19 @@ _SERVICE_MARKERS = [
     "техническая поддержк", "техническое сопровожд",
 ]
 
+_OFFPROFILE_MARKERS = [
+    "широкополосному доступу",
+    "доступ к информационно-коммуникационной сети интернет",
+    "доступу к информационно-коммуникационной сети интернет",
+    "доступ к сети интернет",
+    "услуги связи",
+    "телематическ",
+    "канал связи",
+    "содержание автомобильных дорог",
+    "ремонт автомобильных дорог",
+    "автомобильных дорог регионального",
+]
+
 
 def _is_resale_without_service(text: str) -> bool:
     """True, если это поставка/перекуп (лицензии, оборудование, товар) БЕЗ работ."""
@@ -682,6 +710,56 @@ def _is_resale_without_service(text: str) -> bool:
     if not has_resale:
         return False
     return not any(m in text for m in _SERVICE_MARKERS)
+
+
+def _offprofile_markers(text: str) -> list[str]:
+    return [marker for marker in _OFFPROFILE_MARKERS if marker in text]
+
+
+def _details_dict(tender: dict[str, Any]) -> dict[str, Any]:
+    details = tender.get("details_json")
+    if isinstance(details, dict):
+        return details
+    if isinstance(details, str) and details.strip():
+        try:
+            parsed = json.loads(details)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _contract_security_from_details(tender: dict[str, Any]) -> float | None:
+    details = _details_dict(tender)
+    contract_security = details.get("contract_security")
+    if not isinstance(contract_security, dict):
+        return None
+    return _num(contract_security.get("amount"))
+
+
+def _treasury_support_not_required(tender: dict[str, Any], text: str) -> bool:
+    details = _details_dict(tender)
+    support = details.get("contract_support")
+    if isinstance(support, dict):
+        required = support.get("required")
+        if required is False:
+            return True
+        support_text = _normalize(str(support.get("text") or ""))
+        if _negated_treasury_support(support_text):
+            return True
+
+    return _negated_treasury_support(text)
+
+
+def _negated_treasury_support(text: str) -> bool:
+    normalized = _normalize(text)
+    if "казначейское сопровождение" not in normalized:
+        return False
+    for match in re.finditer("казначейское сопровождение", normalized):
+        fragment = normalized[max(0, match.start() - 120):match.end() + 120]
+        if re.search(r"\bне\s+(?:требуется|предусмотрено|установлено)\b", fragment):
+            return True
+    return False
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -854,7 +932,6 @@ def _build_text(tender: dict[str, Any], text: str) -> str:
         tender.get("law_type", ""),
         tender.get("deadline", ""),
         tender.get("published_at", ""),
-        tender.get("matched_keywords", ""),
         tender.get("payment_terms", ""),
         text or "",
     ]

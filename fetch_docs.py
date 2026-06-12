@@ -18,9 +18,10 @@ fetch_docs.py — ТРЕТЬЯ ФАЗА: скачивание документо
 Документы есть только у ЕИС; 223-ФЗ обычно за логином — такие лоты просто дадут 0 файлов.
 
 Использование:
-    python fetch_docs.py                 # все не-NO-GO без документов
+    python fetch_docs.py                 # все score >= 30 и не-NO-GO без документов
     python fetch_docs.py --law 44-ФЗ     # только 44-ФЗ
     python fetch_docs.py --only GO       # только GO (или CAUTION)
+    python fetch_docs.py --min-score 32  # другой порог скоринга
     python fetch_docs.py --limit 20      # не больше 20 лотов за прогон
     python fetch_docs.py --refresh       # перекачать даже если документы уже есть
     python fetch_docs.py --dry-run       # показать, что бы скачали, без сети/записи
@@ -46,16 +47,19 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("fetch_docs")
 
 
-def documents_url(url: str, pnum: str) -> str:
-    """URL вкладки «Документы» лота (там список файлов надёжнее, чем на common-info)."""
-    base = to_common_info_url(url or pnum)
-    return base.replace("common-info.html", "documents.html")
-
-
-def select_lots(law: str | None, only: str | None, refresh: bool, limit: int | None) -> list[dict]:
+def select_lots(
+    law: str | None,
+    only: str | None,
+    refresh: bool,
+    limit: int | None,
+    min_score: int,
+) -> list[dict]:
     import psycopg2.extras
-    conds = ["filter_decision IS DISTINCT FROM 'NO-GO'"]   # NO-GO не качаем
-    params: list = []
+    conds = [
+        "filter_decision IS DISTINCT FROM 'NO-GO'",   # NO-GO не качаем
+        "filter_total >= %s",
+    ]
+    params: list = [min_score]
     if law:
         conds.append("law_type = %s"); params.append(law)
     if only:
@@ -104,9 +108,11 @@ def save_scan(pnum: str, *, count: int, docs_dir: str, docs_hash: str,
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Третья фаза: документы + требования (кроме NO-GO)")
+    ap = argparse.ArgumentParser(description="Третья фаза: документы + требования (score >= 30, кроме NO-GO)")
     ap.add_argument("--law", default=None, help="Фильтр по закону (например 44-ФЗ)")
     ap.add_argument("--only", default=None, help="Только решение GO или CAUTION")
+    ap.add_argument("--min-score", type=int, default=config.DOCUMENT_DOWNLOAD_MIN_SCORE,
+                    help="Минимальный filter_total для скачивания документов")
     ap.add_argument("--limit", type=int, default=None, help="Максимум лотов за прогон")
     ap.add_argument("--refresh", action="store_true", help="Перекачать даже если документы уже есть")
     ap.add_argument("--dry-run", action="store_true", help="Не качать/не писать — только список")
@@ -116,8 +122,9 @@ def main() -> None:
     db.check_db()
     db.ensure_extra_columns()
 
-    lots = select_lots(args.law, args.only, args.refresh, args.limit)
-    logger.info("Лотов к обработке (не-NO-GO%s%s): %d%s",
+    lots = select_lots(args.law, args.only, args.refresh, args.limit, args.min_score)
+    logger.info("Лотов к обработке (score >= %d, не-NO-GO%s%s): %d%s",
+                args.min_score,
                 f", закон {args.law}" if args.law else "",
                 f", {args.only}" if args.only else "",
                 len(lots), " [dry-run]" if args.dry_run else "")
@@ -125,17 +132,19 @@ def main() -> None:
     n_docs = n_reqs = n_empty = 0
     for i, t in enumerate(lots, 1):
         pnum = t["purchase_number"]
-        durl = documents_url(t.get("url", ""), pnum)
+        page_url = to_common_info_url(t.get("url", "") or pnum)
         if args.dry_run:
-            logger.info("  [%d/%d] %s (%s) → %s", i, len(lots), pnum, t.get("filter_decision"), durl)
+            logger.info("  [%d/%d] %s (%s, score %s) → %s",
+                        i, len(lots), pnum, t.get("filter_decision"),
+                        t.get("filter_total"), page_url)
             continue
         try:
-            html, _ = get_tender_page(durl)
+            html, _ = get_tender_page(page_url)
             db.reconnect_db()
             if not html:
-                logger.warning("  [%d/%d] %s: страница документов не открылась", i, len(lots), pnum)
+                logger.warning("  [%d/%d] %s: карточка закупки не открылась", i, len(lots), pnum)
                 continue
-            docs = download_documents(pnum, html, durl)
+            docs = download_documents(pnum, html, page_url)
             files = docs.get("files", [])
             if not files:
                 n_empty += 1

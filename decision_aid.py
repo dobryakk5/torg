@@ -16,7 +16,9 @@ decision_aid.py — «Помощник решения для новичка».
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from typing import Any, Optional
 
 import config
@@ -28,7 +30,7 @@ VERDICT_LABELS = {"TAKE": "БЕРИ", "THINK": "ПОДУМАЙ", "SKIP": "ПРО
 # Статусы тендера, означающие, что участвовать уже нельзя.
 _CLOSED_STATUSES = {
     "cancelled", "canceled", "completed", "finished",
-    "result_published", "archived", "detail_rejected",
+    "result_published", "archived",
 }
 
 GLOSSARY = {
@@ -173,22 +175,38 @@ def _gate_license(text, has_text, by_num) -> dict:
     if not has_text:
         return {**g, "status": "unknown",
                 "explain": "Документация не загружена — проверьте требования к лицензиям вручную."}
-    try:
-        import filter_engine as fe
-        t = fe._normalize(text)
-        forbidden = fe.PROFILE.get("forbidden", [])
-        hit = [w for w in forbidden if w in t]
-    except Exception:
-        hit = []
+    hit = _license_forbidden_hits(text)
     if hit:
-        return {**g, "status": "block",
-                "explain": f"Требуется лицензия/допуск, которого у вас нет: {', '.join(hit)}."}
+        return {**g, "status": "warn",
+                "explain": f"В тексте есть упоминание лицензий/допусков: {', '.join(hit)}. Проверьте вручную."}
     # Дополнительно подсветим, если Ф5 нашёл жёсткие требования
     f5 = by_num.get(5)
     if f5 is not None and f5.score <= 2:
         return {**g, "status": "warn",
                 "explain": "Есть строгие требования к участнику — проверьте, проходите ли вы."}
     return {**g, "status": "ok", "explain": "Особых лицензий (ФСТЭК/ФСБ/СРО) не требуется."}
+
+
+def _license_forbidden_hits(text: str) -> list[str]:
+    """Ищет рискованные допуски без ложного срабатывания СРО внутри слова «срок»."""
+    try:
+        import filter_engine as fe
+        t = fe._normalize(text)
+        forbidden = fe.PROFILE.get("forbidden", [])
+    except Exception:
+        return []
+
+    hits: list[str] = []
+    for term in forbidden:
+        norm = fe._normalize(term)
+        if not norm:
+            continue
+        if norm == "сро":
+            if re.search(r"(?<![0-9a-zа-я])сро(?![0-9a-zа-я])", t):
+                hits.append(term)
+        elif norm in t:
+            hits.append(term)
+    return hits
 
 
 def _gate_national_regime(flags, has_text) -> dict:
@@ -233,7 +251,7 @@ def _gate_finance_load(tender) -> dict:
                 "explain": f"НМЦК {_fmt(nmck)} выше потолка {_fmt(config.PRICE_HARD_MAX)} — "
                            "не хватит обеспечения."}
     app_sec = _num(tender.get("application_security_amount"))
-    con_sec = _num(tender.get("contract_security_amount"))
+    con_sec = _contract_security_amount(tender)
     war_sec = _num(tender.get("warranty_security_amount"))
     if app_sec is None and con_sec is None and war_sec is None:
         return {**g, "status": "unknown",
@@ -368,7 +386,7 @@ def estimate_economics(tender: dict[str, Any], category: str = "прочее") -
                        "нет данных по трудозатратам.")
 
     app_sec = _num(tender.get("application_security_amount"))
-    con_sec = _num(tender.get("contract_security_amount"))
+    con_sec = _contract_security_amount(tender)
     advance_pct = _num(tender.get("advance_percent"))
 
     advance_amount = round(recommended * advance_pct / 100) if advance_pct else 0
@@ -514,6 +532,30 @@ def _confidence(gates, finance, has_text) -> float:
     c -= 0.15 if finance.get("quality") == "weak" else 0.0
     c -= 0.20 if not has_text else 0.0
     return max(0.0, min(1.0, c))
+
+
+def _details_dict(tender: dict[str, Any]) -> dict[str, Any]:
+    details = tender.get("details_json")
+    if isinstance(details, dict):
+        return details
+    if isinstance(details, str) and details.strip():
+        try:
+            parsed = json.loads(details)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _contract_security_amount(tender: dict[str, Any]) -> float | None:
+    direct = _num(tender.get("contract_security_amount"))
+    if direct is not None:
+        return direct
+    details = _details_dict(tender)
+    contract_security = details.get("contract_security")
+    if not isinstance(contract_security, dict):
+        return None
+    return _num(contract_security.get("amount"))
 
 
 def _num(value) -> float | None:

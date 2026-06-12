@@ -1126,6 +1126,17 @@ def get_detail_candidates(limit: int, min_primary_score: int) -> list[dict[str, 
              WHERE primary_score >= %s
                AND (detail_checked_at IS NULL OR needs_detail_refresh = TRUE)
                AND decision NOT IN ('rejected', 'tailored')
+               AND (
+                   deadline IS NULL OR deadline = ''
+                   OR deadline !~ '^\\d{2}\\.\\d{2}\\.\\d{4}'
+                   OR (
+                       CASE
+                           WHEN deadline ~ '^\\d{2}\\.\\d{2}\\.\\d{4}\\s+\\d{2}:\\d{2}'
+                           THEN to_timestamp(substring(deadline from 1 for 16), 'DD.MM.YYYY HH24:MI')
+                           ELSE to_timestamp(substring(deadline from 1 for 10), 'DD.MM.YYYY')
+                       END
+                   ) >= NOW()
+               )
              ORDER BY needs_detail_refresh DESC, primary_score DESC, price DESC NULLS LAST
              LIMIT %s
             """,
@@ -1331,10 +1342,11 @@ def _save_detail_once(
                    execution_days = %(execution_days)s,
                    document_count = %(document_count)s,
                    documents_dir = %(documents_dir)s,
-                   documents_hash = %(documents_hash)s,
-                   document_text_excerpt = %(document_text_excerpt)s,
-                   status = %(status)s,
-                   detail_checked_at = %(detail_checked_at)s,
+	                   documents_hash = %(documents_hash)s,
+	                   document_text_excerpt = %(document_text_excerpt)s,
+	                   url = COALESCE(NULLIF(%(url)s, ''), url),
+	                   status = %(status)s,
+	                   detail_checked_at = %(detail_checked_at)s,
                    needs_detail_refresh = FALSE,
                    notified_at = %(notified_at)s,
                    updated_at = %(updated_at)s
@@ -1355,8 +1367,9 @@ def _save_detail_once(
                 "document_count": tender.get("document_count", 0),
                 "documents_dir": tender.get("documents_dir", ""),
                 "documents_hash": tender.get("documents_hash", ""),
-                "document_text_excerpt": (document_text or "")[:4000],
-                "status": status,
+	                "document_text_excerpt": (document_text or "")[:4000],
+	                "url": tender.get("url", ""),
+	                "status": status,
                 "detail_checked_at": now,
                 "notified_at": notified_at,
                 "updated_at": now,

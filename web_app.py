@@ -303,7 +303,7 @@ class SearchRunner:
                         # прогоне дособираем недостающие, уже собранные не трогаем.
                         if db.get_tender_details(pnum) is None:
                             try:
-                                det = fetch_tender_details(tender.get("url", ""))
+                                det = fetch_tender_details(tender.get("url", ""), price=tender.get("price"))
                                 if det:
                                     db.save_tender_details(pnum, det)
                             except Exception as exc:
@@ -334,6 +334,7 @@ def _reload_runtime_config() -> None:
     config.SCHEDULE_HOURS                = config.get_runtime("SCHEDULE_HOURS",               config.SCHEDULE_HOURS)
     config.MIN_PRIMARY_SCORE_FOR_DETAIL  = config.get_runtime("MIN_PRIMARY_SCORE_FOR_DETAIL", config.MIN_PRIMARY_SCORE_FOR_DETAIL)
     config.MIN_DETAILED_SCORE_FOR_NOTIFY = config.get_runtime("MIN_DETAILED_SCORE_FOR_NOTIFY",config.MIN_DETAILED_SCORE_FOR_NOTIFY)
+    config.DOCUMENT_DOWNLOAD_MIN_SCORE   = config.get_runtime("DOCUMENT_DOWNLOAD_MIN_SCORE",  config.DOCUMENT_DOWNLOAD_MIN_SCORE)
     config.SEARCH_KEYWORDS               = config.get_runtime("SEARCH_KEYWORDS",              config.SEARCH_KEYWORDS)
     config.OKPD2_SEARCH_ENABLED          = config.get_runtime("OKPD2_SEARCH_ENABLED",         config.OKPD2_SEARCH_ENABLED)
     config.OKPD2_CODES                   = config.get_runtime("OKPD2_CODES",                  config.OKPD2_CODES)
@@ -395,9 +396,16 @@ def zakupki_common_info_url(url: str, purchase_number: str = "") -> str:
     match = re.search(r"\b\d{11,22}\b", value)
     if not match:
         return url or ""
+    reg_number = match.group(0)
+    lower_value = value.lower()
+    if "notice223" in lower_value or "/223/" in lower_value or re.fullmatch(r"3\d{10}", reg_number):
+        return (
+            "https://zakupki.gov.ru/epz/order/notice/notice223/common-info.html"
+            f"?regNumber={reg_number}"
+        )
     return (
         "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html"
-        f"?regNumber={match.group(0)}"
+        f"?regNumber={reg_number}"
     )
 
 for name, fn in [("fmt_price",fmt_price),("fmt_date",fmt_date),
@@ -709,7 +717,7 @@ async def api_tender_details(purchase_number: str):
     if details is None:
         from scraper import fetch_tender_details
         try:
-            details = fetch_tender_details(tender.get("url", ""))
+            details = fetch_tender_details(tender.get("url", ""), price=tender.get("price"))
         except Exception as exc:
             logger.warning("Не удалось собрать детали %s: %s", purchase_number, exc)
             details = {}
@@ -737,6 +745,7 @@ async def api_save_settings(request: Request):
         "PRICE_MIN", "PRICE_MAX", "PUBLISH_DAYS_BACK", "SCHEDULE_HOURS",
         "PUBLISH_DATE_FROM", "PUBLISH_DATE_TO",
         "MIN_PRIMARY_SCORE_FOR_DETAIL", "MIN_DETAILED_SCORE_FOR_NOTIFY",
+        "DOCUMENT_DOWNLOAD_MIN_SCORE",
         "OKPD2_SEARCH_ENABLED", "OKPD2_CODES", "SEARCH_KEYWORDS",
         "CHANGE_CHECK_HOURS", "CHANGE_MIN_SCORE", "WINNER_ANALYTICS_PAGES",
         "SOURCE_B2B_ENABLED", "B2B_SEARCH_PAGES",

@@ -123,6 +123,7 @@ MIN_SCORE_FOR_NOTIFY = MIN_DETAILED_SCORE_FOR_NOTIFY   # совместимос�
 
 # --- Документы ---
 DOWNLOAD_DOCUMENTS        = os.getenv("DOWNLOAD_DOCUMENTS",        "1") != "0"
+DOCUMENT_DOWNLOAD_MIN_SCORE = int(os.getenv("DOCUMENT_DOWNLOAD_MIN_SCORE", "30"))
 MAX_DOCUMENTS_PER_TENDER  = int(os.getenv("MAX_DOCUMENTS_PER_TENDER",  "8"))
 MAX_DOCUMENT_TEXT_CHARS   = int(os.getenv("MAX_DOCUMENT_TEXT_CHARS",   "30000"))
 LLM_TEXT_CHARS            = int(os.getenv("LLM_TEXT_CHARS",            "12000"))

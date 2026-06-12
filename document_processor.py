@@ -19,6 +19,15 @@ from scraper import HEADERS, BASE_URL
 logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS = {".docx", ".pdf", ".txt", ".rtf", ".xlsx", ".xls", ".csv", ".zip"}
+DOWNLOAD_MARKERS = (
+    "/download/",
+    "/filestore/",
+    "file.html",
+    "printform",
+)
+DOCUMENT_PAGE_MARKERS = (
+    "documents.html",
+)
 
 
 def safe_filename(name: str, fallback: str = "document") -> str:
@@ -26,22 +35,80 @@ def safe_filename(name: str, fallback: str = "document") -> str:
     return name[:180] or fallback
 
 
-def find_document_links(page_html: str, base_url: str) -> list[str]:
+def _repair_eis_href_entities(href: str) -> str:
+    """Repair EIS query params decoded by HTML parsers as named entities."""
+    return (
+        (href or "")
+        .replace("®Number", "&regNumber")
+        .replace("¬iceGuid", "&noticeGuid")
+    )
+
+
+def find_document_items(page_html: str, base_url: str, *, include_pages: bool = True) -> list[tuple[str, str]]:
     soup = BeautifulSoup(page_html, "html.parser")
-    links: list[str] = []
+    items: list[tuple[str, str]] = []
     for a in soup.find_all("a", href=True):
-        href = a.get("href", "")
-        text = a.get_text(" ", strip=True).lower()
+        href = _repair_eis_href_entities(a.get("href", ""))
+        raw_text = a.get_text(" ", strip=True)
+        text = raw_text.lower()
         lower_href = href.lower()
-        looks_like_doc = any(ext in lower_href for ext in SUPPORTED_EXTENSIONS) or any(
-            marker in lower_href for marker in ["download", "documents", "file", "epz/order/notice"]
-        ) or any(word in text for word in ["документ", "извещение", "техническое", "проект контракта", "скачать"])
+        if "/rpt/" in lower_href or "zakupki-traffic" in lower_href:
+            continue
+        looks_like_file = _looks_like_document_file(lower_href, text)
+        looks_like_page = include_pages and _looks_like_document_page(lower_href)
+        looks_like_doc = looks_like_file or looks_like_page
         if not looks_like_doc:
             continue
         url = urljoin(base_url, href)
-        if url not in links:
-            links.append(url)
-    return links[: config.MAX_DOCUMENTS_PER_TENDER]
+        if not any(existing == url for existing, _ in items):
+            items.append((url, raw_text))
+    return items[: config.MAX_DOCUMENTS_PER_TENDER]
+
+
+def find_document_links(page_html: str, base_url: str, *, include_pages: bool = True) -> list[str]:
+    return [url for url, _ in find_document_items(page_html, base_url, include_pages=include_pages)]
+
+
+def _looks_like_document_file(lower_href: str, text: str = "") -> bool:
+    return any(ext in lower_href for ext in SUPPORTED_EXTENSIONS) or any(
+        marker in lower_href for marker in DOWNLOAD_MARKERS
+    ) or any(word in text for word in ["извещение", "техническое", "проект договора", "скачать"])
+
+
+def _looks_like_document_page(lower_href: str) -> bool:
+    return any(marker in lower_href for marker in DOCUMENT_PAGE_MARKERS)
+
+
+def _expand_document_items(items: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    expanded: list[tuple[str, str]] = []
+    for link, label in items:
+        lower = link.lower()
+        if _looks_like_document_page(lower) and not _looks_like_document_file(lower):
+            try:
+                resp = requests.get(link, headers=HEADERS, timeout=30)
+                if resp.status_code != 200 or not resp.text:
+                    logger.info("Страница документов не скачана %s: HTTP %s", link, resp.status_code)
+                    continue
+                for nested, nested_label in find_document_items(resp.text, link, include_pages=False):
+                    if not any(existing == nested for existing, _ in expanded):
+                        expanded.append((nested, nested_label))
+                        if len(expanded) >= config.MAX_DOCUMENTS_PER_TENDER:
+                            return expanded
+            except requests.RequestException as exc:
+                logger.warning("Ошибка открытия страницы документов %s: %s", link, exc)
+            continue
+        if not any(existing == link for existing, _ in expanded):
+            expanded.append((link, label))
+            if len(expanded) >= config.MAX_DOCUMENTS_PER_TENDER:
+                return expanded
+    return expanded
+
+
+def _filename_from_label(label: str) -> str:
+    name = safe_filename(label or "")
+    if Path(name).suffix.lower() in SUPPORTED_EXTENSIONS:
+        return name
+    return ""
 
 
 def _guess_filename(response: requests.Response, url: str, index: int) -> str:
@@ -77,23 +144,29 @@ def download_documents(purchase_number: str, page_html: str, tender_url: str) ->
     target_dir = config.DOCUMENTS_DIR / safe_filename(purchase_number)
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    links = find_document_links(page_html, tender_url)
+    items = _expand_document_items(find_document_items(page_html, tender_url))
     saved: list[Path] = []
-    for i, link in enumerate(links, start=1):
+    for i, (link, label) in enumerate(items, start=1):
+        if _looks_like_document_page(link.lower()) and not _looks_like_document_file(link.lower()):
+            continue
         try:
             resp = requests.get(link, headers=HEADERS, timeout=30)
             if resp.status_code != 200 or not resp.content:
                 logger.info("Документ не скачан %s: HTTP %s", link, resp.status_code)
                 continue
-            filename = _guess_filename(resp, link, i)
+            content_type = resp.headers.get("content-type", "").lower()
+            suffix = Path(urlparse(link).path).suffix.lower()
+            if "html" in content_type and suffix not in SUPPORTED_EXTENSIONS:
+                logger.info("HTML-страница не считается документом %s", link)
+                continue
+            filename = _filename_from_label(label) or _guess_filename(resp, link, i)
             path = target_dir / filename
-            # Если ЕИС отдаёт html вместо файла, всё равно сохраняем: оттуда можно вытащить текст.
             path.write_bytes(resp.content)
             saved.append(path)
         except requests.RequestException as exc:
             logger.warning("Ошибка скачивания документа %s: %s", link, exc)
 
-    return {"dir": str(target_dir), "files": saved, "links": links}
+    return {"dir": str(target_dir), "files": saved, "links": [url for url, _ in items]}
 
 
 def extract_text_from_file(path: Path) -> str:

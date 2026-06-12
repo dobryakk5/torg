@@ -326,6 +326,10 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
         <label>Мин. скор Stage2 → Telegram</label>
         <input type="number" name="MIN_DETAILED_SCORE_FOR_NOTIFY" value="{{ settings.get('MIN_DETAILED_SCORE_FOR_NOTIFY', '30') }}" min="10" max="40">
       </div>
+      <div class="field">
+        <label>Мин. скор → скачать документы</label>
+        <input type="number" name="DOCUMENT_DOWNLOAD_MIN_SCORE" value="{{ settings.get('DOCUMENT_DOWNLOAD_MIN_SCORE', '30') }}" min="10" max="40">
+      </div>
 
       <div class="field">
         <label>Поиск по ОКПД2</label>

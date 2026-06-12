@@ -36,6 +36,7 @@ from llm_analyzer import analyze_tender
 from notifier import format_tender_message, send_startup_message, send_summary, send_tender_message
 from scraper import (
     get_tender_page, parse_result_info, search_eis, search_eis_by_okpd2,
+    to_common_info_url,
 )
 from winner_analytics   import run_update   as run_winner_update, classify_category, recommend_bid
 from customer_scorer    import run_new_customers, run_refresh_customers, get_customer_risk_label
@@ -455,24 +456,39 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
         scoring_text = tender.get("primary_text", "") or ""
 
         try:
-            page_html, page_text = get_tender_page(tender.get("url", ""))
+            page_url = to_common_info_url(tender.get("url", "") or pnum)
+            tender["url"] = page_url
+            page_html, page_text = get_tender_page(page_url)
             full_text_for_terms = "\n".join([scoring_text, page_text])
+            scoring_text = "\n".join([scoring_text, page_text])
 
             is_eis = (tender.get("platform") or "ЕИС") == "ЕИС"
-            if config.DOWNLOAD_DOCUMENTS and page_html and is_eis:
-                docs = download_documents(pnum, page_html, tender.get("url", ""))
+            terms = extract_financial_terms(full_text_for_terms)
+            for key, value in terms.items():
+                if value not in (None, ""):
+                    tender[key] = value
+
+            preliminary_result = run_stage2_filters(tender, scoring_text)
+            should_download_docs = (
+                config.DOWNLOAD_DOCUMENTS
+                and page_html
+                and is_eis
+                and preliminary_result.total_score >= config.DOCUMENT_DOWNLOAD_MIN_SCORE
+            )
+            if should_download_docs:
+                docs = download_documents(pnum, page_html, page_url)
                 files = docs.get("files", [])
                 document_text = collect_document_text(files, config.MAX_DOCUMENT_TEXT_CHARS)
                 tender["document_count"] = len(files)
                 tender["documents_dir"] = docs.get("dir", "")
                 tender["documents_hash"] = hash_files(files)
                 full_text_for_terms += "\n" + document_text
+                scoring_text = "\n".join([scoring_text, document_text])
 
             terms = extract_financial_terms(full_text_for_terms)
             for key, value in terms.items():
                 if value not in (None, ""):
                     tender[key] = value
-            scoring_text = "\n".join([scoring_text, page_text, document_text])
         except Exception as exc:
             msg = f"Ошибка получения/анализа документов {pnum}: {exc}"
             logger.warning(msg)
@@ -572,7 +588,7 @@ def run_stage3(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
     for tender in candidates:
         pnum = tender.get("purchase_number", "")
         try:
-            _, page_text = get_tender_page(tender.get("url", ""))
+            _, page_text = get_tender_page(to_common_info_url(tender.get("url", "") or pnum))
             result = parse_result_info(page_text, initial_price=tender.get("price"))
             if dry_run:
                 print(f"{pnum}: {result}")
@@ -739,6 +755,7 @@ def main() -> None:
     config.SCHEDULE_HOURS               = config.get_runtime("SCHEDULE_HOURS",               config.SCHEDULE_HOURS)
     config.MIN_PRIMARY_SCORE_FOR_DETAIL = config.get_runtime("MIN_PRIMARY_SCORE_FOR_DETAIL", config.MIN_PRIMARY_SCORE_FOR_DETAIL)
     config.MIN_DETAILED_SCORE_FOR_NOTIFY= config.get_runtime("MIN_DETAILED_SCORE_FOR_NOTIFY",config.MIN_DETAILED_SCORE_FOR_NOTIFY)
+    config.DOCUMENT_DOWNLOAD_MIN_SCORE  = config.get_runtime("DOCUMENT_DOWNLOAD_MIN_SCORE",  config.DOCUMENT_DOWNLOAD_MIN_SCORE)
     config.SEARCH_KEYWORDS              = config.get_runtime("SEARCH_KEYWORDS",              config.SEARCH_KEYWORDS)
     config.OKPD2_SEARCH_ENABLED         = config.get_runtime("OKPD2_SEARCH_ENABLED",         config.OKPD2_SEARCH_ENABLED)
     config.OKPD2_CODES                  = config.get_runtime("OKPD2_CODES",                  config.OKPD2_CODES)

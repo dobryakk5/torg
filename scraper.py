@@ -11,7 +11,7 @@ import random
 import re
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 from bs4 import BeautifulSoup
@@ -101,9 +101,16 @@ def to_common_info_url(url_or_number: str) -> str:
     match = re.search(r"\b\d{11,22}\b", value)
     if not match:
         return value
+    reg_number = match.group(0)
+    lower_value = value.lower()
+    if "notice223" in lower_value or "/223/" in lower_value or re.fullmatch(r"3\d{10}", reg_number):
+        return (
+            "https://zakupki.gov.ru/epz/order/notice/notice223/common-info.html"
+            f"?regNumber={reg_number}"
+        )
     return (
         "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html"
-        f"?regNumber={match.group(0)}"
+        f"?regNumber={reg_number}"
     )
 
 
@@ -220,7 +227,7 @@ def _parse_card(card) -> Optional[dict]:
         num_text = num_el.get_text(" ", strip=True)
         number_match = re.search(r"\d{11,22}", num_text + " " + href + " " + text_all)
         purchase_number = number_match.group(0) if number_match else num_text
-        url = to_common_info_url(purchase_number or source_url)
+        url = to_common_info_url(source_url or purchase_number)
 
         title = ""
         title_candidates = [
@@ -391,12 +398,13 @@ _HEAD_OBJECT    = "Информация об объекте закупки"
 _HEAD_PREFREQ   = "Преимущества, требования к участникам"
 _HEAD_REQ       = "Требования к участникам"
 _HEAD_SECURITY  = "Обеспечение исполнения контракта"
+_HEAD_SUPPORT   = "Информация о банковском и (или) казначейском сопровождении контракта"
 
 # Заголовки, на которых режем секцию (любой из них = конец предыдущей).
 _BOUNDARIES = [
     _HEAD_EXECUTION, _HEAD_FINANCING, _HEAD_OBJECT, _HEAD_PREFREQ,
     "Преимущества", _HEAD_REQ, "Применение национального режима",
-    _HEAD_SECURITY, "Обеспечение гарантийных", "Информация о порядке",
+    _HEAD_SECURITY, _HEAD_SUPPORT, "Обеспечение гарантийных", "Информация о порядке",
     "Условия контракта", "Дополнительная информация",
 ]
 
@@ -405,6 +413,103 @@ def _money(raw: str) -> Optional[float]:
     """'500 000,00' / '3 383,33' → float."""
     if not raw:
         return None
+    cleaned = raw.replace("\xa0", "").replace(" ", "").replace(".", "").replace(",", ".")
+    try:
+        return float(cleaned)
+    except ValueError:
+        try:
+            return float(raw.replace("\xa0", "").replace(" ", "").replace(",", "."))
+        except ValueError:
+            return None
+
+
+def _norm_block_text(text: str) -> str:
+    if not text:
+        return ""
+    text = text.replace("\xa0", " ")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _parse_percent(raw: str) -> Optional[float]:
+    if not raw:
+        return None
+    match = re.search(r"(\d+(?:[.,]\d+)?)\s*%", raw)
+    if not match:
+        return None
+    try:
+        return float(match.group(1).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _parse_yes_no(raw: str) -> Optional[bool]:
+    value = _norm_block_text(raw).lower()
+    if value == "да":
+        return True
+    if value == "нет":
+        return False
+    return None
+
+
+def _find_dom_block(soup: BeautifulSoup, block_title: str):
+    block_title = _norm_block_text(block_title)
+    for h2 in soup.select("h2.blockInfo__title"):
+        if _norm_block_text(h2.get_text(" ", strip=True)) == block_title:
+            return h2.find_parent("div", class_="blockInfo")
+    return None
+
+
+def _parse_dom_block(block) -> dict[str, str]:
+    result: dict[str, str] = {}
+    text_without_title: list[str] = []
+    if not block:
+        return result
+
+    for section in block.select("section.blockInfo__section"):
+        title_el = section.find("span", class_="section__title", recursive=False)
+        info_el = section.find("span", class_="section__info", recursive=False)
+
+        title = _norm_block_text(title_el.get_text(" ", strip=True)) if title_el else ""
+        value = _norm_block_text(info_el.get_text(" ", strip=True)) if info_el else ""
+
+        if title:
+            result[title] = value
+        elif value:
+            text_without_title.append(value)
+
+    if text_without_title:
+        result["_text"] = " ".join(text_without_title)
+    return result
+
+
+def _parse_security_size(raw_value: str, price: float | None = None) -> dict[str, Any]:
+    security: dict[str, Any] = {"raw_value": _norm_block_text(raw_value)}
+    if not raw_value:
+        return security
+
+    percent = _parse_percent(raw_value)
+    if percent is not None:
+        security["percent"] = percent
+
+    money_match = re.search(_MONEY + r"\s*₽", raw_value)
+    amount = _money(money_match.group(0).replace("₽", "")) if money_match else None
+    if amount is None and percent is not None and price:
+        amount = round(float(price) * percent / 100, 2)
+    if amount is not None:
+        security["amount"] = amount
+    return security
+
+
+def _support_required(text: str) -> Optional[bool]:
+    value = _norm_block_text(text).lower().replace("ё", "е")
+    if not value:
+        return None
+    if re.search(r"(не\s+требуется|не\s+предусмотрено|не\s+установлено)", value):
+        return False
+    if "требуется" in value or "предусмотрено" in value or "установлено" in value:
+        return True
+    return None
     cleaned = raw.replace("\xa0", "").replace(" ", "").replace(".", "").replace(",", ".")
     try:
         return float(cleaned)
@@ -443,7 +548,7 @@ def _section_text(flat: str, start_heading: str, boundaries: list[str] | None = 
     return flat[body_start:end].strip()
 
 
-def parse_common_info_details(text: str) -> dict:
+def parse_common_info_details(text: str, price: float | None = None) -> dict:
     """
     Best-effort разбор детальных блоков страницы common-info.html (по очищенному тексту).
 
@@ -460,9 +565,15 @@ def parse_common_info_details(text: str) -> dict:
         "preferences":       {},
         "requirements":      [],
         "contract_security": {},
+        "contract_support":  {},
+        "common":            {},
         "advantages":        "",   # обратная совместимость = preferences.text
     }
     money_re = _MONEY
+
+    stage_m = re.search(r"Этап закупки\s*\n?([^\n]{3,120})", flat, re.I)
+    if stage_m:
+        details["common"]["purchase_stage"] = _norm_block_text(stage_m.group(1))
 
     # ── 1. Сроки исполнения ────────────────────────────────────────────────
     exec_raw = _section_text(flat, _HEAD_EXECUTION) or flat
@@ -567,26 +678,106 @@ def parse_common_info_details(text: str) -> dict:
     rm = re.search(r"Требуется обеспечение исполнения контракта\s*(Да|Нет)", sec_raw, re.I)
     if rm:
         security["required"] = rm.group(1).strip().lower() == "да"
+    raw_size = ""
     am = re.search(
         r"Размер обеспечения исполнения контракта\s*(" + money_re + r")\s*₽\s*(?:\(\s*(\d+(?:[.,]\d+)?)\s*%\s*\))?",
         sec_raw, re.I,
     )
     if am:
+        raw_size = am.group(0).replace("Размер обеспечения исполнения контракта", "").strip()
         security["amount"] = _money(am.group(1))
         if am.group(2):
             security["percent"] = float(am.group(2).replace(",", "."))
+    else:
+        pm = re.search(r"Размер обеспечения исполнения контракта\s*(\d+(?:[.,]\d+)?)\s*%", sec_raw, re.I)
+        if pm:
+            raw_size = pm.group(0).replace("Размер обеспечения исполнения контракта", "").strip()
+            security.update(_parse_security_size(raw_size, price=price))
+    if raw_size:
+        security.setdefault("raw_value", _norm_block_text(raw_size))
     details["contract_security"] = security
+
+    support_raw = _section_text(flat, _HEAD_SUPPORT, boundaries=[
+        "Обеспечение гарантийных", "Информация о порядке", "Условия контракта",
+        "Дополнительная информация", "Документы", "Журнал событий",
+    ])
+    if support_raw:
+        support_text = _norm_block_text(support_raw)
+        details["contract_support"] = {
+            "text": support_text,
+            "required": _support_required(support_text),
+        }
 
     return details
 
 
-def fetch_tender_details(url: str) -> dict:
+def parse_common_info_details_from_html(html: str, price: float | None = None) -> dict:
+    """DOM-разбор блоков common-info. Возвращает {} если ожидаемые блоки не найдены."""
+    if not html:
+        return {}
+    soup = BeautifulSoup(html, "html.parser")
+
+    common_block = _find_dom_block(soup, "Общая информация о закупке")
+    security_block = _find_dom_block(soup, _HEAD_SECURITY)
+    support_block = _find_dom_block(soup, _HEAD_SUPPORT)
+    if not common_block and not security_block and not support_block:
+        return {}
+
+    common = _parse_dom_block(common_block)
+    security_raw = _parse_dom_block(security_block)
+    support_raw = _parse_dom_block(support_block)
+
+    details: dict[str, Any] = {
+        "common": {},
+        "contract_security": {},
+        "contract_support": {},
+    }
+
+    purchase_stage = common.get("Этап закупки")
+    if purchase_stage:
+        details["common"]["purchase_stage"] = purchase_stage
+
+    required_raw = security_raw.get("Требуется обеспечение исполнения контракта")
+    required = _parse_yes_no(required_raw or "")
+    if required is not None:
+        details["contract_security"]["required"] = required
+
+    raw_value = security_raw.get("Размер обеспечения исполнения контракта")
+    if raw_value:
+        details["contract_security"].update(_parse_security_size(raw_value, price=price))
+
+    support_text = support_raw.get("_text") or " ".join(
+        value for key, value in support_raw.items() if key != "_text" and value
+    )
+    support_text = _norm_block_text(support_text)
+    if support_text:
+        details["contract_support"] = {
+            "text": support_text,
+            "required": _support_required(support_text),
+        }
+
+    return details
+
+
+def _deep_merge_details(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base or {})
+    for key, value in (extra or {}).items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge_details(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def fetch_tender_details(url: str, price: float | None = None) -> dict:
     """Грузит страницу common-info лота и парсит детальные блоки."""
     common_url = to_common_info_url(url)
-    _, text = get_tender_page(common_url)
+    html, text = get_tender_page(common_url)
     if not text:
         return {}
-    return parse_common_info_details(text)
+    details = parse_common_info_details(text, price=price)
+    dom_details = parse_common_info_details_from_html(html, price=price)
+    return _deep_merge_details(details, dom_details) if dom_details else details
 
 
 # ══════════════════════════════════════════════════════════════════════════════

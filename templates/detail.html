@@ -641,9 +641,10 @@ body::before {
 
   <!-- ── URL ── -->
   {% if tender.url %}
+  {% set eis_url = tender.url | zakupki_common_info_url(tender.purchase_number) %}
   <div class="url-row">
-    <a href="{{ tender.url }}" target="_blank" rel="noopener" class="url-link">
-      🔗 {{ tender.url }}
+    <a href="{{ eis_url }}" target="_blank" rel="noopener" class="url-link">
+      🔗 {{ eis_url }}
     </a>
   </div>
   {% endif %}

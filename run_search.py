@@ -106,7 +106,7 @@ def process(tenders, phrase, *, save_details, refresh_details) -> tuple[int, int
                 with_details += 1
                 continue
             try:
-                det = fetch_tender_details(tender.get("url", ""))
+                det = fetch_tender_details(tender.get("url", ""), price=tender.get("price"))
                 if det:
                     db.save_tender_details(pnum, det)
                     with_details += 1
