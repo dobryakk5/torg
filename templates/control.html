@@ -284,11 +284,11 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
 
       <div class="field">
         <label>НМЦК от (₽)</label>
-        <input type="number" name="PRICE_MIN" value="{{ settings.get('PRICE_MIN', '200000') }}" step="50000">
+        <input type="number" name="PRICE_MIN" value="{{ settings.get('PRICE_MIN', '200000') }}" min="0" step="1">
       </div>
       <div class="field">
         <label>НМЦК до (₽)</label>
-        <input type="number" name="PRICE_MAX" value="{{ settings.get('PRICE_MAX', '5000000') }}" step="100000">
+        <input type="number" name="PRICE_MAX" value="{{ settings.get('PRICE_MAX', '5000000') }}" min="0" step="1">
       </div>
 
       <div class="field">
