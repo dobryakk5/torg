@@ -104,6 +104,14 @@ def _process_stage1_tenders(
         pnum = tender.get("purchase_number", "")
         if not pnum:
             continue
+        if db.deadline_is_expired(tender.get("deadline")):
+            logger.info(
+                "Stage1 skip expired deadline: %s, deadline=%s, %s",
+                pnum,
+                tender.get("deadline") or "—",
+                str(tender.get("title", "?"))[:80],
+            )
+            continue
 
         matched_keywords = sorted(set(tender.get("matched_keywords") or []) | {matched_keyword})
         tender["matched_keywords"] = matched_keywords

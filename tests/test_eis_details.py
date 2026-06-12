@@ -1,4 +1,5 @@
 import decision_aid
+import database
 import filter_engine
 import scraper
 
@@ -75,3 +76,17 @@ def test_finance_gate_reads_contract_security_from_details_json():
 
     assert gate["status"] == "ok"
     assert "18 655" in gate["explain"]
+
+
+def test_deadline_is_expired_for_old_procurement():
+    now = database.datetime(2026, 6, 12, 12, 0, tzinfo=database.timezone.utc)
+
+    assert database.deadline_is_expired("13.02.2014", now=now) is True
+
+
+def test_date_only_deadline_stays_active_until_end_of_day():
+    noon = database.datetime(2026, 6, 12, 12, 0, tzinfo=database.timezone.utc)
+    next_day = database.datetime(2026, 6, 13, 0, 1, tzinfo=database.timezone.utc)
+
+    assert database.deadline_is_expired("12.06.2026", now=noon) is False
+    assert database.deadline_is_expired("12.06.2026", now=next_day) is True

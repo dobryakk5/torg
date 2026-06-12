@@ -30,7 +30,6 @@ fetch_docs.py — ТРЕТЬЯ ФАЗА: скачивание документо
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import sys
 
@@ -40,7 +39,13 @@ from document_processor import (
     download_documents, collect_document_text, extract_financial_terms,
     extract_participant_requirements, hash_files,
 )
-from scraper import get_tender_page, to_common_info_url
+from filter_engine import run_stage2_filters
+from scraper import (
+    get_tender_page,
+    parse_common_info_details,
+    parse_common_info_details_from_html,
+    to_common_info_url,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
                     handlers=[logging.StreamHandler(sys.stdout)])
@@ -75,36 +80,50 @@ def select_lots(
         return [dict(r) for r in cur.fetchall()]
 
 
-def save_scan(pnum: str, *, count: int, docs_dir: str, docs_hash: str,
-              text: str, terms: dict, requirements: list[dict]) -> None:
-    """Пишет результаты скана документов в БД + мёржит требования в details_json."""
-    with db._conn() as c:
-        cur = c.cursor()
-        cur.execute(
-            """
-            UPDATE tenders SET
-                document_count = %s, documents_dir = %s, documents_hash = %s,
-                document_text_excerpt = %s,
-                application_security_amount = COALESCE(%s, application_security_amount),
-                contract_security_amount   = COALESCE(%s, contract_security_amount),
-                warranty_security_amount   = COALESCE(%s, warranty_security_amount),
-                advance_percent            = COALESCE(%s, advance_percent),
-                payment_terms              = COALESCE(NULLIF(%s,''), payment_terms),
-                execution_days             = COALESCE(%s, execution_days),
-                updated_at = NOW()
-            WHERE purchase_number = %s
-            """,
-            (count, docs_dir, docs_hash, (text or "")[:4000],
-             terms.get("application_security_amount"), terms.get("contract_security_amount"),
-             terms.get("warranty_security_amount"), terms.get("advance_percent"),
-             terms.get("payment_terms", ""), terms.get("execution_days"), pnum),
-        )
-    # требования — в details_json (мёрж, не перетираем остальные блоки)
-    details = db.get_tender_details(pnum) or {}
+def deep_merge(base: dict, extra: dict) -> dict:
+    merged = dict(base or {})
+    for key, value in (extra or {}).items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def parse_page_details(html: str, page_text: str, price: float | None) -> dict:
+    details = parse_common_info_details(page_text, price=price)
+    dom_details = parse_common_info_details_from_html(html, price=price)
+    return deep_merge(details, dom_details) if dom_details else details
+
+
+def apply_terms(tender: dict, terms: dict) -> None:
+    for key, value in (terms or {}).items():
+        if value not in (None, ""):
+            tender[key] = value
+
+
+def save_full_refresh(tender: dict, full_text: str, details: dict, requirements: list[dict]) -> tuple[int, str]:
+    pnum = tender.get("purchase_number", "")
+    details = deep_merge(db.get_tender_details(pnum) or {}, details)
     details["doc_requirements"] = requirements
-    if requirements:
-        details["requirements_special"] = True
+    details["requirements_special"] = bool(requirements)
     db.save_tender_details(pnum, details)
+
+    filter_result = run_stage2_filters(tender, full_text)
+    tender["filter_decision"] = filter_result.decision
+    tender["filter_scores"] = filter_result.to_filter_scores()
+    tender["filter_stop"] = " | ".join(filter_result.stop_factors)
+
+    db.save_detail(
+        tender,
+        filter_result.total_score,
+        filter_result.to_reasons(),
+        llm_analysis=tender.get("llm_analysis") or "",
+        document_text=full_text,
+        notified=False,
+    )
+    db.save_filter_result(filter_result, stage="stage2")
+    return filter_result.total_score, filter_result.decision
 
 
 def main() -> None:
@@ -139,35 +158,46 @@ def main() -> None:
                         t.get("filter_total"), page_url)
             continue
         try:
-            html, _ = get_tender_page(page_url)
+            html, page_text = get_tender_page(page_url)
             db.reconnect_db()
             if not html:
                 logger.warning("  [%d/%d] %s: карточка закупки не открылась", i, len(lots), pnum)
                 continue
+            t["url"] = page_url
+            details = parse_page_details(html, page_text, t.get("price"))
+
             docs = download_documents(pnum, html, page_url)
             files = docs.get("files", [])
             if not files:
                 n_empty += 1
                 logger.info("  [%d/%d] %s (%s): документов не найдено", i, len(lots), pnum, t.get("filter_decision"))
-                # всё равно отметим, что скан был — пустой
-                save_scan(pnum, count=0, docs_dir=docs.get("dir", ""), docs_hash="",
-                          text="", terms={}, requirements=[])
-                continue
             text = collect_document_text(files, config.MAX_DOCUMENT_TEXT_CHARS)
-            terms = extract_financial_terms(text)
-            reqs = extract_participant_requirements(text)
-            save_scan(pnum, count=len(files), docs_dir=docs.get("dir", ""),
-                      docs_hash=hash_files(files), text=text, terms=terms, requirements=reqs)
-            n_docs += 1
+            full_text = "\n".join(
+                part for part in (
+                    str(t.get("primary_text") or ""),
+                    page_text or "",
+                    text or "",
+                ) if part
+            )
+            terms = extract_financial_terms(full_text)
+            apply_terms(t, terms)
+            reqs = extract_participant_requirements(full_text)
+            t["document_count"] = len(files)
+            t["documents_dir"] = docs.get("dir", "")
+            t["documents_hash"] = hash_files(files)
+
+            score, decision = save_full_refresh(t, full_text, details, reqs)
+            if files:
+                n_docs += 1
             if reqs:
                 n_reqs += 1
-            logger.info("  [%d/%d] %s (%s): файлов %d, требований %d %s",
-                        i, len(lots), pnum, t.get("filter_decision"), len(files), len(reqs),
+            logger.info("  [%d/%d] %s: файлов %d, требований %d, скор %d/%s %s",
+                        i, len(lots), pnum, len(files), len(reqs), score, decision,
                         "[" + ", ".join(r["type"] for r in reqs) + "]" if reqs else "")
         except Exception as exc:
             logger.error("  [%d/%d] %s: ошибка — %s", i, len(lots), pnum, exc)
 
-    logger.info("Готово. С документами: %d · из них с требованиями: %d · пустых: %d",
+    logger.info("Готово. Обновлено с файлами: %d · с требованиями: %d · без файлов: %d",
                 n_docs, n_reqs, n_empty)
     db.close_db()
 

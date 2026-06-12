@@ -567,6 +567,8 @@ async def tender_detail(request: Request, purchase_number: str):
     tender = db.get_tender(purchase_number)
     if not tender:
         raise HTTPException(404, "Тендер не найден")
+    if db.deadline_is_expired(tender.get("deadline")):
+        raise HTTPException(410, "Срок подачи заявок истёк")
     card = None
     criteria = None
     spec = []
@@ -812,6 +814,8 @@ async def api_bid(purchase_number: str):
     tender = db.get_tender(purchase_number)
     if not tender:
         raise HTTPException(404, "Тендер не найден")
+    if db.deadline_is_expired(tender.get("deadline")):
+        raise HTTPException(410, "Срок подачи заявок истёк")
     nmck = tender.get("price") or 0
     if not nmck:
         return JSONResponse({"error": "НМЦК не указана"}, status_code=400)

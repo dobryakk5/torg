@@ -185,6 +185,65 @@ def _filter_total_from_scores(primary_score: int | None, detail_score: int | Non
     return int(detail_score if detail_score is not None else (primary_score or 0))
 
 
+def parse_deadline(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    raw = str(value).strip()
+    formats = (
+        ("%d.%m.%Y %H:%M", 16, False),
+        ("%d.%m.%Y", 10, True),
+        ("%Y-%m-%dT%H:%M:%S", 19, False),
+        ("%Y-%m-%d", 10, True),
+    )
+    for fmt, size, date_only in formats:
+        try:
+            dt = datetime.strptime(raw[:size], fmt)
+            if date_only:
+                dt = dt.replace(hour=23, minute=59, second=59)
+            return dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def deadline_is_expired(value: str | None, now: datetime | None = None) -> bool:
+    deadline = parse_deadline(value)
+    if deadline is None:
+        return False
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return deadline < current
+
+
+def _deadline_timestamp_sql(column: str) -> str:
+    return f"""
+        CASE
+            WHEN {column} ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}\\s+\\d{{2}}:\\d{{2}}'
+            THEN to_timestamp(substring({column} from 1 for 16), 'DD.MM.YYYY HH24:MI')
+            WHEN {column} ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}'
+            THEN to_timestamp(substring({column} from 1 for 10) || ' 23:59:59', 'DD.MM.YYYY HH24:MI:SS')
+            WHEN {column} ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}T\\d{{2}}:\\d{{2}}:\\d{{2}}'
+            THEN substring({column} from 1 for 19)::timestamp AT TIME ZONE 'UTC'
+            WHEN {column} ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}'
+            THEN to_timestamp(substring({column} from 1 for 10) || ' 23:59:59', 'YYYY-MM-DD HH24:MI:SS')
+            ELSE NULL
+        END
+    """
+
+
+def _active_or_unknown_deadline_sql(column: str = "t.deadline") -> str:
+    parsed = _deadline_timestamp_sql(column)
+    return f"""
+        (
+            {column} IS NULL
+            OR btrim({column}) = ''
+            OR ({parsed}) IS NULL
+            OR ({parsed}) >= NOW()
+        )
+    """
+
+
 DDL_TENDERS = """
 CREATE TABLE IF NOT EXISTS tenders (
     id                           BIGSERIAL PRIMARY KEY,
@@ -1552,6 +1611,7 @@ def get_top_tenders(
     f8_min: Optional[int] = None,
     sort_by: str = "score",          # score | price | phrase | date | deadline
     order:   str = "desc",           # asc | desc
+    active_only: bool = True,
 ) -> list[dict[str, Any]]:
     """
     Возвращает тендеры с оценками всех 8 фильтров в одном SQL-запросе (без N+1).
@@ -1568,6 +1628,8 @@ def get_top_tenders(
     if decision:
         conditions.append("t.filter_decision = %s")
         params.append(decision)
+    if active_only:
+        conditions.append(_active_or_unknown_deadline_sql("t.deadline"))
     if price_min is not None:
         conditions.append("t.price >= %s")
         params.append(price_min)

@@ -539,7 +539,10 @@ def _filter_sla(tender: dict[str, Any], text: str, stage: str) -> FilterScore:
         # Короткий срок подачи сам по себе не является стоп-фактором:
         # простую поставку/лёгкую услугу иногда можно взять и за 1–2 дня.
         # Он только снижает оценку и усиливает другие риски.
-        if days_left < 1:
+        if days_left < 0:
+            score -= 3
+            signals.append(f"✗ срок подачи истёк: {abs(days_left)} дн. назад; исключить из активной выдачи")
+        elif days_left < 1:
             score -= 2
             signals.append(f"⚠ срок подачи почти истёк: {days_left} дн.; не стоп сам по себе")
         elif days_left < 3:
