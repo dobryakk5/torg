@@ -58,6 +58,8 @@ def load_defaults(db) -> None:
          "Коды ОКПД2 (JSON-массив)"),
         ("SEARCH_KEYWORDS",              json.dumps(config.SEARCH_KEYWORDS, ensure_ascii=False),
          "Ключевые слова (JSON-массив)"),
+        ("BACKFILL_SEARCH_PAGES",        str(config.BACKFILL_SEARCH_PAGES),
+         "Страниц для сбора всех активных торгов"),
         ("CHANGE_CHECK_HOURS",           str(config.CHANGE_CHECK_HOURS),
          "Интервал детектора изменений (часов)"),
         ("CHANGE_MIN_SCORE",             str(config.CHANGE_MIN_SCORE),

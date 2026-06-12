@@ -108,7 +108,8 @@ REQUEST_DELAY  = float(os.getenv("REQUEST_DELAY", "3.0"))
 # БЕЗ этого параметра ЕИС отдаёт архив за все годы (включая 2014).
 PUBLISH_DAYS_BACK = int(os.getenv("PUBLISH_DAYS_BACK", "30"))
 # Явный диапазон дат публикации для поиска в ЕИС. Формат: YYYY-MM-DD или ДД.ММ.ГГГГ.
-# Если PUBLISH_DATE_FROM заполнен, он важнее PUBLISH_DAYS_BACK.
+# PUBLISH_DATE_FROM=auto отключает дату и собирает все активные торги по страницам.
+# Если PUBLISH_DATE_FROM заполнен другим значением, он важнее PUBLISH_DAYS_BACK.
 PUBLISH_DATE_FROM = os.getenv("PUBLISH_DATE_FROM", "").strip()
 PUBLISH_DATE_TO   = os.getenv("PUBLISH_DATE_TO",   "").strip()
 

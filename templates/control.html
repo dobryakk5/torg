@@ -301,13 +301,13 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
 
       <div class="field">
         <label>Глубина поиска (дней)</label>
-        <input type="number" name="PUBLISH_DAYS_BACK" value="{{ settings.get('PUBLISH_DAYS_BACK', '30') }}" min="1" max="180">
-        <span class="hint">Только закупки опубликованные за последние N дней</span>
+        <input type="number" name="PUBLISH_DAYS_BACK" value="{{ settings.get('PUBLISH_DAYS_BACK', '30') }}" min="0" max="180">
+        <span class="hint">N дней по дате публикации; 0 = активные торги без ограничения даты</span>
       </div>
       <div class="field">
         <label>Дата публикации с</label>
-        <input type="text" name="PUBLISH_DATE_FROM" value="{{ settings.get('PUBLISH_DATE_FROM', '') }}" placeholder="now, 2026-06-12 или 12.06.2026">
-        <span class="hint">Если заполнено, важнее глубины поиска; now = сегодня при каждом запуске</span>
+        <input type="text" name="PUBLISH_DATE_FROM" value="{{ settings.get('PUBLISH_DATE_FROM', '') }}" placeholder="auto, now, 2026-06-12 или 12.06.2026">
+        <span class="hint">auto = все активные торги без даты; now = опубликовано сегодня</span>
       </div>
       <div class="field">
         <label>Дата публикации по</label>
@@ -360,6 +360,11 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
         <label>B2B-Center: страниц на запрос</label>
         <input type="number" name="B2B_SEARCH_PAGES" value="{{ settings.get('B2B_SEARCH_PAGES', '1') }}" min="1" max="10">
         <span class="hint">По 20 торгов на страницу</span>
+      </div>
+      <div class="field">
+        <label>Все активные: страниц ЕИС</label>
+        <input type="number" name="BACKFILL_SEARCH_PAGES" value="{{ settings.get('BACKFILL_SEARCH_PAGES', '20') }}" min="1" max="200">
+        <span class="hint">Используется при PUBLISH_DATE_FROM=auto и --backfill-active</span>
       </div>
 
       <div class="field full-row">
@@ -520,6 +525,7 @@ const KW_PRESETS = {
 
 function dateToInputValue(value) {
   const v = String(value || '').trim();
+  if (['auto', 'active', 'all-active', 'активные', 'авто'].includes(v.toLowerCase())) return '';
   const m = v.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
   return m ? `${m[3]}-${m[2]}-${m[1]}` : v;
 }

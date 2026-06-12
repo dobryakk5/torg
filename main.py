@@ -52,11 +52,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main")
 
+AUTO_ACTIVE_DATE_VALUES = {"auto", "active", "all-active", "активные", "авто"}
 
-def _stage1_period_label(days_back: int | None, date_from: str | None = None, date_to: str | None = None) -> str:
+
+def _stage1_period_label(
+    days_back: int | None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    auto_active: bool = False,
+) -> str:
+    if auto_active:
+        return "all-active"
     if date_from:
         return f"{date_from}-{date_to}" if date_to else f"from-{date_from}"
     return "all-active" if days_back is not None and days_back <= 0 else f"{days_back or config.PUBLISH_DAYS_BACK}d"
+
+
+def _is_auto_active_date(value: str | None) -> bool:
+    return str(value or "").strip().lower() in AUTO_ACTIVE_DATE_VALUES
 
 
 def _stage1_phase_mode(
@@ -66,11 +79,12 @@ def _stage1_phase_mode(
     pages: int,
     date_from: str | None = None,
     date_to: str | None = None,
+    auto_active: bool = False,
 ) -> str:
     value = re.sub(r"\s+", " ", value).strip()
     laws = "".join([("44" if config.SEARCH_44FZ else ""), ("223" if config.SEARCH_223FZ else "")])
     return (
-        f"stage1:{kind}:{value}:period={_stage1_period_label(days_back, date_from, date_to)}:pages={pages}:"
+        f"stage1:{kind}:{value}:period={_stage1_period_label(days_back, date_from, date_to, auto_active)}:pages={pages}:"
         f"price={config.PRICE_MIN}-{config.PRICE_MAX}:fz={laws or 'none'}"
     )
 
@@ -171,21 +185,26 @@ def run_stage1(
     d_to = None if backfill_active else (date_to if date_to is not None else getattr(config, "PUBLISH_DATE_TO", ""))
     d_from = str(d_from or "").strip() or None
     d_to = str(d_to or "").strip() or None
+    auto_active = _is_auto_active_date(d_from)
+    if auto_active:
+        d_back = 0
+        d_from = None
+        d_to = None
     use_44 = fz44 if fz44 is not None else config.SEARCH_44FZ
     use_223 = fz223 if fz223 is not None else config.SEARCH_223FZ
     use_okpd2 = okpd2 if okpd2 is not None else getattr(config, "OKPD2_SEARCH_ENABLED", True)
     use_b2b = b2b if b2b is not None else getattr(config, "SOURCE_B2B_ENABLED", False)
-    pages = config.BACKFILL_SEARCH_PAGES if backfill_active else config.SEARCH_PAGES
+    pages = config.BACKFILL_SEARCH_PAGES if (backfill_active or auto_active) else config.SEARCH_PAGES
 
     logger.info(
         "Этап 1: поиск карточек (%d ключей, цена %s–%s ₽, период=%s, 44-ФЗ=%s, 223-ФЗ=%s, ОКПД2=%s)",
-        len(kw_list), f"{p_min:,}", f"{p_max:,}", _stage1_period_label(d_back, d_from, d_to), use_44, use_223, use_okpd2,
+        len(kw_list), f"{p_min:,}", f"{p_max:,}", _stage1_period_label(d_back, d_from, d_to, auto_active), use_44, use_223, use_okpd2,
     )
 
     # ── Канал 1: поиск по ключевым словам ──────────────────────────────────
     for keyword in kw_list:
         phase_started_at = datetime.now().isoformat(timespec="seconds")
-        phase_mode = _stage1_phase_mode("keyword", keyword, d_back, pages, d_from, d_to)
+        phase_mode = _stage1_phase_mode("keyword", keyword, d_back, pages, d_from, d_to, auto_active)
         if skip_completed_today and db.was_stage_completed_today(phase_mode):
             logger.info("Поиск '%s' уже готов сегодня — пропускаю", keyword)
             continue
@@ -222,7 +241,7 @@ def run_stage1(
     if use_okpd2 and config.OKPD2_CODES:
         phase_started_at = datetime.now().isoformat(timespec="seconds")
         okpd2_value = ",".join(config.OKPD2_CODES)
-        phase_mode = _stage1_phase_mode("okpd2", okpd2_value, d_back, pages, d_from, d_to)
+        phase_mode = _stage1_phase_mode("okpd2", okpd2_value, d_back, pages, d_from, d_to, auto_active)
         if skip_completed_today and db.was_stage_completed_today(phase_mode):
             logger.info("ОКПД2-поиск %s уже готов сегодня — пропускаю", config.OKPD2_CODES)
         else:

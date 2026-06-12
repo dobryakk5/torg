@@ -337,6 +337,7 @@ def _reload_runtime_config() -> None:
     config.SEARCH_KEYWORDS               = config.get_runtime("SEARCH_KEYWORDS",              config.SEARCH_KEYWORDS)
     config.OKPD2_SEARCH_ENABLED          = config.get_runtime("OKPD2_SEARCH_ENABLED",         config.OKPD2_SEARCH_ENABLED)
     config.OKPD2_CODES                   = config.get_runtime("OKPD2_CODES",                  config.OKPD2_CODES)
+    config.BACKFILL_SEARCH_PAGES         = config.get_runtime("BACKFILL_SEARCH_PAGES",        config.BACKFILL_SEARCH_PAGES)
     config.SOURCE_B2B_ENABLED            = config.get_runtime("SOURCE_B2B_ENABLED",           config.SOURCE_B2B_ENABLED)
     config.B2B_SEARCH_PAGES              = config.get_runtime("B2B_SEARCH_PAGES",             config.B2B_SEARCH_PAGES)
     config.LLM_PROVIDER                  = config.get_runtime("LLM_PROVIDER",                 config.LLM_PROVIDER)
@@ -739,6 +740,7 @@ async def api_save_settings(request: Request):
         "OKPD2_SEARCH_ENABLED", "OKPD2_CODES", "SEARCH_KEYWORDS",
         "CHANGE_CHECK_HOURS", "CHANGE_MIN_SCORE", "WINNER_ANALYTICS_PAGES",
         "SOURCE_B2B_ENABLED", "B2B_SEARCH_PAGES",
+        "BACKFILL_SEARCH_PAGES",
         "LLM_PROVIDER", "OPENROUTER_TRIAGE_MODEL", "OPENROUTER_DEEP_MODEL",
         "LLM_TRIAGE_ENABLED",
     }
