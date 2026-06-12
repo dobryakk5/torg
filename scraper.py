@@ -10,6 +10,7 @@ import logging
 import random
 import re
 import time
+from datetime import datetime
 from typing import Optional
 
 import requests
@@ -33,6 +34,22 @@ HEADERS = {
 BASE_URL = "https://zakupki.gov.ru"
 SEARCH_URL = f"{BASE_URL}/epz/order/extendedsearch/results.html"
 REQUEST_DELAY = config.REQUEST_DELAY
+
+
+def _normalize_eis_date(value: str | None) -> str:
+    """Convert YYYY-MM-DD or DD.MM.YYYY to EIS DD.MM.YYYY format."""
+    value = (value or "").strip()
+    if not value:
+        return ""
+    if value.lower() in {"now", "today", "сегодня"}:
+        return datetime.now().strftime("%d.%m.%Y")
+    if re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", value):
+        return value
+    match = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", value)
+    if match:
+        year, month, day = match.groups()
+        return f"{day}.{month}.{year}"
+    return value
 
 
 def _sleep(multiplier: float = 1.0) -> None:
@@ -109,7 +126,7 @@ def search_eis(
         None → config.PUBLISH_DAYS_BACK (30). 0/меньше → без publishDateFrom, но af=on.
     Без фильтра по дате ЕИС отдаёт закупки за все годы включая 2014.
     """
-    from datetime import datetime, timedelta
+    from datetime import timedelta
 
     tenders: list[dict] = []
     seen_numbers: set[str] = set()
@@ -117,6 +134,9 @@ def search_eis(
     if date_from is None:
         n_days = days_back if days_back is not None else getattr(config, "PUBLISH_DAYS_BACK", 30)
         date_from = (datetime.now() - timedelta(days=n_days)).strftime("%d.%m.%Y") if n_days and n_days > 0 else ""
+    else:
+        date_from = _normalize_eis_date(date_from)
+    date_to = _normalize_eis_date(date_to)
 
     params_base = {
         "searchString":       keyword,
@@ -596,7 +616,7 @@ def search_eis_by_okpd2(
     date_from/date_to — явный диапазон публикации (дд.мм.гггг); если заданы,
     days_back игнорируется. days_back <= 0 отключает publishDateFrom, но оставляет af=on.
     """
-    from datetime import datetime, timedelta
+    from datetime import timedelta
 
     tenders: list[dict] = []
     seen:    set[str]   = set()
@@ -604,6 +624,9 @@ def search_eis_by_okpd2(
     if date_from is None:
         n_days    = days_back if days_back is not None else getattr(config, "PUBLISH_DAYS_BACK", 30)
         date_from = (datetime.now() - timedelta(days=n_days)).strftime("%d.%m.%Y") if n_days and n_days > 0 else ""
+    else:
+        date_from = _normalize_eis_date(date_from)
+    date_to = _normalize_eis_date(date_to)
 
     params_base = {
         "okpd2IDs":           ",".join(okpd2_codes),

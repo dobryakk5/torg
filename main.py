@@ -53,15 +53,24 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 
-def _stage1_period_label(days_back: int | None) -> str:
+def _stage1_period_label(days_back: int | None, date_from: str | None = None, date_to: str | None = None) -> str:
+    if date_from:
+        return f"{date_from}-{date_to}" if date_to else f"from-{date_from}"
     return "all-active" if days_back is not None and days_back <= 0 else f"{days_back or config.PUBLISH_DAYS_BACK}d"
 
 
-def _stage1_phase_mode(kind: str, value: str, days_back: int | None, pages: int) -> str:
+def _stage1_phase_mode(
+    kind: str,
+    value: str,
+    days_back: int | None,
+    pages: int,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> str:
     value = re.sub(r"\s+", " ", value).strip()
     laws = "".join([("44" if config.SEARCH_44FZ else ""), ("223" if config.SEARCH_223FZ else "")])
     return (
-        f"stage1:{kind}:{value}:period={_stage1_period_label(days_back)}:pages={pages}:"
+        f"stage1:{kind}:{value}:period={_stage1_period_label(days_back, date_from, date_to)}:pages={pages}:"
         f"price={config.PRICE_MIN}-{config.PRICE_MAX}:fz={laws or 'none'}"
     )
 
@@ -136,6 +145,8 @@ def run_stage1(
     fz223: bool | None = None,
     okpd2: bool | None = None,
     b2b: bool | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> tuple[int, int]:
     """
     Массовая подгрузка карточек и первичный скоринг без ТЗ.
@@ -156,6 +167,10 @@ def run_stage1(
     p_min = price_min if price_min is not None else config.PRICE_MIN
     p_max = price_max if price_max is not None else config.PRICE_MAX
     d_back = days_back if days_back is not None else (0 if backfill_active else config.PUBLISH_DAYS_BACK)
+    d_from = None if backfill_active else (date_from if date_from is not None else getattr(config, "PUBLISH_DATE_FROM", ""))
+    d_to = None if backfill_active else (date_to if date_to is not None else getattr(config, "PUBLISH_DATE_TO", ""))
+    d_from = str(d_from or "").strip() or None
+    d_to = str(d_to or "").strip() or None
     use_44 = fz44 if fz44 is not None else config.SEARCH_44FZ
     use_223 = fz223 if fz223 is not None else config.SEARCH_223FZ
     use_okpd2 = okpd2 if okpd2 is not None else getattr(config, "OKPD2_SEARCH_ENABLED", True)
@@ -163,14 +178,14 @@ def run_stage1(
     pages = config.BACKFILL_SEARCH_PAGES if backfill_active else config.SEARCH_PAGES
 
     logger.info(
-        "Этап 1: поиск карточек (%d ключей, цена %s–%s ₽, %s дн., 44-ФЗ=%s, 223-ФЗ=%s, ОКПД2=%s)",
-        len(kw_list), f"{p_min:,}", f"{p_max:,}", d_back, use_44, use_223, use_okpd2,
+        "Этап 1: поиск карточек (%d ключей, цена %s–%s ₽, период=%s, 44-ФЗ=%s, 223-ФЗ=%s, ОКПД2=%s)",
+        len(kw_list), f"{p_min:,}", f"{p_max:,}", _stage1_period_label(d_back, d_from, d_to), use_44, use_223, use_okpd2,
     )
 
     # ── Канал 1: поиск по ключевым словам ──────────────────────────────────
     for keyword in kw_list:
         phase_started_at = datetime.now().isoformat(timespec="seconds")
-        phase_mode = _stage1_phase_mode("keyword", keyword, d_back, pages)
+        phase_mode = _stage1_phase_mode("keyword", keyword, d_back, pages, d_from, d_to)
         if skip_completed_today and db.was_stage_completed_today(phase_mode):
             logger.info("Поиск '%s' уже готов сегодня — пропускаю", keyword)
             continue
@@ -183,6 +198,8 @@ def run_stage1(
                 fz223=use_223,
                 pages=pages,
                 days_back=d_back,
+                date_from=d_from,
+                date_to=d_to,
             )
             db.reconnect_db()
             phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
@@ -205,7 +222,7 @@ def run_stage1(
     if use_okpd2 and config.OKPD2_CODES:
         phase_started_at = datetime.now().isoformat(timespec="seconds")
         okpd2_value = ",".join(config.OKPD2_CODES)
-        phase_mode = _stage1_phase_mode("okpd2", okpd2_value, d_back, pages)
+        phase_mode = _stage1_phase_mode("okpd2", okpd2_value, d_back, pages, d_from, d_to)
         if skip_completed_today and db.was_stage_completed_today(phase_mode):
             logger.info("ОКПД2-поиск %s уже готов сегодня — пропускаю", config.OKPD2_CODES)
         else:
@@ -219,6 +236,8 @@ def run_stage1(
                     fz223=use_223,
                     pages=pages,
                     days_back=d_back,
+                    date_from=d_from,
+                    date_to=d_to,
                 )
                 db.reconnect_db()
                 phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
@@ -696,6 +715,8 @@ def main() -> None:
     config.PRICE_MIN                    = config.get_runtime("PRICE_MIN",                    config.PRICE_MIN)
     config.PRICE_MAX                    = config.get_runtime("PRICE_MAX",                    config.PRICE_MAX)
     config.PUBLISH_DAYS_BACK            = config.get_runtime("PUBLISH_DAYS_BACK",            config.PUBLISH_DAYS_BACK)
+    config.PUBLISH_DATE_FROM            = config.get_runtime("PUBLISH_DATE_FROM",            config.PUBLISH_DATE_FROM)
+    config.PUBLISH_DATE_TO              = config.get_runtime("PUBLISH_DATE_TO",              config.PUBLISH_DATE_TO)
     config.SCHEDULE_HOURS               = config.get_runtime("SCHEDULE_HOURS",               config.SCHEDULE_HOURS)
     config.MIN_PRIMARY_SCORE_FOR_DETAIL = config.get_runtime("MIN_PRIMARY_SCORE_FOR_DETAIL", config.MIN_PRIMARY_SCORE_FOR_DETAIL)
     config.MIN_DETAILED_SCORE_FOR_NOTIFY= config.get_runtime("MIN_DETAILED_SCORE_FOR_NOTIFY",config.MIN_DETAILED_SCORE_FOR_NOTIFY)

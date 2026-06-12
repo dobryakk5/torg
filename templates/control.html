@@ -228,6 +228,14 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
               <div style="font-size:.58rem;color:var(--dimmer);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem">Глубина (дней)</div>
               <input id="s1-days" type="number" placeholder="из настроек" min="1" max="365" style="background:var(--surf2);border:1px solid var(--border2);color:var(--text);border-radius:5px;padding:.38rem .65rem;font-family:var(--mono);font-size:.75rem;width:110px;outline:none">
             </div>
+            <div>
+              <div style="font-size:.58rem;color:var(--dimmer);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem">Дата с</div>
+              <input id="s1-date-from" type="date" style="background:var(--surf2);border:1px solid var(--border2);color:var(--text);border-radius:5px;padding:.36rem .55rem;font-family:var(--mono);font-size:.75rem;width:138px;outline:none">
+            </div>
+            <div>
+              <div style="font-size:.58rem;color:var(--dimmer);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem">Дата по</div>
+              <input id="s1-date-to" type="date" style="background:var(--surf2);border:1px solid var(--border2);color:var(--text);border-radius:5px;padding:.36rem .55rem;font-family:var(--mono);font-size:.75rem;width:138px;outline:none">
+            </div>
             <div style="display:flex;gap:1rem;align-items:center;padding-bottom:.1rem;flex-wrap:wrap">
               <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.75rem;color:var(--dim)">
                 <input type="checkbox" id="s1-fz44" checked style="width:14px;height:14px"> 44-ФЗ
@@ -293,8 +301,17 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
 
       <div class="field">
         <label>Глубина поиска (дней)</label>
-        <input type="number" name="PUBLISH_DAYS_BACK" value="{{ settings.get('PUBLISH_DAYS_BACK', '30') }}" min="7" max="180">
+        <input type="number" name="PUBLISH_DAYS_BACK" value="{{ settings.get('PUBLISH_DAYS_BACK', '30') }}" min="1" max="180">
         <span class="hint">Только закупки опубликованные за последние N дней</span>
+      </div>
+      <div class="field">
+        <label>Дата публикации с</label>
+        <input type="text" name="PUBLISH_DATE_FROM" value="{{ settings.get('PUBLISH_DATE_FROM', '') }}" placeholder="now, 2026-06-12 или 12.06.2026">
+        <span class="hint">Если заполнено, важнее глубины поиска; now = сегодня при каждом запуске</span>
+      </div>
+      <div class="field">
+        <label>Дата публикации по</label>
+        <input type="text" name="PUBLISH_DATE_TO" value="{{ settings.get('PUBLISH_DATE_TO', '') }}" placeholder="оставь пустым">
       </div>
       <div class="field">
         <label>Интервал автозапуска (часов)</label>
@@ -456,6 +473,10 @@ async function saveSettings(e) {
     if (el.type === 'checkbox')      { data[el.name] = el.checked ? '1' : '0'; continue; }
     if (el.type === 'submit')        continue;
     const v = el.value.trim();
+    if ((el.name === 'PUBLISH_DATE_FROM' || el.name === 'PUBLISH_DATE_TO') && !v) {
+      data[el.name] = '';
+      continue;
+    }
     if (!v) continue;
     // Поисковые фразы — по одной на строку → массив (поддержка и старого JSON-формата)
     if (el.name === 'SEARCH_KEYWORDS') {
@@ -497,6 +518,12 @@ const KW_PRESETS = {
   hardware: ['терминал сбора данных','сканер штрихкода','принтер этикеток','сетевое оборудование','видеонаблюдение','СКУД'],
 };
 
+function dateToInputValue(value) {
+  const v = String(value || '').trim();
+  const m = v.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : v;
+}
+
 async function loadSearchOptions() {
   try {
     const r = await fetch('/api/search/options');
@@ -534,6 +561,8 @@ async function loadSearchOptions() {
     if (opts.price_min) document.getElementById('s1-price-min').placeholder = String(opts.price_min);
     if (opts.price_max) document.getElementById('s1-price-max').placeholder = String(opts.price_max);
     if (opts.days_back) document.getElementById('s1-days').placeholder = String(opts.days_back);
+    if (opts.date_from) document.getElementById('s1-date-from').value = dateToInputValue(opts.date_from);
+    if (opts.date_to) document.getElementById('s1-date-to').value = dateToInputValue(opts.date_to);
     document.getElementById('s1-fz44').checked = !!opts.fz44;
     document.getElementById('s1-fz223').checked = !!opts.fz223;
     document.getElementById('s1-okpd2').checked = !!opts.okpd2_enabled;
@@ -600,6 +629,8 @@ async function runStage1() {
     price_min: +document.getElementById('s1-price-min').value || null,
     price_max: +document.getElementById('s1-price-max').value || null,
     days_back: +document.getElementById('s1-days').value || null,
+    date_from: document.getElementById('s1-date-from').value || null,
+    date_to: document.getElementById('s1-date-to').value || null,
     fz44: document.getElementById('s1-fz44').checked,
     fz223: document.getElementById('s1-fz223').checked,
     okpd2: document.getElementById('s1-okpd2').checked,

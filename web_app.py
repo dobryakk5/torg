@@ -145,6 +145,8 @@ class JobRunner:
                 price_min=params.get("price_min") or None,
                 price_max=params.get("price_max") or None,
                 days_back=params.get("days_back") or None,
+                date_from=params.get("date_from") or None,
+                date_to=params.get("date_to") or None,
                 fz44=params.get("fz44", None),
                 fz223=params.get("fz223", None),
                 okpd2=params.get("okpd2", None),
@@ -255,6 +257,8 @@ class SearchRunner:
         days_back = params.get("days_back")
         if days_back in (None, ""):
             days_back = config.PUBLISH_DAYS_BACK
+        date_from = str(params.get("date_from") or getattr(config, "PUBLISH_DATE_FROM", "") or "").strip() or None
+        date_to = str(params.get("date_to") or getattr(config, "PUBLISH_DATE_TO", "") or "").strip() or None
         fz44  = params.get("fz44",  config.SEARCH_44FZ)
         fz223 = params.get("fz223", config.SEARCH_223FZ)
         pages = int(params.get("pages") or config.SEARCH_PAGES)
@@ -273,6 +277,7 @@ class SearchRunner:
                 tenders = search_eis(
                     keyword=phrase, price_from=price_min, price_to=price_max,
                     fz44=fz44, fz223=fz223, pages=pages, days_back=days_back,
+                    date_from=date_from, date_to=date_to,
                 )
                 db.reconnect_db()
                 saved = candidates = 0
@@ -324,6 +329,8 @@ def _reload_runtime_config() -> None:
     config.PRICE_MIN                     = config.get_runtime("PRICE_MIN",                    config.PRICE_MIN)
     config.PRICE_MAX                     = config.get_runtime("PRICE_MAX",                    config.PRICE_MAX)
     config.PUBLISH_DAYS_BACK             = config.get_runtime("PUBLISH_DAYS_BACK",            config.PUBLISH_DAYS_BACK)
+    config.PUBLISH_DATE_FROM             = config.get_runtime("PUBLISH_DATE_FROM",            config.PUBLISH_DATE_FROM)
+    config.PUBLISH_DATE_TO               = config.get_runtime("PUBLISH_DATE_TO",              config.PUBLISH_DATE_TO)
     config.SCHEDULE_HOURS                = config.get_runtime("SCHEDULE_HOURS",               config.SCHEDULE_HOURS)
     config.MIN_PRIMARY_SCORE_FOR_DETAIL  = config.get_runtime("MIN_PRIMARY_SCORE_FOR_DETAIL", config.MIN_PRIMARY_SCORE_FOR_DETAIL)
     config.MIN_DETAILED_SCORE_FOR_NOTIFY = config.get_runtime("MIN_DETAILED_SCORE_FOR_NOTIFY",config.MIN_DETAILED_SCORE_FOR_NOTIFY)
@@ -639,6 +646,8 @@ async def api_search_options():
         "price_min": config.get_runtime("PRICE_MIN", config.PRICE_MIN),
         "price_max": config.get_runtime("PRICE_MAX", config.PRICE_MAX),
         "days_back": config.get_runtime("PUBLISH_DAYS_BACK", config.PUBLISH_DAYS_BACK),
+        "date_from": config.get_runtime("PUBLISH_DATE_FROM", config.PUBLISH_DATE_FROM),
+        "date_to": config.get_runtime("PUBLISH_DATE_TO", config.PUBLISH_DATE_TO),
         "fz44": config.SEARCH_44FZ,
         "fz223": config.SEARCH_223FZ,
         "okpd2_enabled": config.get_runtime("OKPD2_SEARCH_ENABLED", config.OKPD2_SEARCH_ENABLED),
@@ -662,6 +671,8 @@ async def api_search_start(request: Request):
         "price_min": body.get("price_min"),
         "price_max": body.get("price_max"),
         "days_back": body.get("days_back"),
+        "date_from": body.get("date_from"),
+        "date_to": body.get("date_to"),
         "pages":     body.get("pages"),
         "fz44":      bool(body.get("fz44", True)),
         "fz223":     bool(body.get("fz223", True)),
@@ -723,6 +734,7 @@ async def api_save_settings(request: Request):
 
     allowed = {
         "PRICE_MIN", "PRICE_MAX", "PUBLISH_DAYS_BACK", "SCHEDULE_HOURS",
+        "PUBLISH_DATE_FROM", "PUBLISH_DATE_TO",
         "MIN_PRIMARY_SCORE_FOR_DETAIL", "MIN_DETAILED_SCORE_FOR_NOTIFY",
         "OKPD2_SEARCH_ENABLED", "OKPD2_CODES", "SEARCH_KEYWORDS",
         "CHANGE_CHECK_HOURS", "CHANGE_MIN_SCORE", "WINNER_ANALYTICS_PAGES",
