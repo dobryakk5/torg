@@ -323,7 +323,7 @@ _CRITERIA_MARKERS = [
 
 # Известные ярлыки критериев → варианты их написания в документации.
 _CRITERIA_LABELS: list[tuple[str, list[str]]] = [
-    ("Цена контракта",            ["цена контракта", "цена договора", "стоимостн"]),
+    ("Цена контракта",            ["цена контракта", "цена договора", "стоимостн", "цена"]),
     ("Квалификация участника",    ["квалификаци"]),
     ("Опыт участника",            ["опыт"]),
     ("Деловая репутация",         ["деловая репутация", "репутаци"]),
@@ -422,10 +422,12 @@ def extract_evaluation_criteria(text: str) -> dict:
             if label in seen:
                 break
             seen.add(label)
-            win = compact[max(0, idx - 80): idx + 160]
-            wm = re.search(r"(\d{1,3})\s*%", win)
+            # Вес ищем ВПЕРЁД от ярлыка (иначе ловим % предыдущего критерия).
+            fwd = compact[idx: idx + 160]
+            wm = re.search(r"(\d{1,3})\s*%", fwd)
             weight = int(wm.group(1)) if wm and 0 < int(wm.group(1)) <= 100 else None
-            criteria.append({"label": label, "weight": weight, "snippet": win.strip()[:200]})
+            snippet = compact[max(0, idx - 40): idx + 160]
+            criteria.append({"label": label, "weight": weight, "snippet": snippet.strip()[:200]})
             break
 
     result["criteria"] = criteria
@@ -449,6 +451,77 @@ def extract_evaluation_criteria(text: str) -> dict:
             "или текст ТЗ ещё не загружен."
         )
     return result
+
+
+# ── Спецификация позиций (MVP4b-1) ───────────────────────────────────────────
+# Эвристика: строки с «количество + единица измерения» → товарные позиции.
+# Для услуговых ТЗ (без количеств) возвращаем пустой список с пояснением.
+
+SPEC_MARKERS = [
+    "наименование", "кол-во", "количество", "ед. изм", "единица измерения",
+    "технические характеристики", "спецификация", "перечень товаров", "товар",
+]
+_SPEC_SERVICE_MARKERS = [
+    "оказание услуг", "выполнение работ", "сопровождение", "техническая поддержка",
+    "администрирование", "обслуживание",
+]
+_SPEC_QTY_RE = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*(шт|штук\w*|ед\.?|единиц\w*|компл\w*|комплект\w*|рабоч\w*\s+мест\w*)",
+    re.IGNORECASE,
+)
+
+
+def _norm_unit(raw: str) -> str:
+    r = raw.lower()
+    if r.startswith("компл") or r.startswith("комплект"):
+        return "компл"
+    if r.startswith("раб"):
+        return "раб.место"
+    if r.startswith("ед") or r.startswith("единиц"):
+        return "ед"
+    return "шт"
+
+
+def extract_spec_items(text: str) -> dict:
+    """Эвристически извлекает товарные позиции из ТЗ. Возвращает {items, note}."""
+    if not text:
+        return {"items": [], "note": "Текст документации не загружен."}
+
+    low = text.lower()
+    qty_found = _SPEC_QTY_RE.search(text) is not None
+    service_hits = sum(1 for m in _SPEC_SERVICE_MARKERS if m in low)
+    if service_hits >= 2 and not qty_found:
+        return {"items": [], "note": "Позиции поставки не найдены — похоже на услугу/работы, "
+                                     "а не поставку оборудования."}
+
+    items: list[dict] = []
+    pos = 0
+    for seg in re.split(r"[\n;]+", text):
+        seg = seg.strip()
+        if not seg:
+            continue
+        m = _SPEC_QTY_RE.search(seg)
+        if not m:
+            continue
+        try:
+            qty = float(m.group(1).replace(",", "."))
+        except ValueError:
+            continue
+        unit = _norm_unit(m.group(2))
+        name = re.sub(r"^\s*\d+[\.\)]\s*", "", seg[:m.start()]).strip(" .—-:\t")
+        requirements = seg[m.end():].strip(" .,;—-")
+        if not name:
+            name = (requirements[:80] or "Позиция").strip()
+            requirements = ""
+        pos += 1
+        items.append({
+            "pos_no": pos, "name": name[:200], "qty": qty, "unit": unit,
+            "requirements": requirements[:500], "source": "heuristic",
+        })
+
+    note = "" if items else ("Позиции с количеством не найдены — добавьте вручную "
+                             "или попробуйте «Извлечь точнее (LLM)».")
+    return {"items": items, "note": note}
 
 
 def _find_money_near(text: str, markers: list[str]) -> float | None:

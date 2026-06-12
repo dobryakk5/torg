@@ -525,6 +525,77 @@ def draft_clarification(tender: dict, questions: list[str],
     return raw.strip() if raw else None
 
 
+# ── MVP4b-1: разбор спецификации позиций по фрагментам ────────────────────────
+
+_SPEC_SYSTEM = """\
+Ты — тендерный аналитик. Тебе дают ФРАГМЕНТЫ документации о закупке (вокруг таблицы/раздела
+спецификации товаров). Извлеки товарные позиции для поставки.
+
+СТРОГО:
+- Не выдумывай позиции и количества. Если количества нет — qty=null.
+- Если это услуга/работы без товарных позиций — верни items=[] и заполни warning.
+- Не превращай этапы работ в товары.
+
+Ответь СТРОГО одним JSON-объектом:
+{"items":[{"name":"<наименование>","qty":<число или null>,"unit":"<ед. изм или null>",
+"requirements":"<характеристики из ТЗ>"}],"warning":"<если позиций нет/это услуга>"}
+"""
+
+_SPEC_USER = """\
+Фрагменты документации:
+---
+{chunks}
+---
+"""
+
+
+def extract_spec_llm(chunks) -> Optional[dict]:
+    """LLM-разбор спецификации по фрагментам текста. Возвращает {items, warning} или None."""
+    import config
+    import llm_provider
+
+    if not llm_provider.is_configured():
+        return None
+
+    if isinstance(chunks, (list, tuple)):
+        text = "\n\n---\n\n".join(str(c) for c in chunks if c)
+    else:
+        text = str(chunks or "")
+    if not text.strip():
+        return None
+    text = text[: config.LLM_TEXT_CHARS]
+
+    raw = llm_provider.complete(
+        system=_SPEC_SYSTEM,
+        user=_SPEC_USER.format(chunks=text),
+        model=llm_provider.deep_model(),
+        max_tokens=1200,
+        temperature=0.1,
+        json_mode=True,
+    )
+    data = llm_provider.parse_json(raw)
+    if not data:
+        return None
+
+    items = []
+    for it in (data.get("items") or []):
+        if not isinstance(it, dict) or not str(it.get("name", "")).strip():
+            continue
+        qty = it.get("qty")
+        try:
+            qty = float(qty) if qty not in (None, "", "null", "unknown") else None
+        except (TypeError, ValueError):
+            qty = None
+        items.append({
+            "name": str(it.get("name", "")).strip()[:200],
+            "qty": qty,
+            "unit": (str(it.get("unit", "")).strip()[:20] or None) if it.get("unit") else None,
+            "requirements": str(it.get("requirements", "")).strip()[:500],
+            "source": "llm",
+        })
+    return {"items": items, "warning": str(data.get("warning", "")).strip()[:300]}
+
+
 def extract_verdict(analysis: str) -> str:
     if not analysis:
         return "—"

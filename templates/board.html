@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Доска работы — Монитор</title>
+<style>
+:root {
+  --bg:#06060B; --surf:#12121C; --surf2:#1A1A28; --border:#23233A; --border2:#33334F;
+  --text:#E8E8F4; --dim:#6060A0; --accent:#818CF8;
+  --go:#22C55E; --caution:#F59E0B; --nogo:#EF4444; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+* { box-sizing:border-box; }
+html,body { margin:0; background:var(--bg); color:var(--text); font-family:var(--mono); }
+.page { padding:1.5rem 1.5rem 4rem; }
+.top { display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; }
+.top a { color:var(--accent); text-decoration:none; font-size:.8rem; }
+.top h1 { font-size:1.1rem; margin:0; }
+.top .cnt { color:var(--dim); font-size:.8rem; }
+.empty { color:var(--dim); padding:3rem; text-align:center; font-size:.9rem; }
+.cols { display:flex; gap:.9rem; overflow-x:auto; padding-bottom:1rem; }
+.col { flex:0 0 270px; background:var(--surf); border:1px solid var(--border); border-radius:10px; padding:.7rem; }
+.col-hd { font-size:.72rem; letter-spacing:.05em; text-transform:uppercase; color:var(--dim); margin-bottom:.6rem; display:flex; justify-content:space-between; }
+.col-hd .c-cnt { color:var(--text); }
+.col.c-green  .col-hd { color:var(--go); }
+.col.c-red    .col-hd { color:var(--nogo); }
+.col.c-orange .col-hd, .col.c-purple .col-hd, .col.c-blue .col-hd { color:var(--accent); }
+.card { background:var(--surf2); border:1px solid var(--border); border-radius:8px; padding:.6rem .7rem; margin-bottom:.6rem; }
+.card a.t { color:var(--text); text-decoration:none; font-size:.82rem; line-height:1.35; display:block; }
+.card a.t:hover { color:var(--accent); }
+.card .meta { font-size:.68rem; color:var(--dim); margin-top:.35rem; line-height:1.5; }
+.card .note { font-size:.7rem; color:var(--text); margin-top:.35rem; border-top:1px dashed var(--border2); padding-top:.3rem; }
+.due { display:inline-block; padding:.05rem .35rem; border-radius:4px; font-size:.66rem; }
+.due.overdue { background:rgba(239,68,68,.15); color:var(--nogo); }
+.due.soon    { background:rgba(245,158,11,.15); color:var(--caution); }
+.due.ok      { color:var(--dim); }
+.due.none    { color:var(--dim); }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="top">
+    <a href="/">← Тендеры</a>
+    <h1>📋 Доска работы</h1>
+    <span class="cnt">в работе: {{ total }}</span>
+  </div>
+
+  {% if total == 0 %}
+  <div class="empty">Пока нет тендеров в работе.<br>Откройте тендер и нажмите «Взять в работу».</div>
+  {% else %}
+  <div class="cols">
+    {% for col in columns %}
+    <div class="col c-{{ col.color }}">
+      <div class="col-hd"><span>{{ col.label }}</span><span class="c-cnt">{{ col.tenders|length }}</span></div>
+      {% for t in col.tenders %}
+      <div class="card">
+        <a class="t" href="/tender/{{ t.purchase_number }}">{{ t.title or t.purchase_number }}</a>
+        <div class="meta">
+          {% if t.customer %}🏛 {{ t.customer[:60] }}<br>{% endif %}
+          {% if t.price %}💰 {{ "{:,.0f}".format(t.price)|replace(",", " ") }} ₽<br>{% endif %}
+          📅 подача: {% if t.deadline %}{{ t.deadline[:10] }}{% else %}—{% endif %}<br>
+          🎯 мой срок:
+          {% if t.work_due %}
+            <span class="due {{ t.work_due_state }}">{{ t.work_due }}{% if t.work_due_state == 'overdue' %} · просрочен{% elif t.work_due_state == 'soon' %} · скоро{% endif %}</span>
+          {% else %}<span class="due none">не задан</span>{% endif %}
+        </div>
+        {% if t.work_note %}<div class="note">{{ t.work_note[:160] }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      {% if not col.tenders %}<div style="color:var(--dim);font-size:.68rem">—</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+</body>
+</html>

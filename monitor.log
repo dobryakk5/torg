@@ -1383,3 +1383,8 @@ SSL SYSCALL error: Operation timed out
 2026-05-30 11:00:24,251 [INFO] main: Лотов к пересчёту: 166
 2026-05-30 11:04:51,482 [INFO] main: Пересчёт завершён: обработано 166, решение изменилось у 125
 2026-05-30 11:04:52,427 [INFO] main: Статистика: всего 166, primary-кандидатов 132, детально проверено 5, отправлено 0
+2026-05-31 13:07:51,264 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-05-31 13:07:58,622 [INFO] main: ══════════════════════════════════════════════════
+2026-05-31 13:07:58,624 [INFO] main: Аналитический цикл
+2026-05-31 13:07:58,625 [INFO] main: Обновление ценовых коридоров…
+2026-05-31 13:08:18,705 [WARNING] winner_analytics: Attempt 1 failed: HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/contract/search/results.html?searchString=1%D0%A1-%D0%91%D0%B8%D1%82%D1%80%D0%B8%D0%BA%D1%81&morphology=on&search-filter=%D0%94%D0%B0%D1%82%D0%B5+%D0%B7%D0%B0%D0%BA%D0%BB%D1%8E%D1%87%D0%B5%D0%BD%D0%B8%D1%8F&sortBy=SIGN_DATE&sortDirection=false&recordsPerPage=_20&contractDateFrom=01.01.2024&fz44=on&fz223=on&pageNumber=1 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x104a692b0>, 'Connection to zakupki.gov.ru timed out. (connect timeout=20)'))

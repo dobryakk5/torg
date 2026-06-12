@@ -42,6 +42,19 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Тендерный монитор", version="3.0.0")
 templates = Jinja2Templates(directory="templates")
 
+# ── MVP4a: стадии работы по тендеру (Kanban-доска) ───────────────────────────
+WORK_STAGES = [
+    {"key": "lead",      "label": "Интересно",      "color": "neutral", "active": True},
+    {"key": "preparing", "label": "Готовлю заявку",  "color": "blue",    "active": True},
+    {"key": "submitted", "label": "Заявка подана",   "color": "purple",  "active": True},
+    {"key": "bidding",   "label": "Идут торги",      "color": "orange",  "active": True},
+    {"key": "won",       "label": "Выиграл",         "color": "green",   "active": True},
+    {"key": "executing", "label": "Исполнение",      "color": "green",   "active": True},
+    {"key": "done",      "label": "Закрыт",          "color": "gray",    "active": False},
+    {"key": "lost",      "label": "Проиграл",        "color": "red",     "active": False},
+]
+WORK_STAGE_KEYS = {s["key"] for s in WORK_STAGES}
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Фоновые задачи — простой менеджер потоков
@@ -543,6 +556,8 @@ async def tender_detail(request: Request, purchase_number: str):
         raise HTTPException(404, "Тендер не найден")
     card = None
     criteria = None
+    spec = []
+    spec_rollup = {"total": 0, "priced": 0, "count": 0}
     try:
         import decision_aid
         import document_processor as dp
@@ -551,8 +566,14 @@ async def tender_detail(request: Request, purchase_number: str):
         criteria = dp.extract_evaluation_criteria(text)
     except Exception:
         logger.exception("decision_aid/criteria build failed for %s", purchase_number)
+    try:
+        spec = db.list_tender_items(purchase_number)
+        spec_rollup = _spec_rollup(spec)
+    except Exception:
+        logger.exception("list_tender_items failed for %s", purchase_number)
     return templates.TemplateResponse("detail.html",
-        {"request": request, "tender": tender, "card": card, "criteria": criteria})
+        {"request": request, "tender": tender, "card": card, "criteria": criteria,
+         "work_stages": WORK_STAGES, "spec": spec, "spec_rollup": spec_rollup})
 
 
 @app.get("/rules", response_class=HTMLResponse)
@@ -1048,8 +1069,336 @@ async def api_decide_explain(purchase_number: str):
     return JSONResponse(content={"card": card, "explain": explain, "cached": False, "error": None})
 
 
+@app.post("/api/decide/{purchase_number}/criteria")
+async def api_decide_criteria(purchase_number: str):
+    """LLM-разбор критериев оценки по фрагментам текста (без кеша). Эвристика — всегда."""
+    import document_processor as dp
+    import llm_analyzer
+    import llm_provider
+
+    tender = db.get_tender(purchase_number)
+    if not tender:
+        raise HTTPException(404, "Тендер не найден")
+
+    text = _decide_text(tender)
+    heuristic = dp.extract_evaluation_criteria(text)
+
+    if not llm_provider.is_configured():
+        return JSONResponse(content={"heuristic": heuristic, "llm": None,
+                                     "error": "LLM недоступна — добавьте ключ API в /control."})
+    chunks = dp._windows_around(text, dp._CRITERIA_MARKERS)
+    if not chunks:
+        return JSONResponse(content={"heuristic": heuristic, "llm": None,
+                                     "error": "В тексте не найден раздел критериев оценки."})
+    llm = llm_analyzer.extract_criteria_llm(chunks)
+    if not llm:
+        return JSONResponse(content={"heuristic": heuristic, "llm": None,
+                                     "error": "Не удалось разобрать критерии (LLM вернула пустой ответ)."})
+    return JSONResponse(content={"heuristic": heuristic, "llm": llm, "error": None})
+
+
+_CLARIFY_BUILTIN_HEADER = (
+    "Прошу предоставить разъяснения положений документации о закупке "
+    "№{pnum} «{title}»:"
+)
+_CLARIFY_DEADLINE_WARNING = (
+    "Проверьте срок подачи запроса на разъяснение на площадке — если срок истёк, "
+    "отправить запрос может быть нельзя."
+)
+
+
+@app.post("/api/decide/{purchase_number}/clarification")
+async def api_decide_clarification(purchase_number: str):
+    """Черновик запроса на разъяснение: вопросы (кеш MVP2 → LLM → ambiguities), шапка
+    (kb_templates → builtin), опц. LLM-полировка. Возвращает {draft, questions, ...}."""
+    import decision_aid
+    import document_processor as dp
+    import filter_engine as fe
+    import llm_analyzer
+    import llm_provider
+
+    tender = db.get_tender(purchase_number)
+    if not tender:
+        raise HTTPException(404, "Тендер не найден")
+
+    text = _decide_text(tender)
+    card = decision_aid.build_card(tender, text=text)
+    criteria = dp.extract_evaluation_criteria(text)
+    flags = fe.detect_flags(text)
+
+    # 1. Источник вопросов: кеш MVP2 → LLM → детерминированные ambiguities
+    questions: list[str] = []
+    question_source = "gates"
+    try:
+        cached = db.get_novice_explain(purchase_number)
+    except Exception:
+        cached = None
+    if cached and cached.get("explain"):
+        cq = cached["explain"].get("questions_to_customer") or []
+        if cq:
+            questions = list(cq)
+            question_source = "explain_cache"
+    if not questions and llm_provider.is_configured():
+        explain = llm_analyzer.explain_for_novice(tender, card, text)
+        if explain and explain.get("questions_to_customer"):
+            questions = list(explain["questions_to_customer"])
+            question_source = "llm"
+    if not questions:
+        questions = [a["question"] for a in decision_aid.build_ambiguities(card, criteria, flags)]
+        question_source = "gates"
+
+    questions = questions[:5]  # лимит 3–5
+    if not questions:
+        questions = ["Просим подтвердить требования к участнику и составу заявки по данной закупке."]
+
+    # 2. Шапка: kb_templates категории «разъяснение» → builtin
+    template_source = "builtin"
+    header = _CLARIFY_BUILTIN_HEADER.format(
+        pnum=tender.get("purchase_number", "—"), title=tender.get("title", "—"))
+    try:
+        for t in db.kb_templates_list():
+            if "разъясн" in (t.get("category") or "").lower() and (t.get("content") or "").strip():
+                header = t["content"].strip()
+                template_source = "kb_template"
+                break
+    except Exception:
+        pass
+
+    # 3. Текст: LLM-полировка или детерминированная сборка
+    polished_by_llm = False
+    draft = None
+    if llm_provider.is_configured():
+        draft = llm_analyzer.draft_clarification(tender, questions, card=card, criteria=criteria)
+        polished_by_llm = bool(draft)
+    if not draft:
+        body = "\n".join(f"{i}. {q}" for i, q in enumerate(questions, 1))
+        draft = f"{header}\n\n{body}"
+
+    return JSONResponse(content={
+        "draft": draft,
+        "questions": questions,
+        "question_source": question_source,
+        "template_source": template_source,
+        "polished_by_llm": polished_by_llm,
+        "warning": _CLARIFY_DEADLINE_WARNING,
+    })
+
+
+def _work_due_state(work_due) -> str:
+    """overdue|soon|ok|none по внутреннему сроку (work_due, ISO-строка/None)."""
+    if not work_due:
+        return "none"
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", str(work_due))
+    if not m:
+        return "none"
+    from datetime import date
+    try:
+        d = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return "none"
+    days = (d - date.today()).days
+    if days < 0:
+        return "overdue"
+    if days <= 1:
+        return "soon"
+    return "ok"
+
+
+@app.post("/api/tender/{purchase_number}/workflow")
+async def api_tender_workflow(purchase_number: str, request: Request):
+    """Обновляет lifecycle-поля тендера (стадия/срок/заметка). Стадия валидируется."""
+    tender = db.get_tender(purchase_number)
+    if not tender:
+        raise HTTPException(404, "Тендер не найден")
+    data = await request.json()
+
+    fields: dict = {}
+    if "work_stage" in data:
+        stage = (data.get("work_stage") or "").strip()
+        if stage and stage not in WORK_STAGE_KEYS:
+            raise HTTPException(400, f"Неизвестная стадия: {stage}")
+        fields["work_stage"] = stage  # "" → снять с доски (NULL в БД)
+    if "work_due" in data:
+        due = (data.get("work_due") or "").strip()
+        if due and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", due):
+            raise HTTPException(400, "Некорректная дата work_due (нужен формат ГГГГ-ММ-ДД)")
+        fields["work_due"] = due or None
+    if "work_note" in data:
+        fields["work_note"] = (data.get("work_note") or "")[:2000]
+
+    if not fields:
+        raise HTTPException(400, "Нет полей для обновления")
+
+    db.set_workflow(purchase_number, fields)
+    updated = db.get_tender(purchase_number) or {}
+    return JSONResponse(content={"ok": True, "workflow": {
+        "work_stage": updated.get("work_stage"),
+        "work_due": updated.get("work_due"),
+        "work_note": updated.get("work_note"),
+        "work_updated_at": updated.get("work_updated_at"),
+    }})
+
+
+@app.get("/board", response_class=HTMLResponse)
+async def board(request: Request):
+    """Kanban-доска тендеров в работе (lifecycle, MVP4a)."""
+    tenders = db.list_workflow_tenders()
+    # Колонки в порядке WORK_STAGES + «Другое» для неизвестных стадий.
+    columns = [{**s, "tenders": []} for s in WORK_STAGES]
+    by_key = {c["key"]: c for c in columns}
+    other = {"key": "_other", "label": "Другое", "color": "gray", "active": False, "tenders": []}
+    for t in tenders:
+        t["work_due_state"] = _work_due_state(t.get("work_due"))
+        stage = t.get("work_stage")
+        if stage in by_key:
+            by_key[stage]["tenders"].append(t)
+        else:
+            logger.warning("board: неизвестная стадия %r у %s", stage, t.get("purchase_number"))
+            other["tenders"].append(t)
+    if other["tenders"]:
+        columns.append(other)
+    total = len(tenders)
+    return templates.TemplateResponse("board.html", {
+        "request": request, "columns": columns, "total": total,
+    })
+
+
+# ── MVP4b-1: спецификация позиций ────────────────────────────────────────────
+
+def _spec_rollup(items: list) -> dict:
+    """Грубый итог себестоимости: только строки, где есть И qty, И unit_price."""
+    total = 0.0
+    priced = 0
+    for it in items:
+        q, p = it.get("qty"), it.get("unit_price")
+        if q is not None and p is not None:
+            try:
+                total += float(q) * float(p)
+                priced += 1
+            except (TypeError, ValueError):
+                pass
+    return {"total": round(total) if priced else 0, "priced": priced, "count": len(items)}
+
+
+def _match_one(item: dict) -> Optional[dict]:
+    """Предварительный подбор товара из каталога по названию+характеристикам."""
+    probe = f"{item.get('name') or ''} {item.get('requirements') or ''}".strip()
+    if not probe:
+        return None
+    try:
+        cands = db.kb_equipment_find_analogs(probe)
+    except Exception:
+        return None
+    if not cands:
+        return None
+    best = cands[0]
+    bn = set(re.findall(r"\w+", (best.get("name") or "").lower()))
+    pn = set(re.findall(r"\w+", probe.lower()))
+    score = round(len(bn & pn) / max(len(bn), 1), 2) if bn else 0.0
+    return {
+        "matched_equipment_id": best.get("id"),
+        "unit_price": best.get("price_rub"),
+        "lead_days": best.get("lead_days"),
+        "match_score": score,
+        "match_note": "Автоподбор по названию/характеристикам — проверьте вручную",
+    }
+
+
+@app.get("/api/tender/{purchase_number}/spec")
+async def api_spec_get(purchase_number: str):
+    if not db.get_tender(purchase_number):
+        raise HTTPException(404, "Тендер не найден")
+    items = db.list_tender_items(purchase_number)
+    return JSONResponse(content={"items": items, "rollup": _spec_rollup(items)})
+
+
+@app.post("/api/tender/{purchase_number}/spec/extract")
+async def api_spec_extract(purchase_number: str, request: Request):
+    """Извлечь позиции (heuristic|llm). Если спецификация уже есть — нужен replace=true."""
+    import document_processor as dp
+    tender = db.get_tender(purchase_number)
+    if not tender:
+        raise HTTPException(404, "Тендер не найден")
+    body = await request.json()
+    mode = (body.get("mode") or "heuristic").lower()
+    replace = bool(body.get("replace"))
+
+    if db.list_tender_items(purchase_number) and not replace:
+        return JSONResponse(status_code=409, content={
+            "error": "Спецификация уже заполнена. Подтвердите замену.", "need_confirm": True})
+
+    text = _decide_text(tender)
+    if mode == "llm":
+        import llm_provider
+        import llm_analyzer
+        if not llm_provider.is_configured():
+            # НЕ трогаем текущие позиции
+            return JSONResponse(content={"error": "LLM недоступна — добавьте ключ API в /control."})
+        chunks = dp._windows_around(text, dp.SPEC_MARKERS) or [text[:4000]]
+        res = llm_analyzer.extract_spec_llm(chunks)
+        if not res or not res.get("items"):
+            warn = (res or {}).get("warning") or "Позиции не распознаны LLM."
+            return JSONResponse(content={"items": [], "note": warn, "error": None})
+        items, note = res["items"], res.get("warning", "")
+    else:
+        res = dp.extract_spec_items(text)
+        items, note = res["items"], res.get("note", "")
+
+    db.replace_tender_items(purchase_number, items)
+    saved = db.list_tender_items(purchase_number)
+    return JSONResponse(content={"items": saved, "rollup": _spec_rollup(saved),
+                                 "note": note, "error": None})
+
+
+@app.post("/api/tender/{purchase_number}/spec/match")
+async def api_spec_match(purchase_number: str):
+    """Подобрать товары из каталога для непривязанных позиций (предварительно)."""
+    if not db.get_tender(purchase_number):
+        raise HTTPException(404, "Тендер не найден")
+    items = db.list_tender_items(purchase_number)
+    matched = 0
+    for it in items:
+        if it.get("matched_equipment_id"):
+            continue
+        mr = _match_one(it)
+        if mr:
+            db.update_tender_item(it["id"], mr)
+            matched += 1
+    saved = db.list_tender_items(purchase_number)
+    return JSONResponse(content={"items": saved, "rollup": _spec_rollup(saved), "matched": matched})
+
+
+@app.post("/api/tender/{purchase_number}/spec/item")
+async def api_spec_item_save(purchase_number: str, request: Request):
+    if not db.get_tender(purchase_number):
+        raise HTTPException(404, "Тендер не найден")
+    data = await request.json()
+    item_id = data.get("id")
+    if item_id:
+        existing = db.get_tender_item(int(item_id))
+        if not existing or existing.get("purchase_number") != purchase_number:
+            raise HTTPException(404, "Позиция не найдена в этом тендере")
+        db.update_tender_item(int(item_id), data)
+    else:
+        item_id = db.add_tender_item(purchase_number, data)
+    saved = db.list_tender_items(purchase_number)
+    return JSONResponse(content={"ok": True, "id": item_id, "items": saved,
+                                 "rollup": _spec_rollup(saved)})
+
+
+@app.post("/api/tender/{purchase_number}/spec/item/{item_id}/delete")
+async def api_spec_item_delete(purchase_number: str, item_id: int):
+    existing = db.get_tender_item(item_id)
+    if not existing or existing.get("purchase_number") != purchase_number:
+        raise HTTPException(404, "Позиция не найдена в этом тендере")
+    db.delete_tender_item(item_id)
+    saved = db.list_tender_items(purchase_number)
+    return JSONResponse(content={"ok": True, "items": saved, "rollup": _spec_rollup(saved)})
+
+
 @app.get("/api/kb/match/{purchase_number}")
 async def api_kb_match(purchase_number: str):
+    from knowledge_base import build_llm_context, match_competencies
     from knowledge_base import build_llm_context, match_competencies
     tender = db.get_tender(purchase_number)
     if not tender:

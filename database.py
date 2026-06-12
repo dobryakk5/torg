@@ -608,8 +608,178 @@ def ensure_extra_columns() -> None:
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS novice_explain_hash TEXT",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS novice_explain_model TEXT",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS novice_explain_created_at TIMESTAMPTZ",
+            # MVP4a: lifecycle-трекинг (доска работы), независим от status/decision.
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS work_stage TEXT",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS work_due DATE",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS work_note TEXT",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS work_updated_at TIMESTAMPTZ",
+            # MVP4b-1: спецификация позиций тендера (без FK — уникальность pn не гарантирована).
+            """CREATE TABLE IF NOT EXISTS tender_items (
+                id SERIAL PRIMARY KEY,
+                purchase_number TEXT NOT NULL,
+                pos_no INTEGER, name TEXT NOT NULL, qty NUMERIC, unit TEXT,
+                requirements TEXT,
+                matched_equipment_id INTEGER,
+                unit_price NUMERIC, lead_days INTEGER,
+                match_score NUMERIC, match_note TEXT,
+                source TEXT, note TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_tender_items_purchase_number ON tender_items(purchase_number)",
         ):
             cur.execute(ddl)
+
+
+# ── MVP4b-1: спецификация позиций ────────────────────────────────────────────
+
+def list_tender_items(purchase_number: str) -> list[dict[str, Any]]:
+    """Позиции спецификации тендера (+ название подобранного товара из каталога)."""
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            """
+            SELECT ti.*, e.name AS matched_name, e.vendor AS matched_vendor,
+                   e.model AS matched_model
+              FROM tender_items ti
+              LEFT JOIN kb_equipment e ON e.id = ti.matched_equipment_id
+             WHERE ti.purchase_number = %s
+             ORDER BY ti.pos_no ASC NULLS LAST, ti.id ASC
+            """,
+            (purchase_number,),
+        )
+        rows = cur.fetchall()
+    return [_to_jsonable(dict(r)) for r in rows]
+
+
+_ITEM_FIELDS = {
+    "pos_no", "name", "qty", "unit", "requirements", "matched_equipment_id",
+    "unit_price", "lead_days", "match_score", "match_note", "source", "note",
+}
+
+
+def replace_tender_items(purchase_number: str, items: list[dict[str, Any]]) -> None:
+    """Полностью заменяет позиции тендера (delete+insert). Только для извлечения!"""
+    if not purchase_number:
+        return
+    _with_db_retries("replace_tender_items",
+                     lambda: _replace_tender_items_once(purchase_number, items))
+
+
+def _replace_tender_items_once(purchase_number: str, items: list[dict[str, Any]]) -> None:
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM tender_items WHERE purchase_number = %s", (purchase_number,))
+        for i, item in enumerate(items or [], start=1):
+            fields = {k: item.get(k) for k in _ITEM_FIELDS if k in item}
+            fields.setdefault("pos_no", i)
+            if not fields.get("name"):
+                continue
+            cols = ["purchase_number"] + list(fields.keys())
+            vals = [purchase_number] + list(fields.values())
+            ph = ", ".join(["%s"] * len(cols))
+            cur.execute(
+                f"INSERT INTO tender_items ({', '.join(cols)}) VALUES ({ph})", vals
+            )
+
+
+def add_tender_item(purchase_number: str, fields: dict[str, Any]) -> int:
+    data = {k: fields.get(k) for k in _ITEM_FIELDS if k in fields}
+    data["purchase_number"] = purchase_number
+    data.setdefault("name", fields.get("name") or "Новая позиция")
+    data.setdefault("source", "manual")
+    with _conn() as conn:
+        cur = conn.cursor()
+        cols = list(data.keys())
+        ph = ", ".join(["%s"] * len(cols))
+        cur.execute(
+            f"INSERT INTO tender_items ({', '.join(cols)}) VALUES ({ph}) RETURNING id",
+            list(data.values()),
+        )
+        return int(cur.fetchone()[0])
+
+
+def update_tender_item(item_id: int, fields: dict[str, Any]) -> None:
+    data = {k: fields[k] for k in _ITEM_FIELDS if k in fields}
+    if not data:
+        return
+    sets = [f"{k} = %s" for k in data] + ["updated_at = NOW()"]
+    params = list(data.values()) + [item_id]
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(f"UPDATE tender_items SET {', '.join(sets)} WHERE id = %s", params)
+
+
+def delete_tender_item(item_id: int) -> None:
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM tender_items WHERE id = %s", (item_id,))
+
+
+def get_tender_item(item_id: int) -> Optional[dict[str, Any]]:
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM tender_items WHERE id = %s", (item_id,))
+        row = cur.fetchone()
+    return _to_jsonable(dict(row)) if row else None
+
+
+def set_workflow(purchase_number: str, fields: dict[str, Any]) -> None:
+    """Частичный апдейт lifecycle-полей тендера (доска работы).
+
+    Обновляет только переданные ключи из {work_stage, work_due, work_note}.
+    work_stage == "" → NULL (снять с доски). work_note обрезается до 2000 символов.
+    Всегда выставляет work_updated_at = NOW().
+    """
+    if not purchase_number:
+        return
+    _with_db_retries("set_workflow", lambda: _set_workflow_once(purchase_number, fields))
+
+
+def _set_workflow_once(purchase_number: str, fields: dict[str, Any]) -> None:
+    allowed = {"work_stage", "work_due", "work_note"}
+    sets: list[str] = []
+    params: list[Any] = []
+    for key in allowed:
+        if key not in fields:
+            continue
+        val = fields[key]
+        if key == "work_stage":
+            val = val or None            # "" → NULL
+        elif key == "work_note" and val:
+            val = str(val)[:2000]
+        elif key == "work_due":
+            val = val or None
+        sets.append(f"{key} = %s")
+        params.append(val)
+    if not sets:
+        return
+    sets.append("work_updated_at = NOW()")
+    sets.append("updated_at = NOW()")
+    params.append(purchase_number)
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE tenders SET {', '.join(sets)} WHERE purchase_number = %s",
+            params,
+        )
+
+
+def list_workflow_tenders() -> list[dict[str, Any]]:
+    """Тендеры на доске работы (work_stage задан). Сортировка по внутреннему сроку."""
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            """
+            SELECT purchase_number, title, customer, price, deadline,
+                   work_stage, work_due, work_note, work_updated_at, decision, url
+              FROM tenders
+             WHERE work_stage IS NOT NULL
+             ORDER BY work_due ASC NULLS LAST, work_updated_at DESC NULLS LAST
+            """
+        )
+        rows = cur.fetchall()
+    return [_to_jsonable(dict(r)) for r in rows]
 
 
 def get_novice_explain(purchase_number: str) -> Optional[dict[str, Any]]:

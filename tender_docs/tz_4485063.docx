@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<!--[if lt IE 7]> <html class="lt-ie10 lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
+<!--[if IE 7]> <html class="lt-ie10 lt-ie9 lt-ie8"> <![endif]-->
+<!--[if IE 8]> <html class="lt-ie10 lt-ie9"> <![endif]-->
+<!--[if IE 9]>    <html class="lt-ie10"> <![endif]-->
+<!--[if gt IE 9]><!--> <html> <!--<![endif]-->
+<head>
+	
+
+<link href="/b2b.css?v=f33e4838f431dcfc203bca6641af9a1b" rel="stylesheet" type="text/css" />
+<link href="/builds/css/min/projects/b2b/gates/center/base.css?v=daa9af99ad55521a309db4ab5b759c53" rel="stylesheet" type="text/css" />
+<link href="/builds/css/min/projects/b2b/gates/center/components.css?v=36f35c87857a8a5fac98f14614b369dc" rel="stylesheet" type="text/css" />
+<link href="/builds/css/min/jquery.plugins.css?v=d5b2dece85688585fe48f74b8a8a813e" rel="stylesheet" type="text/css" />
+<link href="/builds/css/min/projects/b2b/cosmetics/pages/error_page.css?v=c5cb14ead868b12015be5dec320c9ce4" rel="stylesheet" type="text/css" />
+<link href="/builds/css/min/projects/b2b/cosmetics/operators_firm_tooltip_widget.css?v=32de3582e01d8d2abce79a247224ee96" rel="stylesheet" type="text/css" />
+<script type="text/javascript">
+window.GlobalJsConfig={"main_page":false,"firm_id":null,"count_published_products":null,"count_supplier_offers":null,"count_customer_offers":null,"wgt_herald_cookie_name":"wgt_herald","wgt_hellobar_cookie_name":"wgt_hellobar","lang":"rus","user_id":null,"sentry_key_for_raven":null,"environment":"www","release_number":"20260610182638","gate_name":"center","global_js_config_property":{},"refuse_answers_values":{},"market":{}};
+</script>
+<script type="text/javascript" charset="utf-8" src="/js/lib/jquery/jquery-3.7.1/jquery-3.7.1.min.js?v=ee96cdf75e76b42221e45c5d16385123"></script>
+<script type="text/javascript" charset="utf-8">window.jQuery||(function(){let script = document.createElement('script');script.src = "/js/lib/jquery/jquery-3.7.1/jquery-3.7.1.min.js?fv=" + Math.random();document.getElementsByTagName('head')[0].appendChild(script);})();</script>
+<script type="text/javascript" charset="utf-8" src="/js/lib/jquery/migrate/jquery-migrate-3.4.0.min.js?v=ee96cdf75e76b42221e45c5d16385123"></script>
+<script type="text/javascript" charset="utf-8" src="/popups.js?v=d3fc3a89de492e04fd1901d719c79f7f"></script>
+<script type="text/javascript" charset="utf-8" src="/js/lib/plugins/EventEmitter.js?v=81d701b6576fdb0b7c88b632af99f3fe"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/GlobalJsConfig.es6.js?v=fe332db0d672aff4e8139ca472a8f545"></script>
+<script type="text/javascript" charset="utf-8" src="/js/lib/polyfills/svg4everybody/v2.1.9/svg4everybody.js?v=9f0746432f3256d98e83da4d76c616c9"></script>
+<script type="text/javascript" charset="utf-8" src="/js/lib/polyfills/mutation_observer.min.js?v=9f0746432f3256d98e83da4d76c616c9"></script>
+<script type="text/javascript" charset="utf-8" src="/js/lib/polyfills/promise.js?v=9f0746432f3256d98e83da4d76c616c9"></script>
+<script type="text/javascript" charset="utf-8" src="/js/lib/polyfills/fetch.js?v=9f0746432f3256d98e83da4d76c616c9"></script>
+<script type="text/javascript" charset="utf-8" src="/js/lib/polyfills/custom_event.js?v=9f0746432f3256d98e83da4d76c616c9"></script>
+<script type="text/javascript" charset="utf-8" src="/public/cache/hints/03330989f5e2320eb2372ad8f372c56e.hint.json?v=a0452abf19cd6cc2ccf5bedcbd6e2058"></script>
+<script type="text/javascript" charset="utf-8" src="/public/cache/hints/af2b4745bf712968088d8d18d1b5dbf6.hint.json?v=f664c49df608c1c4055c3efdddeadc81"></script>
+<script type="text/javascript" charset="utf-8" src="/public/cache/hints/c60465a70d7a3a953c60bad65ff602aa.hint.json?v=f664c49df608c1c4055c3efdddeadc81"></script>
+	<title>B2B-Center - Страница не найдена!</title>
+<link rel="shortcut icon" href="/favicon.ico" type="image/x-icon"/>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=1240" />
+<meta property='og:image' content='https://www.b2b-center.ru/images/v2014/b2b-center-logo-im.jpg' />
+<meta property='og:image:width' content='500' />
+<meta property='og:image:height' content='500' />
+<meta name="description" content="Единая система электронной торговли B2B-Center (ЕСЭТ В2В-Центр)" />
+<meta name="keywords" content="B2B , В2В, ЦРЭ, электронные торги, закупки, конкурсы, тендеры, аукционы" />
+<meta name='yandex-verification' content='88a54fe3e4c4c15a' />
+<meta name='msvalidate.01' content='BAA18E9742E53208C3DC0AFC7A1A471D' />
+<meta name='wmail-verification' content='1c6f286249e128f030d271d4da17120b' />
+<meta name='google-site-verification' content='wA6UbVDzbyQf6DhylF3tMUdhY6yYBDfGkIWr6Au1Skc' />
+<meta name='mailru-verification' content='030817a599bcf118' />
+	
+</head>
+<body class="">
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+    window.yaParams = {"Member":"na","Company":"na","Reg":"na","Mobile":"main","Guest":"4b0c5f24-6518-11f1-b1ff-728da4dbbe00","RegAuth":"unreg_unauth","BSA":"na","Org_ID":"na","Session_ID":"6a29df53c15fb4.80842288","NR":"new"};
+    window._tracking_session_id = window._tracking_session_id || window.yaParams.Session_ID;
+    window.yaParams.Session_ID = window._tracking_session_id;
+    (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+        m[i].l=1*new Date();k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+    (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+
+   ym(5297557, "init", {
+        clickmap:true,
+        trackLinks:true,
+        accurateTrackBounce:true,
+        triggerEvent:true,
+        webvisor:true,
+        params:window.yaParams
+   });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/5297557" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter --><script type="text/javascript">
+    function makeB2BYM_object(counter_id, params) {
+		var targets = [];
+        var inited = false;
+		
+
+        return {
+            reachGoal: function(target) {
+                if (!inited) {
+                    return targets.push(target);
+                }
+                ym(counter_id, 'reachGoal', target, params);
+            },
+            init: function() {
+				var target;
+
+                while(target = targets.pop()) {
+                    ym(counter_id, 'reachGoal', target, params);
+				
+                }
+                inited = true;
+            }
+        };
+    }
+    var B2BYM = makeB2BYM_object(5297557, window.yaParams);
+
+    document.addEventListener('yacounter5297557inited', B2BYM.init);
+    document.addEventListener('DOMContentLoaded', function() {
+        if (typeof TrackingCode !== 'undefined') {
+            TrackingCode.initYandexMetrika(5297557);
+        }
+    });
+</script><!-- Google Tag Manager -->
+<noscript><iframe src="//www.googletagmanager.com/ns.html?id=GTM-PP2NTF" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<script>
+(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start': new Date().getTime(),event:'gtm.js'});
+var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;
+j.charset='utf-8';j.src='//www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-PP2NTF');
+dataLayer.push({'member':'na','bsa':'na','firm_id':'na','reg_auth':'unreg_unauth','user':'na','guest_id':'4b0c5f24-6518-11f1-b1ff-728da4dbbe00','session':'6a29df53c15fb4.80842288','org_id':'na','nr':'new'});
+</script>
+<!-- End Google Tag Manager --><div id="page" class="">	<div class="errorPage">
+	<header class="errorPage-header">
+		<span class="dashedBox circle">4</span>
+		<span class="dashedBox circle">0</span>
+		<span class="dashedBox circle">4</span>
+	</header>
+	<main class="errorPage-main" role="main">
+		<div class="h2">
+			Вы перешли на страницу, которая была удалена или перемещена по другому адресу.		</div>
+		<p>
+			Пожалуйста, воспользуйтесь <a href="https://www.b2b-center.ru/market/">поиском по процедурам</a>, <a href="https://www.b2b-center.ru/firms/">поиском по участникам</a> или свяжитесь со специалистами B2B-Center по номеру<br/>
+ 8 800 555-85-19 (бесплатный звонок из России).		</p>
+		<div class="row">
+			<div class="col6">
+				<div class="menuBox">
+					<ul class="unstyled">
+						<li><a href="/market/">Торговая площадка</a></li>
+<li><a href="/firms/">Заказчики и поставщики</a></li>
+<li><a href="/catalog/tovari/">Каталог продукции</a></li>
+<li><a href="/tariffs/">Тарифы</a></li>					</ul>
+				</div>
+			</div>
+			<div class="col6">
+				<div class="menuBox">
+					<ul class="unstyled">
+						<li><a href="/help/">Помощь</a></li>
+<li><a href="/services.html">Сервисы</a></li>
+<li><a href="/company/contacts.html">Адреса и телефоны компании</a></li>					</ul>
+				</div>
+			</div>
+		</div>
+	</main>
+	<footer class="errorPage-footer">
+		© 2002—2026 © АО «Центр развития экономики» <br>
+		<span itemprop="telephone">+7 495 532-85-19</span>, <span itemprop="telephone">8 800 555-85-19</span>	</footer>
+</div></div>
+<!--LiveInternet counter-->
+<script type="text/javascript">
+$(function () {
+	typeof TrackingCode !== 'undefined' && TrackingCode.initLiveInternet();
+});
+</script>
+<!--/LiveInternet--><script type="text/javascript" charset="utf-8" src="/js/lib/stacktrace/stacktrace.js?v=9f0746432f3256d98e83da4d76c616c9"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/components/Framework/Base/hint.js?v=a05bf28cdf0bed000e8ae444d5155d15"></script>
+<script type="text/javascript" charset="utf-8" src="/js/lib/plugins/jquery.toastmessage/javascript/jquery.toastmessage.js?v=e6a753fbd501d487445361357bfbff3b"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/plugins/jquery.operatorsfirmtooltip/jquery.operatorsfirmtooltip.js?v=b52352562829650f238b452aaf126fa2"></script>
+<script type="text/javascript" charset="utf-8" src="/js/lib/plugins/jquery.fancybox2/jquery.fancybox.js?v=9f0746432f3256d98e83da4d76c616c9"></script>
+<script type="text/javascript" charset="utf-8" src="/js/lib/plugins/jquery.fancybox2/localization/ru.js?v=9f0746432f3256d98e83da4d76c616c9"></script>
+<script type="text/javascript" charset="utf-8" src="/js/lib/plugins/jquery.fancybox2/helpers/jquery.fancybox-media.js?v=9f0746432f3256d98e83da4d76c616c9"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/plugins/jquery.firm_protocols_settings_popup.js?v=d61a106e9875339df8324817e84b8520"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/plugins/simple_tips.js?v=a2acddb2cd44fd27188d06f6e9382fc3"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/plugins/jquery.userlinkmenu/jquery.userlinkmenu.js?v=544890035d043295096bb89299a96de9"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/bundles/common.build.js?v=831a52a15c52a3d30c4d2e74e42326c3"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/bundles/b2bcenter___common_plugins.build.js?v=831a52a15c52a3d30c4d2e74e42326c3"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/bundles/b2bcenter___js_api.build.js?v=831a52a15c52a3d30c4d2e74e42326c3"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/bundles/b2bcenter___uikit.build.js?v=831a52a15c52a3d30c4d2e74e42326c3"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/bundles/b2bcenter___polls.build.js?v=831a52a15c52a3d30c4d2e74e42326c3"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/bundles/b2bcenter___infoModal.build.js?v=831a52a15c52a3d30c4d2e74e42326c3"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/components/Framework/Base/UiKit.init.es6.js?v=a05bf28cdf0bed000e8ae444d5155d15"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/components/B2BCenter/Common/Widget/TrackingCode.es6.js?v=197de0f682991156949a0a65436420c7"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/components/Market/NewSearch/Helper/B2btrackid.js?v=e519105dd750a4e6ea3e0bfcce074715"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/components/B2BCenter/Widget/ServiceAjaxWidget.es6.js?v=2b480b12a6ea155546ce9183ff31ccc5"></script>
+<script type="text/javascript" charset="utf-8" src="/builds/js/min/components/B2BCenter/Service/Provider/UserNotification/UserNotificationWidget.js?v=fceb3e36d334ebb881c298e0312111ce"></script>
+<script type="text/javascript">
+jQuery(function($) {
+try {
+
+				$('.form-grp select:not([class~="noinit"])').selectize({allowEmptyOption: true});
+				$('.wgt-files-del').on('click', function(){	$(this).parent().remove(); });
+			
+} catch (error) {
+ Sentry.captureException(error);
+}
+
+});
+</script>
+</body>
+</html>
