@@ -143,8 +143,7 @@ async def index(
         **fmins,
     )
 
-    return templates.TemplateResponse("index.html", {
-        "request":         request,
+    return templates.TemplateResponse(request, "index.html", {
         "stats":           stats,
         "groups":          groups,
         "all_tenders":     all_tenders,
@@ -158,8 +157,7 @@ async def tender_detail(request: Request, purchase_number: str):
     tender = db.get_tender(purchase_number)
     if not tender:
         raise HTTPException(status_code=404, detail="Тендер не найден")
-    return templates.TemplateResponse("detail.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "detail.html", {
         "tender":  tender,
     })
 

@@ -446,8 +446,8 @@ async def index(
         all_tenders.sort(key=lambda t: (t.get("filter_total") or 0), reverse=reverse)
     fmins = {f"f{n}_min": locals().get(f"f{n}_min") or 1 for n in range(1,9)}
     search_phrases = config.get_runtime("SEARCH_KEYWORDS", config.SEARCH_KEYWORDS)
-    return templates.TemplateResponse("index.html", {
-        "request": request, "stats": stats, "groups": groups,
+    return templates.TemplateResponse(request, "index.html", {
+        "stats": stats, "groups": groups,
         "all_tenders": all_tenders,
         "active": (decision or "ALL").upper(),
         "search_phrases": search_phrases if isinstance(search_phrases, list) else [],
@@ -469,8 +469,7 @@ async def index(
 
 @app.get("/analytics", response_class=HTMLResponse)
 async def analytics_page(request: Request):
-    return templates.TemplateResponse("analytics.html", {
-        "request":   request,
+    return templates.TemplateResponse(request, "analytics.html", {
         "corridors": db.get_all_price_corridors(),
         "customers": db.get_customers_list(limit=50),
         "risky":     db.get_customers_list(limit=20, only_risky=True),
@@ -481,8 +480,7 @@ async def analytics_page(request: Request):
 async def search_page(request: Request):
     keywords = config.get_runtime("SEARCH_KEYWORDS", config.SEARCH_KEYWORDS)
     okpd2    = config.get_runtime("OKPD2_CODES", config.OKPD2_CODES)
-    return templates.TemplateResponse("search.html", {
-        "request":  request,
+    return templates.TemplateResponse(request, "search.html", {
         "keywords": keywords if isinstance(keywords, list) else [],
         "okpd2":    okpd2 if isinstance(okpd2, list) else [],
         "defaults": {
@@ -519,8 +517,7 @@ async def control_page(request: Request):
     except Exception:
         runs = []
 
-    return templates.TemplateResponse("control.html", {
-        "request":    request,
+    return templates.TemplateResponse(request, "control.html", {
         "settings":   settings,
         "search_keywords_text": search_keywords_text,
         "stats":      stats,
@@ -545,8 +542,8 @@ async def customer_page(request: Request, inn: str):
             FROM tenders WHERE customer_inn = %s ORDER BY created_at DESC LIMIT 50
         """, (inn,))
         tenders = [dict(r) for r in cur.fetchall()]
-    return templates.TemplateResponse("customer.html",
-        {"request": request, "customer": customer, "tenders": tenders})
+    return templates.TemplateResponse(request, "customer.html",
+        {"customer": customer, "tenders": tenders})
 
 
 @app.get("/tender/{purchase_number}", response_class=HTMLResponse)
@@ -571,8 +568,8 @@ async def tender_detail(request: Request, purchase_number: str):
         spec_rollup = _spec_rollup(spec)
     except Exception:
         logger.exception("list_tender_items failed for %s", purchase_number)
-    return templates.TemplateResponse("detail.html",
-        {"request": request, "tender": tender, "card": card, "criteria": criteria,
+    return templates.TemplateResponse(request, "detail.html",
+        {"tender": tender, "card": card, "criteria": criteria,
          "work_stages": WORK_STAGES, "spec": spec, "spec_rollup": spec_rollup})
 
 
@@ -584,8 +581,7 @@ async def rules_page(request: Request):
     by_dim: dict[int, list[dict]] = {}
     for r in rules:
         by_dim.setdefault(int(r.get("dim") or 0), []).append(r)
-    return templates.TemplateResponse("rules.html", {
-        "request":       request,
+    return templates.TemplateResponse(request, "rules.html", {
         "rules":         rules,
         "by_dim":        by_dim,
         "filter_names":  fe.FILTER_NAMES,
@@ -597,8 +593,7 @@ async def rules_page(request: Request):
 
 @app.get("/kb", response_class=HTMLResponse)
 async def kb_page(request: Request, section: str = "contracts"):
-    return templates.TemplateResponse("kb.html", {
-        "request":      request,
+    return templates.TemplateResponse(request, "kb.html", {
         "section":      section,
         "stats":        db.kb_stats(),
         "contracts":    db.kb_contracts_list(),
@@ -1258,8 +1253,8 @@ async def board(request: Request):
     if other["tenders"]:
         columns.append(other)
     total = len(tenders)
-    return templates.TemplateResponse("board.html", {
-        "request": request, "columns": columns, "total": total,
+    return templates.TemplateResponse(request, "board.html", {
+        "columns": columns, "total": total,
     })
 
 
