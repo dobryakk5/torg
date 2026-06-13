@@ -1364,11 +1364,7 @@ def _save_detail_once(
 ) -> None:
     now = _now()
     filter_decision_in_tender = tender.get("filter_decision", "")
-    status = (
-        "detail_candidate"
-        if detail_score >= config.MIN_DETAILED_SCORE_FOR_NOTIFY and filter_decision_in_tender != "NO-GO"
-        else "detail_rejected"
-    )
+    status = "detail_rejected" if filter_decision_in_tender == "NO-GO" else "detail_candidate"
     notified_at = now if notified else tender.get("notified_at")
     filter_decision = _decision_from_score(detail_score, detailed=True)
     llm_verdict = _extract_llm_verdict(llm_analysis)

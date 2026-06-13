@@ -756,9 +756,9 @@ def _treasury_support_not_required(tender: dict[str, Any], text: str) -> bool:
 
 def _negated_treasury_support(text: str) -> bool:
     normalized = _normalize(text)
-    if "казначейское сопровождение" not in normalized:
+    if "казначейск" not in normalized:
         return False
-    for match in re.finditer("казначейское сопровождение", normalized):
+    for match in re.finditer(r"казначейск\w*(?:\s+\w+){0,4}\s+сопровожд\w*", normalized):
         fragment = normalized[max(0, match.start() - 120):match.end() + 120]
         if re.search(r"\bне\s+(?:требуется|предусмотрено|установлено)\b", fragment):
             return True

@@ -116,19 +116,32 @@ def build_card(tender: dict[str, Any], filter_result: Any = None,
     bad_finance = finance["verdict"] in ("на грани", "убыточно")
 
     fr_decision = getattr(filter_result, "decision", None)
+    stored_decision = str(tender.get("filter_decision") or fr_decision or "").upper()
+    stored_stop = str(tender.get("filter_stop") or "").strip()
     if hard_blocks:
         verdict = "SKIP"
         reason = "Есть блокирующий барьер: " + "; ".join(g["label"] for g in hard_blocks[:2])
+    elif stored_decision == "NO-GO":
+        verdict = "SKIP"
+        reason = (
+            "Итоговый скоринг пометил тендер как NO-GO: " + stored_stop
+            if stored_stop else
+            "Итоговый скоринг пометил тендер как NO-GO — участвовать не стоит."
+        )
     elif fr_decision == "NO-GO" and _has_stop_reasons(filter_result):
         verdict = "SKIP"
         reason = "Сработали стоп-факторы фильтров — участвовать не стоит."
-    elif warnings or bad_finance:
+    elif warnings or bad_finance or stored_decision == "CAUTION":
         verdict = "THINK"
         bits = [g["label"] for g in warn_gates[:2]] + red_flags[:1]
         if bad_finance:
             bits = bits[:1] + [f"экономика «{finance['verdict']}»"]
-        reason = ("Можно участвовать, но проверьте: " + "; ".join(bits)) if bits else \
-                 "Можно участвовать, но оценка приблизительная — проверьте детали."
+        if bits:
+            reason = "Можно участвовать, но проверьте: " + "; ".join(bits)
+        elif stored_decision == "CAUTION":
+            reason = "Итоговый скоринг пометил тендер как CAUTION — проверьте детали перед участием."
+        else:
+            reason = "Можно участвовать, но оценка приблизительная — проверьте детали."
     else:
         verdict = "TAKE"
         reason = "Подходит под ваш профиль, явных барьеров не видно."
