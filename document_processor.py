@@ -548,11 +548,189 @@ def _norm_unit(raw: str) -> str:
     r = raw.lower()
     if r.startswith("компл") or r.startswith("комплект"):
         return "компл"
+    if r.startswith("услуг") or r.startswith("условн"):
+        return "усл"
     if r.startswith("раб"):
         return "раб.место"
     if r.startswith("ед") or r.startswith("единиц"):
         return "ед"
     return "шт"
+
+
+def _display_filename(path: Path) -> str:
+    """Возвращает читаемое имя, если ЕИС-скачивание сохранило mojibake."""
+    name = path.name
+    try:
+        return name.encode("latin1").decode("utf-8")
+    except Exception:
+        return name
+
+
+def _looks_like_object_description(path: Path) -> bool:
+    name = _display_filename(path).lower().replace("ё", "е")
+    return "описание" in name and "объект" in name and "закуп" in name
+
+
+def _row_values(row) -> list[str]:
+    values: list[str] = []
+    last = None
+    for cell in row.cells:
+        value = re.sub(r"\s+", " ", cell.text or "").strip()
+        # python-docx repeats merged-cell values; collapse adjacent duplicates.
+        if value and value != last:
+            values.append(value)
+        last = value
+    return values
+
+
+def _parse_qty(raw: str) -> float | None:
+    match = re.search(r"\d+(?:[,.]\d+)?", raw or "")
+    if not match:
+        return None
+    try:
+        return float(match.group(0).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _is_object_item_row(values: list[str]) -> bool:
+    if len(values) < 4:
+        return False
+    if not re.fullmatch(r"\d{1,4}\.?", values[0].strip()):
+        return False
+    if _parse_qty(values[-1]) is None:
+        return False
+    unit = values[-2].lower()
+    return bool(re.search(r"штук|шт|единиц|компл|услуг|условн", unit))
+
+
+def _find_header_index(values: list[str], *needles: str, exclude: str = "") -> int | None:
+    for i, value in enumerate(values):
+        low = value.lower().replace("ё", "е")
+        if exclude and exclude in low:
+            continue
+        if all(needle in low for needle in needles):
+            return i
+    return None
+
+
+def _append_requirement(item: dict, requirement: str) -> None:
+    requirement = re.sub(r"\s+", " ", requirement or "").strip()
+    if not requirement:
+        return
+    merged = item.get("requirements") or ""
+    item["requirements"] = (merged + ("\n" if merged else "") + requirement)[:1500]
+
+
+def _extract_indicator_table_items(table) -> list[dict]:
+    """Парсит формат: позиция, наименование, ед. изм., количество, показатель, значение."""
+    header: list[str] | None = None
+    name_idx = unit_idx = qty_idx = indicator_idx = value_idx = None
+    items_by_key: dict[tuple[int, str, float], dict] = {}
+
+    for row in table.rows:
+        values = _row_values(row)
+        if not values:
+            continue
+        low = " ".join(values).lower().replace("ё", "е")
+        if "наименование" in low and "количество" in low and "единица" in low:
+            header = values
+            name_idx = _find_header_index(values, "наименование", exclude="показател")
+            unit_idx = _find_header_index(values, "единица")
+            qty_idx = _find_header_index(values, "количество")
+            indicator_idx = _find_header_index(values, "наименование", "показател")
+            value_idx = (
+                _find_header_index(values, "содержание")
+                or _find_header_index(values, "значение", "показател")
+            )
+            continue
+        if not header or name_idx is None or unit_idx is None or qty_idx is None:
+            continue
+        if len(values) <= max(name_idx, unit_idx, qty_idx):
+            continue
+        pos_match = re.fullmatch(r"(\d{1,4})\.?", values[0].strip())
+        qty = _parse_qty(values[qty_idx])
+        if not pos_match or qty is None:
+            continue
+        name = values[name_idx].strip()
+        if not name:
+            continue
+        key = (int(pos_match.group(1)), name, qty)
+        item = items_by_key.get(key)
+        if not item:
+            item = {
+                "pos_no": key[0],
+                "name": name[:200],
+                "qty": qty,
+                "unit": _norm_unit(values[unit_idx]),
+                "requirements": "",
+                "source": "object_description_docx",
+            }
+            items_by_key[key] = item
+        if indicator_idx is not None and value_idx is not None and len(values) > max(indicator_idx, value_idx):
+            _append_requirement(item, f"{values[indicator_idx]}: {values[value_idx]}")
+
+    return sorted(items_by_key.values(), key=lambda item: item.get("pos_no") or 0)
+
+
+def extract_object_description_items(files: Iterable[Path | str]) -> dict:
+    """Извлекает позиции из типового файла ЕИС «Описание объекта закупки».
+
+    В таких DOCX количество часто лежит в отдельных табличных колонках
+    «Единица измерения» / «Кол-во», поэтому текстовая эвристика `5 шт`
+    их не видит.
+    """
+    paths = [Path(p) for p in files or []]
+    candidates = [p for p in paths if p.suffix.lower() == ".docx" and _looks_like_object_description(p)]
+    if not candidates:
+        return {"items": [], "note": "Файл «Описание объекта закупки» не найден."}
+
+    try:
+        from docx import Document
+    except ImportError:
+        return {"items": [], "note": "python-docx не установлен."}
+
+    items: list[dict] = []
+    for path in candidates:
+        try:
+            doc = Document(str(path))
+        except Exception as exc:
+            logger.warning("Не удалось открыть описание объекта закупки %s: %s", path.name, exc)
+            continue
+
+        for table in doc.tables:
+            indicator_items = _extract_indicator_table_items(table)
+            if indicator_items:
+                return {"items": indicator_items, "note": f"Извлечено из {_display_filename(path)}."}
+
+        current: dict | None = None
+        for table in doc.tables:
+            for row in table.rows:
+                values = _row_values(row)
+                if not values:
+                    continue
+                if _is_object_item_row(values):
+                    if current:
+                        items.append(current)
+                    pos_match = re.fullmatch(r"(\d{1,4})\.?", values[0].strip())
+                    current = {
+                        "pos_no": int(pos_match.group(1)) if pos_match else len(items) + 1,
+                        "name": values[1][:200],
+                        "qty": _parse_qty(values[-1]),
+                        "unit": _norm_unit(values[-2]),
+                        "requirements": "",
+                        "source": "object_description_docx",
+                    }
+                    continue
+                if current and "значение характеристики:" in " ".join(values).lower():
+                    req = re.sub(r"(?i)^значение характеристики:\s*", "", values[-1]).strip()
+                    _append_requirement(current, req)
+        if current:
+            items.append(current)
+        if items:
+            return {"items": items, "note": f"Извлечено из {_display_filename(path)}."}
+
+    return {"items": [], "note": "В описании объекта закупки позиции не распознаны."}
 
 
 def extract_spec_items(text: str) -> dict:

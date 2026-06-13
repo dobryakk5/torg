@@ -122,6 +122,7 @@ body::before {
 .tab.active.tab-go .cnt { background: var(--go-bg); }
 .tab.active.tab-caut    { color: var(--caution);  border-bottom-color: var(--caution); }
 .tab.active.tab-nogo    { color: var(--nogo);     border-bottom-color: var(--nogo);    }
+.tab.active.tab-rejected{ color: var(--dim);      border-bottom-color: var(--dim);     }
 
 /* ── Main ── */
 .main {
@@ -147,6 +148,7 @@ body::before {
 .dot-go     { background: var(--go); }
 .dot-caution{ background: var(--caution); }
 .dot-nogo   { background: var(--nogo); }
+.dot-rejected{ background: var(--dim); }
 .dot-all    { background: var(--accent); }
 
 /* ── Table ── */
@@ -407,6 +409,9 @@ tr:hover .fbar-label { color: var(--dim); }
     <button class="tab tab-nogo {% if active == 'NO-GO' %}active{% endif %}" onclick="showTab('NO-GO')">
       NO-GO <span class="cnt">{{ groups['NO-GO']|length }}</span>
     </button>
+    <button class="tab tab-rejected {% if active == 'REJECTED' %}active{% endif %}" onclick="showTab('REJECTED')">
+      Отказ <span class="cnt">{{ rejected_tenders|length }}</span>
+    </button>
     <a href="/board" class="tab" style="text-decoration:none;margin-left:auto;opacity:.65;font-size:.65rem">
       📋 Доска
     </a>
@@ -465,6 +470,12 @@ tr:hover .fbar-label { color: var(--dim); }
   <!-- Macro for a tender table -->
   {% macro render_table(tenders, tab_id) %}
   <div id="tab-{{ tab_id }}" class="tab-panel" style="display:none">
+    {% if tab_id == 'REJECTED' %}
+    <div class="section-hdr">
+      <div class="dot dot-rejected"></div>
+      <h2>ОТКАЗ — {{ tenders|length }} тендеров</h2>
+    </div>
+    {% endif %}
     {% if not tenders %}
     <div class="empty">— Нет тендеров в этой категории —</div>
     {% else %}
@@ -888,6 +899,8 @@ tr:hover .fbar-label { color: var(--dim); }
     {% endif %}
   </div>
 
+  {{ render_table(rejected_tenders, 'REJECTED') }}
+
 </main>
 
 <script>
@@ -907,6 +920,7 @@ function showTab(name) {
     if (name === 'GO')      btn.classList.add('tab-go');
     if (name === 'CAUTION') btn.classList.add('tab-caut');
     if (name === 'NO-GO')   btn.classList.add('tab-nogo');
+    if (name === 'REJECTED') btn.classList.add('tab-rejected');
   }
 
   const params = new URLSearchParams(window.location.search);

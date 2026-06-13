@@ -1608,6 +1608,8 @@ def get_top_tenders(
     sort_by: str = "score",          # score | price | phrase | date | deadline
     order:   str = "desc",           # asc | desc
     active_only: bool = True,
+    manual_decision: Optional[str] = None,
+    include_rejected: bool = False,
 ) -> list[dict[str, Any]]:
     """
     Возвращает тендеры с оценками всех 8 фильтров в одном SQL-запросе (без N+1).
@@ -1624,6 +1626,11 @@ def get_top_tenders(
     if decision:
         conditions.append("t.filter_decision = %s")
         params.append(decision)
+    if manual_decision:
+        conditions.append("t.decision = %s")
+        params.append(manual_decision)
+    elif not include_rejected:
+        conditions.append("t.decision IS DISTINCT FROM 'rejected'")
     if active_only:
         conditions.append(_active_or_unknown_deadline_sql("t.deadline"))
     if price_min is not None:
@@ -1775,14 +1782,15 @@ def get_stats_extended() -> dict[str, Any]:
 
         cur.execute("""
             SELECT
-                COUNT(*) FILTER (WHERE filter_decision = 'GO')      AS go_count,
-                COUNT(*) FILTER (WHERE filter_decision = 'CAUTION') AS caution_count,
-                COUNT(*) FILTER (WHERE filter_decision = 'NO-GO')   AS nogo_count,
+                COUNT(*) FILTER (WHERE filter_decision = 'GO' AND decision IS DISTINCT FROM 'rejected')      AS go_count,
+                COUNT(*) FILTER (WHERE filter_decision = 'CAUTION' AND decision IS DISTINCT FROM 'rejected') AS caution_count,
+                COUNT(*) FILTER (WHERE filter_decision = 'NO-GO' AND decision IS DISTINCT FROM 'rejected')   AS nogo_count,
                 COUNT(*) FILTER (WHERE filter_decision IS NULL)     AS unscored,
+                COUNT(*) FILTER (WHERE decision = 'rejected')        AS rejected_count,
                 ROUND(AVG(filter_total), 1)                         AS avg_score
             FROM tenders
         """)
-        go_c, caution_c, nogo_c, unscored_c, avg_score = cur.fetchone()
+        go_c, caution_c, nogo_c, unscored_c, rejected_c, avg_score = cur.fetchone()
 
         cur.execute("""
             SELECT customer, COUNT(*) AS cnt
@@ -1833,6 +1841,7 @@ def get_stats_extended() -> dict[str, Any]:
         "filter_caution":    caution_c or 0,
         "filter_nogo":       nogo_c    or 0,
         "filter_unscored":   unscored_c or 0,
+        "rejected":          rejected_c or 0,
         "avg_filter_score":  avg_score  or 0,
         "customers":         n_customers,
         "corridors":         n_corridors,

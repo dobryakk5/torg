@@ -114,6 +114,27 @@ body::before {
   font-size: .7rem; font-weight: 600; letter-spacing: .1em;
   padding: .25rem .75rem; border-radius: 4px;
 }
+.doc-download-btn {
+  margin-top: .5rem;
+  width: 32px; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  color: var(--dim); background: var(--surf2);
+  border: 1px solid var(--border2); border-radius: 5px;
+  font-family: var(--mono); font-size: 1rem;
+  transition: color .15s, background .15s, border-color .15s;
+}
+.doc-download-btn:hover { color: var(--text); background: var(--surf3); }
+.doc-download-btn:disabled { cursor: default; opacity: .55; }
+.doc-download-status {
+  max-width: 140px;
+  margin-top: .35rem;
+  font-size: .62rem;
+  line-height: 1.35;
+  color: var(--dim);
+  text-align: center;
+  word-break: break-word;
+}
 .badge-go    { background:var(--go-bg);      color:var(--go);      border:1px solid var(--go-bdr); }
 .badge-caution{background:var(--caution-bg); color:var(--caution); border:1px solid var(--caution-bdr); }
 .badge-nogo  { background:var(--nogo-bg);    color:var(--nogo);    border:1px solid var(--nogo-bdr); }
@@ -353,13 +374,8 @@ body::before {
 .spec-table { width:100%; border-collapse:collapse; font-size:.74rem; }
 .spec-table th { text-align:left; color:var(--dim); font-weight:500; padding:.3rem .4rem; border-bottom:1px solid var(--border2); white-space:nowrap; }
 .spec-table td { padding:.25rem .4rem; border-bottom:1px solid var(--border); vertical-align:top; }
-.spec-table input, .spec-table textarea { width:100%; background:var(--surf2); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:.25rem .3rem; font-family:var(--mono); font-size:.74rem; }
-.spec-table input.qty, .spec-table input.price, .spec-table input.lead { width:64px; }
-.spec-table .sum { color:var(--text); white-space:nowrap; }
-.spec-table .matched { color:var(--dim); font-size:.68rem; }
-.spec-table .del { cursor:pointer; color:var(--nogo); background:none; border:none; font-size:.9rem; }
-.spec-rollup { margin-top:.6rem; font-size:.8rem; color:var(--text); }
-.spec-rollup b { color:var(--go); }
+.spec-table .qty { white-space:nowrap; color:var(--text); }
+.spec-table .requirements { white-space:pre-wrap; color:var(--text); }
 
 /* ── LLM-объяснение (MVP2) ── */
 .decide-explain { margin-top: 1rem; }
@@ -457,6 +473,8 @@ body::before {
       {% if dec %}
       <div class="score-badge badge-{{ dc }}">{{ dec }}</div>
       {% endif %}
+      <button class="doc-download-btn" type="button" title="Скачать документы в ZIP" aria-label="Скачать документы в ZIP" onclick="downloadTenderDocs(this)">↓</button>
+      <div class="doc-download-status" id="docDownloadStatus"></div>
       {% if tender.llm_verdict %}
       <div style="font-size:.65rem;color:var(--dim);margin-top:.4rem">{{ tender.llm_verdict }}</div>
       {% endif %}
@@ -543,7 +561,8 @@ body::before {
     <div class="decide-explain" data-pnum="{{ tender.purchase_number }}">
       <button class="explain-btn" id="explainBtn" onclick="loadExplain(this)">💬 Объяснить простыми словами</button>
       <button class="explain-btn" id="clarifyBtn" onclick="loadClarification(this)">✉️ Запрос на разъяснение</button>
-      <button class="explain-btn" id="takeBtn" onclick="takeToWork(this)">📋 Взять в работу</button>
+      <button class="explain-btn" id="takeBtn" onclick="takeToWork(this)" {% if tender.decision == 'rejected' %}disabled{% endif %}>📋 Взять в работу</button>
+      <button class="explain-btn" id="rejectBtn" onclick="rejectTender(this)" {% if tender.decision == 'rejected' %}disabled{% endif %}>{% if tender.decision == 'rejected' %}✅ Отказано{% else %}✕ Отказаться{% endif %}</button>
       <div id="explainResult" class="explain-result" hidden></div>
       <div id="clarifyResult" class="explain-result" hidden></div>
     </div>
@@ -596,28 +615,17 @@ body::before {
   </div>
   {% endif %}
 
-  <!-- ── Спецификация и цены (MVP4b-1) ── -->
+  <!-- ── Спецификация (MVP4b-1) ── -->
   <div class="decide-block" id="specBox" data-pnum="{{ tender.purchase_number }}" style="margin-bottom:1.5rem">
-    <h4>Спецификация и цены</h4>
-    <div style="margin-bottom:.6rem;display:flex;flex-wrap:wrap;gap:.4rem">
-      <button class="explain-btn" onclick="specExtract('heuristic', false)">📋 Извлечь позиции</button>
-      <button class="explain-btn" onclick="specExtract('llm', false)">🔍 Извлечь точнее (LLM)</button>
-      <button class="explain-btn" onclick="specReExtract()">♻️ Очистить и извлечь заново</button>
-      <button class="explain-btn" onclick="specMatch()">🧩 Подобрать из каталога</button>
-      <button class="explain-btn" onclick="specAddRow()">＋ строка</button>
-      <span id="specMsg" class="explain-meta"></span>
-    </div>
+    <h4>Спецификация</h4>
     <div style="overflow-x:auto">
       <table class="spec-table">
         <thead><tr>
-          <th>№</th><th>Наименование</th><th>Кол-во</th><th>Ед.</th><th>Характеристики</th>
-          <th>Подобранный товар</th><th>Цена/ед</th><th>Сумма</th><th>Срок</th><th></th>
+          <th>Наименование</th><th>Кол-во</th><th>Характеристики</th>
         </tr></thead>
         <tbody id="specRows"></tbody>
       </table>
     </div>
-    <div id="specRollup" class="spec-rollup"></div>
-    <div class="explain-meta" style="margin-top:.3rem">Предварительная оценка по каталогу — проверьте соответствие ТЗ и актуальность цен.</div>
   </div>
 
   <!-- ── LLM-триаж (Stage 1) ── -->
@@ -942,6 +950,29 @@ async function takeToWork(btn) {
     alert('Не удалось: ' + String(err));
   }
 }
+async function rejectTender(btn) {
+  var pnum = btn.closest('.decide-explain').getAttribute('data-pnum');
+  if (!confirm('Отказаться от тендера? Он уйдет из обычных списков на главной.')) return;
+  var orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳…';
+  try {
+    var r = await fetch('/api/tender/' + encodeURIComponent(pnum) + '/reject', {method: 'POST'});
+    if (!r.ok) {
+      var e = await r.json().catch(function(){ return {}; });
+      throw new Error(e.detail || ('HTTP ' + r.status));
+    }
+    btn.textContent = '✅ Отказано';
+    var take = document.getElementById('takeBtn');
+    if (take) take.disabled = true;
+    var sel = document.getElementById('workStage');
+    if (sel) sel.value = '';
+    var msg = document.getElementById('workMsg');
+    if (msg) msg.textContent = 'Отказ сохранен · снято с доски';
+  } catch (err) {
+    btn.textContent = orig; btn.disabled = false;
+    alert('Не удалось: ' + String(err));
+  }
+}
 
 async function loadCriteria(btn) {
   var pnum = btn.closest('#criteriaBox').getAttribute('data-pnum');
@@ -973,92 +1004,44 @@ async function loadCriteria(btn) {
   }
 }
 
+async function downloadTenderDocs(btn) {
+  var status = document.getElementById('docDownloadStatus');
+  var original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '...';
+  status.textContent = 'Скачиваю документы...';
+  try {
+    var resp = await fetch('/api/tender/{{ tender.purchase_number }}/documents/zip', {method: 'POST'});
+    var data = await resp.json().catch(function(){ return {}; });
+    if (!resp.ok || data.ok === false) {
+      status.textContent = data.detail || data.error || 'Не удалось скачать документы';
+    } else {
+      status.textContent = 'ZIP: ' + data.zip_path;
+    }
+  } catch (err) {
+    status.textContent = 'Ошибка запроса';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
 /* ── Спецификация (MVP4b-1) ── */
-var SPEC_PNUM = "{{ tender.purchase_number }}";
 var SPEC_INIT = {{ spec|tojson }};
-var SPEC_ROLLUP_INIT = {{ spec_rollup|tojson }};
 function _esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
-function _num(v){ return (v===''||v==null)?null:(isNaN(parseFloat(v))?null:parseFloat(v)); }
 function specRenderRows(items){
   var tb = document.getElementById('specRows');
-  if(!items || !items.length){ tb.innerHTML = '<tr><td colspan="10" style="color:var(--dim);padding:.6rem">Позиции пока не извлечены</td></tr>'; return; }
+  if(!items || !items.length){ tb.innerHTML = '<tr><td colspan="3" style="color:var(--dim);padding:.6rem">Позиции пока не извлечены</td></tr>'; return; }
   tb.innerHTML = items.map(function(it){
-    var sum = (it.qty!=null && it.unit_price!=null) ? (it.qty*it.unit_price) : null;
-    var matched = it.matched_name ? ('<div class="matched">'+_esc(it.matched_name)+(it.match_score!=null?(' · '+Math.round(it.match_score*100)+'%'):'')+'</div>') : '';
-    return '<tr data-id="'+it.id+'">'
-      + '<td>'+(it.pos_no||'')+'</td>'
-      + '<td><input data-f="name" value="'+_esc(it.name)+'"></td>'
-      + '<td><input class="qty" data-f="qty" value="'+_esc(it.qty)+'"></td>'
-      + '<td><input class="unit" data-f="unit" style="width:60px" value="'+_esc(it.unit)+'"></td>'
-      + '<td><textarea data-f="requirements" rows="1">'+_esc(it.requirements)+'</textarea></td>'
-      + '<td>'+matched+'<input data-f="match_note" style="display:none" value="'+_esc(it.match_note)+'"></td>'
-      + '<td><input class="price" data-f="unit_price" value="'+_esc(it.unit_price)+'"></td>'
-      + '<td class="sum">'+(sum!=null?(sum.toLocaleString('ru-RU')+' ₽'):'—')+'</td>'
-      + '<td><input class="lead" data-f="lead_days" value="'+_esc(it.lead_days)+'"></td>'
-      + '<td><button class="del" title="Удалить" onclick="specDeleteItem('+it.id+')">✕</button></td>'
+    var qty = it.qty == null ? '—' : _esc(it.qty) + (it.unit ? ' ' + _esc(it.unit) : '');
+    return '<tr>'
+      + '<td>'+_esc(it.name)+'</td>'
+      + '<td class="qty">'+qty+'</td>'
+      + '<td class="requirements">'+_esc(it.requirements || '')+'</td>'
       + '</tr>';
   }).join('');
-  tb.querySelectorAll('tr[data-id]').forEach(function(tr){
-    tr.querySelectorAll('input,textarea').forEach(function(inp){
-      inp.addEventListener('change', function(){ specSaveRow(tr); });
-    });
-  });
 }
-function specRenderRollup(r){
-  if(!r){ return; }
-  document.getElementById('specRollup').innerHTML =
-    'Оценено: '+r.priced+' из '+r.count+' позиций · Грубая себестоимость: <b>'+(r.total||0).toLocaleString('ru-RU')+' ₽</b>';
-}
-function specRender(data){ specRenderRows(data.items); specRenderRollup(data.rollup); }
-function _specMsg(t){ document.getElementById('specMsg').textContent = t || ''; }
-async function _specPost(path, body){
-  var r = await fetch('/api/tender/'+encodeURIComponent(SPEC_PNUM)+path, {
-    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body||{})});
-  var d = await r.json().catch(function(){return {};});
-  return {status:r.status, data:d};
-}
-async function specExtract(mode, replace){
-  _specMsg(mode==='llm'?'Разбираю через LLM…':'Извлекаю…');
-  var res = await _specPost('/spec/extract', {mode:mode, replace:replace});
-  if(res.status===409){ _specMsg('Спецификация уже есть — нажмите «Очистить и извлечь заново».'); return; }
-  if(res.data.error){ _specMsg('⚠️ '+res.data.error); return; }
-  if(res.data.items!==undefined && res.data.rollup) specRender(res.data);
-  else if(res.data.items!==undefined) specRenderRows(res.data.items);
-  _specMsg(res.data.note || 'Готово');
-}
-function specReExtract(){
-  if(confirm('Это заменит текущую спецификацию и удалит ручные правки. Продолжить?'))
-    specExtract('heuristic', true);
-}
-async function specMatch(){
-  _specMsg('Подбираю из каталога…');
-  var res = await _specPost('/spec/match', {});
-  if(res.data.items) specRender(res.data);
-  _specMsg('Подобрано: '+(res.data.matched||0));
-}
-async function specAddRow(){
-  var res = await _specPost('/spec/item', {name:'Новая позиция', source:'manual'});
-  if(res.data.items) specRender(res.data);
-}
-async function specSaveRow(tr){
-  var id = tr.getAttribute('data-id');
-  var body = {id: parseInt(id)};
-  tr.querySelectorAll('[data-f]').forEach(function(inp){
-    var f = inp.getAttribute('data-f'); var v = inp.value;
-    if(f==='qty'||f==='unit_price') body[f] = _num(v);
-    else if(f==='lead_days') body[f] = (v===''?null:parseInt(v));
-    else body[f] = v;
-  });
-  _specMsg('Сохраняю…');
-  var res = await _specPost('/spec/item', body);
-  if(res.data.items) specRender(res.data);
-  _specMsg('Сохранено');
-}
-async function specDeleteItem(id){
-  var res = await _specPost('/spec/item/'+id+'/delete', {});
-  if(res.data.items) specRender(res.data);
-}
-specRender({items: SPEC_INIT, rollup: SPEC_ROLLUP_INIT});
+specRenderRows(SPEC_INIT);
 </script>
 </body>
 </html>

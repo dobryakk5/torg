@@ -28,7 +28,10 @@ import logging
 import re
 import threading
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+import zipfile
 
 from fastapi import FastAPI, Request, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -408,6 +411,46 @@ def zakupki_common_info_url(url: str, purchase_number: str = "") -> str:
         f"?regNumber={reg_number}"
     )
 
+
+def zakupki_documents_url(url: str, purchase_number: str = "") -> str:
+    value = f"{url or ''} {purchase_number or ''}"
+    match = re.search(r"\b\d{11,22}\b", value)
+    reg_number = match.group(0) if match else (purchase_number or "")
+    source = url or ""
+    lower_source = source.lower()
+    parsed = urlparse(source) if source else None
+    is_223 = "notice223" in lower_source or "/223/" in lower_source or re.fullmatch(r"3\d{10}", reg_number)
+    if "documents.html" in lower_source:
+        if is_223 and parsed:
+            query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+            if "purchaseNoticeNumber" not in query:
+                query["purchaseNoticeNumber"] = query.pop("regNumber", reg_number)
+                return urlunparse(parsed._replace(query=urlencode(query)))
+        return source
+    if source and "common-info.html" in lower_source:
+        parsed = urlparse(re.sub(r"common-info\.html", "documents.html", source, flags=re.I))
+        if is_223:
+            query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+            if "purchaseNoticeNumber" not in query:
+                query["purchaseNoticeNumber"] = query.pop("regNumber", reg_number)
+            return urlunparse(parsed._replace(query=urlencode(query)))
+        return urlunparse(parsed)
+    if source and "view.html" in lower_source:
+        parsed = urlparse(source)
+        path = re.sub(r"view\.html$", "documents.html", parsed.path, flags=re.I)
+        return urlunparse(parsed._replace(path=path))
+    if is_223:
+        query = dict(parse_qsl(urlparse(source).query, keep_blank_values=True)) if source else {}
+        query.setdefault("purchaseNoticeNumber", reg_number)
+        return (
+            "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?"
+            + urlencode(query)
+        )
+    return (
+        "https://zakupki.gov.ru/epz/order/notice/zk20/view/documents.html"
+        f"?regNumber={reg_number}"
+    )
+
 for name, fn in [("fmt_price",fmt_price),("fmt_date",fmt_date),
                   ("score_color",score_color),("decision_class",decision_class),
                   ("parse_signals",parse_signals),("parse_stop",parse_stop),
@@ -452,6 +495,12 @@ async def index(
                f5_min=f5_min, f6_min=f6_min, f7_min=f7_min, f8_min=f8_min,
                sort_by=sort_by, order=order, limit=limit)
     groups = {k: db.get_top_tenders(decision=k, **fkw) for k in ("GO","CAUTION","NO-GO")}
+    rejected_tenders = db.get_top_tenders(
+        decision=None,
+        manual_decision="rejected",
+        include_rejected=True,
+        **fkw,
+    )
     all_tenders = [t for rows in groups.values() for t in rows]
     reverse = order == "desc"
     if sort_by == "price":
@@ -465,6 +514,7 @@ async def index(
     return templates.TemplateResponse(request, "index.html", {
         "stats": stats, "groups": groups,
         "all_tenders": all_tenders,
+        "rejected_tenders": rejected_tenders,
         "active": (decision or "ALL").upper(),
         "search_phrases": search_phrases if isinstance(search_phrases, list) else [],
         "active_kw": kw or "",
@@ -728,6 +778,74 @@ async def api_tender_details(purchase_number: str):
     return JSONResponse(content={"purchase_number": purchase_number, "details": details or {}})
 
 
+def _display_download_name(path: Path) -> str:
+    try:
+        return path.name.encode("latin1").decode("utf-8")
+    except Exception:
+        return path.name
+
+
+def _zip_documents(files: list[Path], purchase_number: str) -> Path:
+    downloads = Path.home() / "Downloads"
+    downloads.mkdir(parents=True, exist_ok=True)
+    zip_path = downloads / f"{purchase_number}_documents.zip"
+    used_names: set[str] = set()
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for i, path in enumerate(files, start=1):
+            if not path.exists() or not path.is_file():
+                continue
+            arcname = _display_download_name(path)
+            if arcname in used_names:
+                arcname = f"{i}_{arcname}"
+            used_names.add(arcname)
+            zf.write(path, arcname=arcname)
+    return zip_path
+
+
+@app.post("/api/tender/{purchase_number}/documents/zip")
+async def api_tender_documents_zip(purchase_number: str):
+    tender = db.get_tender(purchase_number)
+    if not tender:
+        raise HTTPException(404, "Тендер не найден")
+
+    from document_processor import download_documents, hash_files
+    from scraper import get_tender_page
+
+    docs_url = zakupki_documents_url(tender.get("url") or "", purchase_number)
+    html, _ = get_tender_page(docs_url)
+    docs = download_documents(purchase_number, html, docs_url) if html else {"files": []}
+
+    if not docs.get("files"):
+        common_url = zakupki_common_info_url(tender.get("url") or "", purchase_number)
+        html, _ = get_tender_page(common_url)
+        docs = download_documents(purchase_number, html, common_url) if html else {"files": []}
+
+    files = [Path(p) for p in docs.get("files", []) if Path(p).is_file()]
+    if not files:
+        raise HTTPException(502, "Документы не скачались с ЕИС")
+
+    zip_path = _zip_documents(files, purchase_number)
+    with db._conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE tenders SET
+                document_count = %s,
+                documents_dir = %s,
+                documents_hash = %s,
+                updated_at = NOW()
+            WHERE purchase_number = %s
+            """,
+            (len(files), docs.get("dir", ""), hash_files(files), purchase_number),
+        )
+    return JSONResponse(content={
+        "ok": True,
+        "count": len(files),
+        "zip_path": str(zip_path),
+        "documents_url": docs_url,
+    })
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # API — Настройки
 # ══════════════════════════════════════════════════════════════════════════════
@@ -797,14 +915,22 @@ async def api_tenders(
     order:   str = "desc",
     limit: int = 50,
 ):
+    filter_decision = decision
+    manual_decision = None
+    include_rejected = False
+    if decision and decision.upper() in {"REJECTED", "ОТКАЗ"}:
+        filter_decision = None
+        manual_decision = "rejected"
+        include_rejected = True
     return JSONResponse(content=db.get_top_tenders(
-        decision=decision, limit=limit,
+        decision=filter_decision, limit=limit,
         price_min=price_min, price_max=price_max, law_type=law_type,
         matched_keyword=matched_keyword, q=q,
         exclude_keywords=exclude_keyword,
         f1_min=f1_min, f2_min=f2_min, f3_min=f3_min, f4_min=f4_min,
         f5_min=f5_min, f6_min=f6_min, f7_min=f7_min, f8_min=f8_min,
         sort_by=sort_by, order=order,
+        manual_decision=manual_decision, include_rejected=include_rejected,
     ))
 
 
@@ -1261,6 +1387,19 @@ async def api_tender_workflow(purchase_number: str, request: Request):
     }})
 
 
+@app.post("/api/tender/{purchase_number}/reject")
+async def api_tender_reject(purchase_number: str):
+    """Помечает тендер как отказной и убирает его из обычных списков/доски."""
+    tender = db.get_tender(purchase_number)
+    if not tender:
+        raise HTTPException(404, "Тендер не найден")
+
+    db.set_decision(purchase_number, "rejected", "Отказ через карточку тендера")
+    db.set_workflow(purchase_number, {"work_stage": "", "work_due": None})
+    updated = db.get_tender(purchase_number) or {}
+    return JSONResponse(content={"ok": True, "decision": updated.get("decision")})
+
+
 @app.get("/board", response_class=HTMLResponse)
 async def board(request: Request):
     """Kanban-доска тендеров в работе (lifecycle, MVP4a)."""
@@ -1349,8 +1488,8 @@ async def api_spec_extract(purchase_number: str, request: Request):
         return JSONResponse(status_code=409, content={
             "error": "Спецификация уже заполнена. Подтвердите замену.", "need_confirm": True})
 
-    text = _decide_text(tender)
     if mode == "llm":
+        text = _decide_text(tender)
         import llm_provider
         import llm_analyzer
         if not llm_provider.is_configured():
@@ -1363,7 +1502,18 @@ async def api_spec_extract(purchase_number: str, request: Request):
             return JSONResponse(content={"items": [], "note": warn, "error": None})
         items, note = res["items"], res.get("warning", "")
     else:
-        res = dp.extract_spec_items(text)
+        docs_dir = tender.get("documents_dir") or ""
+        files = []
+        if docs_dir:
+            try:
+                from pathlib import Path
+                files = [p for p in Path(docs_dir).iterdir() if p.is_file()]
+            except Exception:
+                files = []
+        res = dp.extract_object_description_items(files)
+        if not res.get("items"):
+            text = _decide_text(tender)
+            res = dp.extract_spec_items(text)
         items, note = res["items"], res.get("note", "")
 
     db.replace_tender_items(purchase_number, items)

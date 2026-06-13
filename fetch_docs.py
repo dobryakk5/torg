@@ -33,7 +33,7 @@ import config
 import database as db
 from document_processor import (
     download_documents, collect_document_text, extract_financial_terms,
-    extract_participant_requirements, hash_files,
+    extract_object_description_items, extract_participant_requirements, hash_files,
 )
 from filter_engine import run_stage2_filters
 from scraper import (
@@ -292,6 +292,9 @@ def main() -> None:
             if do_docs:
                 reqs = extract_participant_requirements(full_text)
                 save_doc_refresh(t, doc_text, reqs)
+                spec = extract_object_description_items(files)
+                if spec.get("items") and not db.list_tender_items(pnum):
+                    db.replace_tender_items(pnum, spec["items"])
                 if files:
                     n_docs += 1
                 if reqs:
