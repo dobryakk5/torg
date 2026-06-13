@@ -228,6 +228,15 @@ body::before {
 .fc-signal.ok   { color: #4ADE80; border-color: rgba(74,222,128,.3); }
 .fc-signal.warn { color: var(--caution); border-color: rgba(245,158,11,.3); }
 .fc-signal.bad  { color: var(--nogo);    border-color: rgba(239,68,68,.3); }
+.fc-signal.ctx  {
+  color: var(--dim);
+  border-color: var(--border);
+  background: rgba(255,255,255,.025);
+  padding: .35rem .5rem;
+  max-height: 7.5rem;
+  overflow: hidden;
+  cursor: help;
+}
 
 /* ── Tender info grid ── */
 .info-grid {
@@ -754,13 +763,15 @@ body::before {
       <div class="fc-signals">
         {% for sig in sigs %}
         {% if sig.startswith('✓') %}
-        <div class="fc-signal ok">{{ sig }}</div>
+        <div class="fc-signal ok" title="{{ sig }}">{{ sig }}</div>
         {% elif sig.startswith('✗') %}
-        <div class="fc-signal bad">{{ sig }}</div>
-        {% elif sig.startswith('!') %}
-        <div class="fc-signal warn">{{ sig }}</div>
+        <div class="fc-signal bad" title="{{ sig }}">{{ sig }}</div>
+        {% elif sig.startswith('⚠') or sig.startswith('!') %}
+        <div class="fc-signal warn" title="{{ sig }}">{{ sig }}</div>
+        {% elif sig.startswith('↳') %}
+        <div class="fc-signal ctx" title="{{ sig }}">{{ sig }}</div>
         {% else %}
-        <div class="fc-signal">{{ sig }}</div>
+        <div class="fc-signal" title="{{ sig }}">{{ sig }}</div>
         {% endif %}
         {% endfor %}
       </div>

@@ -517,9 +517,11 @@ def _filter_scope(tender: dict[str, Any], text: str, stage: str) -> FilterScore:
     if bounded:
         score += 1 if len(bounded) == 1 else 2
         signals += [f"✓ объём ограничен: {x}" for x in bounded[:4]]
+        signals += _context_signals(text, bounded[:4])
     if unlimited:
         score -= 2 if len(unlimited) == 1 else 3
         signals += [f"✗ риск безлимита: {x}" for x in unlimited[:4]]
+        signals += _context_signals(text, unlimited[:4])
     if not bounded and not unlimited:
         signals.append("⚠ явных границ объёма не найдено")
 
@@ -664,9 +666,11 @@ def _filter_contract_risks(tender: dict[str, Any], text: str, stage: str) -> Fil
     if real_risk:
         score -= min(3, len(real_risk)) * 2
         signals += [f"✗ серьёзный договорный риск: {x}" for x in real_risk[:4]]
+        signals += _context_signals(text, real_risk[:4])
     if warn_risk:
         score -= min(2, len(warn_risk))
         signals += [f"⚠ договорный риск: {x}" for x in warn_risk[:4]]
+        signals += _context_signals(text, warn_risk[:4])
     if not real_risk and not warn_risk and not good:
         signals.append("договорные условия явно не извлечены")
 
@@ -965,6 +969,78 @@ def _hits(text: str, phrases: Iterable[str], wildcard: bool = False) -> list[str
         if ok and phrase not in found:
             found.append(phrase)
     return found
+
+
+def _context_signals(text: str, terms: Iterable[str], max_chars: int = 700) -> list[str]:
+    signals: list[str] = []
+    seen: set[str] = set()
+    for term in terms:
+        fragment = _term_context(text, term, max_chars=max_chars)
+        if fragment and fragment not in seen:
+            signals.append(f"↳ {fragment}")
+            seen.add(fragment)
+    return signals
+
+
+def _term_context(text: str, term: str, max_chars: int = 700) -> str:
+    span = _find_term_span(text, term)
+    if not span:
+        return ""
+
+    start_idx, end_idx = span
+    start = _context_left_boundary(text, start_idx, max_chars=max_chars)
+    end = _context_right_boundary(text, end_idx, max_chars=max_chars)
+    fragment = text[start:end].strip(" \t\r\n.;")
+
+    if len(fragment) > max_chars:
+        original_len = len(fragment)
+        rel_start = max(0, start_idx - start)
+        rel_end = max(rel_start, end_idx - start)
+        before = max(0, rel_start - max_chars // 3)
+        after = min(original_len, rel_end + max_chars * 2 // 3)
+        fragment = fragment[before:after].strip(" \t\r\n.;")
+        if before > 0:
+            fragment = "... " + fragment
+        if after < original_len:
+            fragment = fragment + " ..."
+
+    return fragment.replace("|", "/")
+
+
+def _find_term_span(text: str, term: str) -> tuple[int, int] | None:
+    alts = [t.strip() for t in term.split("|")] if "|" in term else [term]
+    for alt in alts:
+        p = _normalize(alt)
+        if not p:
+            continue
+        if "*" in p:
+            pattern = re.escape(p).replace(r"\*", r".{0,40}")
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return match.span()
+        else:
+            idx = text.find(p)
+            if idx >= 0:
+                return idx, idx + len(p)
+    return None
+
+
+def _context_left_boundary(text: str, idx: int, max_chars: int) -> int:
+    floor = max(0, idx - max_chars)
+    best = floor
+    for match in re.finditer(r"[.!?;]\s+", text[floor:idx]):
+        pos = floor + match.end()
+        if pos > best:
+            best = pos
+    return best
+
+
+def _context_right_boundary(text: str, idx: int, max_chars: int) -> int:
+    ceiling = min(len(text), idx + max_chars)
+    match = re.search(r"[.!?;](?:\s+|$)", text[idx:ceiling])
+    if match:
+        return idx + match.end()
+    return ceiling
 
 
 def _num(value: Any) -> float | None:
