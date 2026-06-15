@@ -303,8 +303,8 @@ tbody td {
   gap: .6rem;
   min-width: 0;
 }
-.filter-search { flex: 0 1 50%; }
-.filter-phrase { flex: 1 1 360px; justify-content: flex-end; }
+.filter-search { flex: 1 1 100%; }
+.filter-phrase { flex: 0 1 auto; }
 .filter-label {
   font-size: .65rem;
   color: var(--dim);
@@ -324,6 +324,7 @@ tbody td {
   outline: none;
 }
 .filter-input { flex: 1 1 180px; min-width: 180px; }
+.minus-input { flex: 0 0 180px; min-width: 140px; }
 .filter-select { min-width: 220px; }
 .minus-line { align-items: flex-start; }
 .minus-tags {
@@ -352,6 +353,7 @@ tbody td {
 @media (max-width: 900px) {
   .filter-search,
   .filter-phrase { flex: 1 1 100%; justify-content: flex-start; }
+  .minus-input { flex: 1 1 180px; }
 }
 
 /* ── Filter mini-scores ── */
@@ -518,9 +520,6 @@ tr:hover .fbar-label { color: var(--dim); }
         {% if active_q %}
         <a href="#" onclick="clearQSearch();return false" style="font-size:.65rem;color:var(--dim)">сбросить ✕</a>
         {% endif %}
-      </div>
-
-      <div class="filter-group filter-phrase">
         <span class="filter-label">Фраза поиска</span>
         <select id="kwFacet" class="filter-select" onchange="applyKwFacet()">
           <option value="">— все фразы —</option>
@@ -535,9 +534,9 @@ tr:hover .fbar-label { color: var(--dim); }
     </div>
 
     <div class="filter-line minus-line">
-      <div class="filter-group" style="flex:0 1 50%">
+      <div class="filter-group" style="flex:0 1 auto">
         <span class="filter-label">Минус фраза</span>
-        <input id="minusPhrase" class="filter-input" type="text"
+        <input id="minusPhrase" class="filter-input minus-input" type="text"
           placeholder="слово или фраза…"
           onkeydown="if(event.key==='Enter')addMinusPhrase()">
         <button class="btn btn-ghost" style="padding:.35rem .7rem;font-size:.7rem" onclick="addMinusPhrase()">+</button>

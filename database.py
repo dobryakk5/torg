@@ -1655,9 +1655,18 @@ def get_top_tenders(
         )
         params.extend([like, like, like, like])
     for keyword in exclude_keywords or []:
-        if keyword:
-            conditions.append("(t.matched_keywords IS NULL OR t.matched_keywords NOT ILIKE %s)")
-            params.append(f"%{keyword}%")
+        kw = (keyword or "").strip()
+        if kw:
+            conditions.append(
+                """
+                CONCAT_WS(' ',
+                    t.title, t.customer, t.purchase_number, t.matched_keywords,
+                    t.primary_text, t.document_text_excerpt, t.llm_triage_category,
+                    t.llm_triage_reason, t.filter_stop
+                ) NOT ILIKE %s
+                """
+            )
+            params.append(f"%{kw}%")
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
