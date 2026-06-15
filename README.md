@@ -17,6 +17,14 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+На Ubuntu для извлечения текста из старых `.doc` и `.odt` документов ЕИС
+нужны системные пакеты:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y $(grep -vE '^\s*(#|$)' requirements-apt.txt)
+```
+
 ## PostgreSQL
 
 Создай БД и пользователя, пример:

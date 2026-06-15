@@ -1,0 +1,13 @@
+# Ubuntu packages required for document extraction.
+# Install with:
+#   sudo apt-get update
+#   sudo apt-get install -y $(grep -vE '^\s*(#|$)' requirements-apt.txt)
+
+# Fast parser for legacy Microsoft Word .doc files.
+antiword
+
+# Additional fallback for old .doc files.
+catdoc
+
+# Headless Office converter fallback for .doc/.odt and other office formats.
+libreoffice-writer

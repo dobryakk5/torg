@@ -5,6 +5,9 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import shutil
+import subprocess
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Iterable
@@ -18,7 +21,7 @@ from scraper import HEADERS, BASE_URL
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_EXTENSIONS = {".docx", ".pdf", ".txt", ".rtf", ".xlsx", ".xls", ".csv", ".zip"}
+SUPPORTED_EXTENSIONS = {".doc", ".docx", ".odt", ".pdf", ".txt", ".rtf", ".xlsx", ".xls", ".csv", ".zip"}
 DOWNLOAD_MARKERS = (
     "/download/",
     "/filestore/",
@@ -174,6 +177,8 @@ def extract_text_from_file(path: Path) -> str:
     try:
         if ext == ".docx":
             return _extract_docx(path)
+        if ext in {".doc", ".odt"}:
+            return _extract_office_text(path)
         if ext == ".pdf":
             return _extract_pdf(path)
         if ext in {".xlsx", ".xls"}:
@@ -217,6 +222,86 @@ def _extract_docx(path: Path) -> str:
             if cells:
                 parts.append(" | ".join(cells))
     return "\n".join(parts)
+
+
+def _decode_command_output(raw: bytes) -> str:
+    for enc in ("utf-8", "cp1251", "utf-16le", "latin-1"):
+        try:
+            text = raw.decode(enc, errors="ignore")
+            if text.strip():
+                return text
+        except Exception:
+            continue
+    return ""
+
+
+def _run_text_command(cmd: list[str], timeout: int = 45) -> str:
+    try:
+        result = subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            timeout=timeout,
+        )
+    except Exception:
+        return ""
+    return _decode_command_output(result.stdout)
+
+
+def _extract_with_libreoffice(path: Path) -> str:
+    binary = shutil.which("soffice") or shutil.which("libreoffice")
+    if not binary:
+        return ""
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            outdir = Path(tmp)
+            subprocess.run(
+                [
+                    binary,
+                    "--headless",
+                    "--convert-to",
+                    "txt:Text",
+                    "--outdir",
+                    str(outdir),
+                    str(path),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=60,
+            )
+            out = outdir / f"{path.stem}.txt"
+            if out.exists():
+                return _decode_command_output(out.read_bytes())
+    except Exception:
+        return ""
+    return ""
+
+
+def _extract_office_text(path: Path) -> str:
+    """Extract text from legacy Office/OpenDocument files on macOS and Linux.
+
+    macOS ships `textutil`; Ubuntu deployments should install at least one of
+    antiword, catdoc, libreoffice/soffice, or pandoc for old `.doc` files.
+    """
+    candidates: list[list[str]] = []
+    if shutil.which("textutil"):
+        candidates.append(["textutil", "-convert", "txt", "-stdout", str(path)])
+    if shutil.which("antiword"):
+        candidates.append(["antiword", str(path)])
+    if shutil.which("catdoc"):
+        candidates.append(["catdoc", str(path)])
+    if shutil.which("pandoc"):
+        candidates.append(["pandoc", "-t", "plain", str(path)])
+
+    for cmd in candidates:
+        text = _run_text_command(cmd)
+        if text.strip():
+            return text
+
+    text = _extract_with_libreoffice(path)
+    if text.strip():
+        return text
+    return _extract_plain(path)
 
 
 def _extract_pdf(path: Path) -> str:
@@ -673,6 +758,61 @@ def _extract_indicator_table_items(table) -> list[dict]:
     return sorted(items_by_key.values(), key=lambda item: item.get("pos_no") or 0)
 
 
+def _is_unit_cell(value: str) -> bool:
+    return bool(re.search(r"штук|шт|единиц|компл|услуг|условн", (value or "").lower()))
+
+
+def _specific_item_name(cells: list[str]) -> str:
+    for cell in cells:
+        if re.search(r"\b(лицензи\w*|сертификат\w*|медиа-комплект|дистрибутив\w*|код активации)\b", cell, re.I):
+            return cell[:200]
+    base = " ".join(c for c in cells[:3] if c and not re.fullmatch(r"\d{1,4}", c))
+    return base[:200] or "Позиция"
+
+
+def _extract_legacy_doc_items(text: str) -> list[dict]:
+    """Парсит старые .doc, где конвертер сохранил таблицу как ячейки через \\x07."""
+    cells = [re.sub(r"\s+", " ", c).strip() for c in (text or "").split("\x07")]
+    cells = [c for c in cells if c]
+    starts: list[tuple[int, int, int, float]] = []
+    for i in range(0, max(0, len(cells) - 4)):
+        pos_match = re.fullmatch(r"(\d{1,4})\.?", cells[i])
+        if not pos_match or re.fullmatch(r"\d{1,4}\.?", cells[i + 1] if i + 1 < len(cells) else ""):
+            continue
+        for j in range(i + 2, min(i + 18, len(cells) - 1)):
+            qty = _parse_qty(cells[j + 1])
+            if _is_unit_cell(cells[j]) and qty is not None:
+                starts.append((i, j, int(pos_match.group(1)), qty))
+                break
+
+    items: list[dict] = []
+    filler = re.compile(
+        r"^(?:значение характеристики|участник закупки|качественная|количественная|"
+        r"в соответствии с ктру|данные характеристики обусловлены)",
+        re.I,
+    )
+    for idx, (start, unit_idx, pos_no, qty) in enumerate(starts):
+        end = starts[idx + 1][0] if idx + 1 < len(starts) else len(cells)
+        body = cells[start + 1:end]
+        name = _specific_item_name(body)
+        req_parts: list[str] = []
+        for cell in body:
+            if cell == name or filler.search(cell):
+                continue
+            if cell in {cells[unit_idx], cells[unit_idx + 1]}:
+                continue
+            req_parts.append(cell)
+        items.append({
+            "pos_no": pos_no,
+            "name": name,
+            "qty": qty,
+            "unit": _norm_unit(cells[unit_idx]),
+            "requirements": "; ".join(req_parts)[:1500],
+            "source": "object_description_doc",
+        })
+    return items
+
+
 def extract_object_description_items(files: Iterable[Path | str]) -> dict:
     """Извлекает позиции из типового файла ЕИС «Описание объекта закупки».
 
@@ -681,17 +821,25 @@ def extract_object_description_items(files: Iterable[Path | str]) -> dict:
     их не видит.
     """
     paths = [Path(p) for p in files or []]
-    candidates = [p for p in paths if p.suffix.lower() == ".docx" and _looks_like_object_description(p)]
+    candidates = [
+        p for p in paths
+        if p.suffix.lower() in {".docx", ".doc"} and _looks_like_object_description(p)
+    ]
     if not candidates:
         return {"items": [], "note": "Файл «Описание объекта закупки» не найден."}
 
-    try:
-        from docx import Document
-    except ImportError:
-        return {"items": [], "note": "python-docx не установлен."}
-
     items: list[dict] = []
     for path in candidates:
+        if path.suffix.lower() == ".doc":
+            legacy_items = _extract_legacy_doc_items(_extract_office_text(path))
+            if legacy_items:
+                return {"items": legacy_items, "note": f"Извлечено из {_display_filename(path)}."}
+            continue
+
+        try:
+            from docx import Document
+        except ImportError:
+            return {"items": [], "note": "python-docx не установлен."}
         try:
             doc = Document(str(path))
         except Exception as exc:

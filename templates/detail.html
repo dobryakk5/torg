@@ -952,7 +952,6 @@ async function takeToWork(btn) {
 }
 async function rejectTender(btn) {
   var pnum = btn.closest('.decide-explain').getAttribute('data-pnum');
-  if (!confirm('Отказаться от тендера? Он уйдет из обычных списков на главной.')) return;
   var orig = btn.textContent;
   btn.disabled = true; btn.textContent = '⏳…';
   try {

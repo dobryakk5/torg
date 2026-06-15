@@ -283,6 +283,77 @@ tbody td {
 }
 .sort-btn:hover { color: var(--text); }
 .sort-mark { color: var(--accent); margin-left: .2rem; }
+
+/* ── Top filters ── */
+.filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+  margin-bottom: 1.25rem;
+}
+.filter-line {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  flex-wrap: wrap;
+}
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  min-width: 0;
+}
+.filter-search { flex: 0 1 50%; }
+.filter-phrase { flex: 1 1 360px; justify-content: flex-end; }
+.filter-label {
+  font-size: .65rem;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  white-space: nowrap;
+}
+.filter-input,
+.filter-select {
+  background: var(--surf2);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  border-radius: 5px;
+  padding: .35rem .6rem;
+  font-family: var(--mono);
+  font-size: .72rem;
+  outline: none;
+}
+.filter-input { flex: 1 1 180px; min-width: 180px; }
+.filter-select { min-width: 220px; }
+.minus-line { align-items: flex-start; }
+.minus-tags {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  flex-wrap: wrap;
+  flex: 1 1 360px;
+  min-height: 28px;
+}
+.minus-tag {
+  border: 1px solid var(--border2);
+  border-radius: 99px;
+  background: var(--surf2);
+  color: var(--dim);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: .68rem;
+  padding: .24rem .55rem;
+}
+.minus-tag:hover {
+  color: var(--nogo);
+  border-color: var(--nogo-bdr);
+  background: var(--nogo-bg);
+}
+@media (max-width: 900px) {
+  .filter-search,
+  .filter-phrase { flex: 1 1 100%; justify-content: flex-start; }
+}
+
 /* ── Filter mini-scores ── */
 .filter-bars {
   display: flex; gap: 3px; align-items: flex-end;
@@ -436,34 +507,47 @@ tr:hover .fbar-label { color: var(--dim); }
 <!-- ── Content ────────────────────────────────────────────────────────── -->
 <main class="main">
 
-  <!-- Поиск по уже загруженным лотам (без скрейпинга): название/заказчик/номер -->
-  <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.75rem;flex-wrap:wrap">
-    <span style="font-size:.65rem;color:var(--dim);text-transform:uppercase;letter-spacing:.06em">🔎 Поиск в базе</span>
-    <input id="qSearch" type="text" value="{{ active_q }}"
-      placeholder="название, заказчик или номер закупки…"
-      onkeydown="if(event.key==='Enter')applyQSearch()"
-      style="flex:1;min-width:280px;background:var(--surf2);border:1px solid var(--border2);color:var(--text);border-radius:5px;padding:.35rem .6rem;font-family:var(--mono);font-size:.72rem;outline:none">
-    <button class="btn btn-ghost" style="padding:.35rem .7rem;font-size:.7rem" onclick="applyQSearch()">Найти</button>
-    {% if active_q %}
-    <span style="font-size:.65rem;color:var(--accent)">найдено по «{{ active_q }}»</span>
-    <a href="#" onclick="clearQSearch();return false" style="font-size:.65rem;color:var(--dim)">сбросить ✕</a>
-    {% endif %}
-  </div>
+  <div class="filter-panel">
+    <div class="filter-line">
+      <div class="filter-group filter-search">
+        <span class="filter-label">🔎 Поиск в базе</span>
+        <input id="qSearch" class="filter-input" type="text" value="{{ active_q }}"
+          placeholder="название, заказчик или номер…"
+          onkeydown="if(event.key==='Enter')applyQSearch()">
+        <button class="btn btn-ghost" style="padding:.35rem .7rem;font-size:.7rem" onclick="applyQSearch()">Найти</button>
+        {% if active_q %}
+        <a href="#" onclick="clearQSearch();return false" style="font-size:.65rem;color:var(--dim)">сбросить ✕</a>
+        {% endif %}
+      </div>
 
-  <!-- Фасет: фильтр выдачи по поисковой фразе -->
-  <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:1.25rem;flex-wrap:wrap">
-    <span style="font-size:.65rem;color:var(--dim);text-transform:uppercase;letter-spacing:.06em">Фраза поиска</span>
-    <select id="kwFacet" onchange="applyKwFacet()"
-      style="background:var(--surf2);border:1px solid var(--border2);color:var(--text);border-radius:5px;padding:.35rem .6rem;font-family:var(--mono);font-size:.72rem;outline:none;min-width:220px">
-      <option value="">— все фразы —</option>
-      {% for p in search_phrases %}
-      <option value="{{ p }}" {% if active_kw == p %}selected{% endif %}>{{ p }}</option>
-      {% endfor %}
-    </select>
-    {% if active_kw %}
-    <span style="font-size:.65rem;color:var(--accent)">фильтр: «{{ active_kw }}»</span>
-    <a href="#" onclick="clearKwFacet();return false" style="font-size:.65rem;color:var(--dim)">сбросить ✕</a>
-    {% endif %}
+      <div class="filter-group filter-phrase">
+        <span class="filter-label">Фраза поиска</span>
+        <select id="kwFacet" class="filter-select" onchange="applyKwFacet()">
+          <option value="">— все фразы —</option>
+          {% for p in search_phrases %}
+          <option value="{{ p }}" {% if active_kw == p %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+        {% if active_kw %}
+        <a href="#" onclick="clearKwFacet();return false" style="font-size:.65rem;color:var(--dim)">сбросить ✕</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="filter-line minus-line">
+      <div class="filter-group" style="flex:0 1 50%">
+        <span class="filter-label">Минус фраза</span>
+        <input id="minusPhrase" class="filter-input" type="text"
+          placeholder="слово или фраза…"
+          onkeydown="if(event.key==='Enter')addMinusPhrase()">
+        <button class="btn btn-ghost" style="padding:.35rem .7rem;font-size:.7rem" onclick="addMinusPhrase()">+</button>
+      </div>
+      <div class="minus-tags">
+        {% for phrase in excluded_keywords %}
+        <button class="minus-tag" data-phrase="{{ phrase }}" onclick="removeMinusPhrase(this.dataset.phrase)" title="Убрать минус-фразу">{{ phrase }} ✕</button>
+        {% endfor %}
+      </div>
+    </div>
   </div>
 
 
@@ -540,7 +624,7 @@ tr:hover .fbar-label { color: var(--dim); }
               {{ row_phrase or '—' }}
             </td>
             <td class="exclude-cell">
-              {% if row_phrase %}<button class="exclude-btn" data-phrase="{{ row_phrase }}" onclick="excludePhrase(this.dataset.phrase);event.stopPropagation()" title="Убрать эту поисковую фразу из выдачи">X</button>{% endif %}
+              {% if tab_id != 'REJECTED' %}<button class="exclude-btn" data-pnum="{{ t.purchase_number }}" onclick="rejectLotFromList(this);event.stopPropagation()" title="Отказаться от лота">X</button>{% endif %}
             </td>
 
             <!-- EIS link -->
@@ -657,7 +741,7 @@ tr:hover .fbar-label { color: var(--dim); }
               {{ row_phrase or '—' }}
             </td>
             <td class="exclude-cell">
-              {% if row_phrase %}<button class="exclude-btn" data-phrase="{{ row_phrase }}" onclick="excludePhrase(this.dataset.phrase);event.stopPropagation()" title="Убрать эту поисковую фразу из выдачи">X</button>{% endif %}
+              <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" onclick="rejectLotFromList(this);event.stopPropagation()" title="Отказаться от лота">X</button>
             </td>
             <td class="link-cell">
               {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
@@ -732,7 +816,7 @@ tr:hover .fbar-label { color: var(--dim); }
               {{ row_phrase or '—' }}
             </td>
             <td class="exclude-cell">
-              {% if row_phrase %}<button class="exclude-btn" data-phrase="{{ row_phrase }}" onclick="excludePhrase(this.dataset.phrase);event.stopPropagation()" title="Убрать эту поисковую фразу из выдачи">X</button>{% endif %}
+              <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" onclick="rejectLotFromList(this);event.stopPropagation()" title="Отказаться от лота">X</button>
             </td>
             <td class="link-cell">
               {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
@@ -800,7 +884,7 @@ tr:hover .fbar-label { color: var(--dim); }
               {{ row_phrase or '—' }}
             </td>
             <td class="exclude-cell">
-              {% if row_phrase %}<button class="exclude-btn" data-phrase="{{ row_phrase }}" onclick="excludePhrase(this.dataset.phrase);event.stopPropagation()" title="Убрать эту поисковую фразу из выдачи">X</button>{% endif %}
+              <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" onclick="rejectLotFromList(this);event.stopPropagation()" title="Отказаться от лота">X</button>
             </td>
             <td class="link-cell">
               {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
@@ -868,7 +952,7 @@ tr:hover .fbar-label { color: var(--dim); }
               {{ row_phrase or '—' }}
             </td>
             <td class="exclude-cell">
-              {% if row_phrase %}<button class="exclude-btn" data-phrase="{{ row_phrase }}" onclick="excludePhrase(this.dataset.phrase);event.stopPropagation()" title="Убрать эту поисковую фразу из выдачи">X</button>{% endif %}
+              <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" onclick="rejectLotFromList(this);event.stopPropagation()" title="Отказаться от лота">X</button>
             </td>
             <td class="link-cell">
               {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
@@ -965,14 +1049,44 @@ function clearQSearch() {
   location.href = qs ? '/?' + qs : '/';
 }
 
-function excludePhrase(phrase) {
+function addMinusPhrase() {
+  const input = document.getElementById('minusPhrase');
+  const phrase = (input.value || '').trim();
   if (!phrase) return;
   const params = new URLSearchParams(window.location.search);
   const existing = params.getAll('exclude_kw');
   if (!existing.includes(phrase)) params.append('exclude_kw', phrase);
-  if (params.get('kw') === phrase) params.delete('kw');
   const qs = params.toString();
   location.href = qs ? '/?' + qs : '/';
+}
+function removeMinusPhrase(phrase) {
+  if (!phrase) return;
+  const params = new URLSearchParams(window.location.search);
+  const kept = params.getAll('exclude_kw').filter(v => v !== phrase);
+  params.delete('exclude_kw');
+  kept.forEach(v => params.append('exclude_kw', v));
+  const qs = params.toString();
+  location.href = qs ? '/?' + qs : '/';
+}
+
+async function rejectLotFromList(btn) {
+  const pnum = btn.dataset.pnum;
+  if (!pnum) return;
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const r = await fetch('/api/tender/' + encodeURIComponent(pnum) + '/reject', {method: 'POST'});
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      throw new Error(e.detail || ('HTTP ' + r.status));
+    }
+    location.reload();
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = original;
+    alert('Не удалось отказаться от лота: ' + String(err));
+  }
 }
 
 function sortBy(field) {
