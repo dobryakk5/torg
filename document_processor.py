@@ -181,8 +181,10 @@ def extract_text_from_file(path: Path) -> str:
             return _extract_office_text(path)
         if ext == ".pdf":
             return _extract_pdf(path)
-        if ext in {".xlsx", ".xls"}:
+        if ext == ".xlsx":
             return _extract_xlsx(path)
+        if ext == ".xls":
+            return _extract_xls(path)
         if ext == ".zip":
             return _extract_zip(path)
         if ext in {".txt", ".csv", ".rtf", ".html", ".htm", ".xml"}:
@@ -334,6 +336,43 @@ def _extract_xlsx(path: Path) -> str:
     return "\n".join(parts)
 
 
+def _extract_xls(path: Path) -> str:
+    try:
+        import xlrd
+    except ImportError:
+        logger.warning("xlrd не установлен, пробую LibreOffice для %s", path.name)
+        text = _extract_with_libreoffice(path)
+        return text if text.strip() else _extract_plain(path)
+
+    try:
+        wb = xlrd.open_workbook(str(path), on_demand=True)
+    except Exception:
+        text = _extract_with_libreoffice(path)
+        return text if text.strip() else _extract_plain(path)
+
+    parts = []
+    try:
+        for sheet_name in wb.sheet_names()[:5]:
+            ws = wb.sheet_by_name(sheet_name)
+            parts.append(f"# Лист: {sheet_name}")
+            for row_idx in range(min(ws.nrows, 200)):
+                values = []
+                for value in ws.row_values(row_idx):
+                    if value is None:
+                        continue
+                    cell = str(value).strip()
+                    if cell:
+                        values.append(cell)
+                if values:
+                    parts.append(" | ".join(values))
+    finally:
+        try:
+            wb.release_resources()
+        except Exception:
+            pass
+    return "\n".join(parts)
+
+
 def _extract_zip(path: Path) -> str:
     parts = []
     extract_dir = path.parent / (path.stem + "_unzipped")
@@ -465,6 +504,171 @@ def extract_participant_requirements(text: str) -> list[dict]:
         snippet = compact[max(0, i - 50): i + 160].strip()
         found.append({"type": key, "label": label, "snippet": snippet})
     return found
+
+
+def _clean_work_scope_line(line: str) -> str:
+    line = re.sub(r"\s+", " ", line or "").strip(" \t\r\n;")
+    line = re.sub(r"^[\-•–—*]\s*", "", line)
+    line = re.sub(r"^\d+(?:\.\d+)*[.)]?\s*", "", line)
+    return line.strip()
+
+
+def _is_good_work_scope_line(line: str) -> bool:
+    low = line.lower().replace("ё", "е")
+    if len(line) < 18 or len(line) > 650:
+        return False
+    if re.fullmatch(r"[\d\s.,;:/№()%-]+", line):
+        return False
+    bad = (
+        "содержание", "оглавление", "страница", "подпись", "заказчик:",
+        "исполнитель:", "цена контракта", "цена договора", "начальная",
+        "обоснование", "расчет нмц", "реквизиты", "извещение",
+        "порядковый номер реестровой записи", "реестре российского программного",
+        "перечень нормативных правовых актов", "приказ минфина",
+        "перечень программного обеспечения, в отношении которого",
+    )
+    return not any(x in low for x in bad)
+
+
+def _work_scope_window(text: str) -> str:
+    compact = re.sub(r"[ \t]+", " ", re.sub(r"\r\n?", "\n", text or ""))
+    low = compact.lower().replace("ё", "е")
+    markers = [
+        "перечень оказываемых услуг",
+        "перечень выполняемых работ",
+        "требования к оказанию услуг",
+        "требования к выполнению работ",
+        "описание объекта закупки",
+        "техническое задание",
+    ]
+    positions = [low.find(marker) for marker in markers if low.find(marker) >= 0]
+    start = min(positions) if positions else 0
+    return compact[start:start + 12000]
+
+
+def extract_work_scope(text: str, source: str = "") -> dict:
+    """Извлекает человекочитаемое описание работ/услуг из ТЗ.
+
+    Для сервисных закупок это отдельный блок от товарной спецификации: там часто
+    нет количеств, зато есть перечень услуг и условия выполнения.
+    """
+    if not text:
+        return {}
+
+    window = _work_scope_window(text)
+    lines = [_clean_work_scope_line(line) for line in window.split("\n")]
+    lines = [line for line in lines if line]
+    low_lines = [line.lower().replace("ё", "е") for line in lines]
+
+    title = ""
+    for line, low in zip(lines, low_lines):
+        if (
+            _is_good_work_scope_line(line)
+            and any(x in low for x in ("оказание услуг", "выполнение работ", "сопровожд", "адаптац"))
+        ):
+            title = re.split(r",?\s*включает в себя:?", line, maxsplit=1, flags=re.I)[0].strip(" .;:")
+            title = title[:300]
+            break
+
+    items: list[str] = []
+    in_list = False
+    for raw in window.split("\n"):
+        line = _clean_work_scope_line(raw)
+        low = line.lower().replace("ё", "е")
+        if "включает в себя" in low or "перечень оказываемых услуг" in low or "перечень выполняемых работ" in low:
+            in_list = True
+            continue
+        if in_list and re.match(r"^\s*(?:2(?:\.|\s)|порядок|требования к качеству|требования к безопасности)", raw, re.I):
+            break
+        if not in_list and not re.match(r"\s*(?:[-•–—*]|\d+[.)])\s+\S", raw):
+            continue
+        if (
+            _is_good_work_scope_line(line)
+            and any(x in low for x in ("услуг", "работ", "сопровожд", "адаптац", "разработк", "доработк"))
+            and line not in items
+        ):
+            items.append(line[:500])
+        if len(items) >= 10:
+            break
+
+    if not items:
+        for line, low in zip(lines, low_lines):
+            if (
+                _is_good_work_scope_line(line)
+                and any(x in low for x in ("оказание", "выполнение", "сопровожд", "адаптац", "услуг", "работ"))
+                and line not in items
+            ):
+                items.append(line[:500])
+            if len(items) >= 6:
+                break
+
+    conditions: list[str] = []
+    for line, low in zip(lines, low_lines):
+        if not _is_good_work_scope_line(line):
+            continue
+        if any(x in low for x in (
+            "рабочие дни", "рабочем месте заказчика", "удаленное оказание",
+            "выезд осуществляется", "без выноса информационных баз", "конфиденциаль",
+        )) and line not in conditions:
+            conditions.append(line[:650])
+        if len(conditions) >= 5:
+            break
+
+    summary_candidates = [line for line in lines if _is_good_work_scope_line(line)]
+    summary = " ".join(summary_candidates[:4])[:1000]
+    result = {
+        "title": title,
+        "items": items,
+        "conditions": conditions,
+        "text": summary,
+    }
+    if source:
+        result["source"] = source
+    return {key: value for key, value in result.items() if value}
+
+
+def _work_scope_doc_score(path: Path) -> int:
+    name = _display_filename(path).lower().replace("ё", "е")
+    score = 0
+    if "техническ" in name:
+        score += 80
+    if "тз" in name or "техническое задание" in name:
+        score += 80
+    if "описание" in name and "объект" in name:
+        score += 70
+    if "услуг" in name or "работ" in name:
+        score += 45
+    if "прилож" in name:
+        score += 20
+    if any(x in name for x in ("контракт", "договор", "нмц", "расчет", "обоснован", "проект")):
+        score -= 80
+    return score
+
+
+def extract_work_scope_from_files(files: Iterable[Path | str], max_chars: int = 30000) -> dict:
+    paths = [Path(path) for path in files or []]
+    paths = [path for path in paths if path.is_file()]
+    if not paths:
+        return {}
+    paths.sort(key=lambda path: (_work_scope_doc_score(path), -path.stat().st_size), reverse=True)
+
+    chunks: list[str] = []
+    source = ""
+    total = 0
+    for path in paths[:8]:
+        text = extract_text_from_file(path)
+        if not text or len(text.strip()) < 80:
+            continue
+        chunks.append(text)
+        total += len(text)
+        if not source:
+            source = _display_filename(path)
+        if total >= max_chars:
+            break
+
+    if not chunks:
+        return {}
+    return extract_work_scope("\n\n".join(chunks), source=source)
 
 
 # ── Критерии оценки заявок («Как начисляются баллы») ─────────────────────────

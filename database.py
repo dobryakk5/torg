@@ -1546,6 +1546,31 @@ def _was_stage_completed_today_once(mode: str) -> bool:
         return cur.fetchone() is not None
 
 
+def get_last_successful_run_started(mode: str) -> Optional[datetime]:
+    return _with_db_retries(
+        "get_last_successful_run_started",
+        lambda: _get_last_successful_run_started_once(mode),
+    )
+
+
+def _get_last_successful_run_started_once(mode: str) -> Optional[datetime]:
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT started_at
+            FROM runs
+            WHERE mode = %s
+              AND COALESCE(errors, '') = ''
+            ORDER BY started_at DESC NULLS LAST, created_at DESC
+            LIMIT 1
+            """,
+            (mode,),
+        )
+        row = cur.fetchone()
+    return row[0] if row else None
+
+
 def get_stats() -> dict[str, int]:
     with _conn() as conn:
         cur = conn.cursor()

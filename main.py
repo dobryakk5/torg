@@ -31,12 +31,19 @@ except ImportError:  # schedule нужен только для daemon-режим
 
 import config
 import database as db
-from document_processor import collect_document_text, download_documents, extract_financial_terms, hash_files
+from document_processor import (
+    collect_document_text,
+    download_documents,
+    extract_financial_terms,
+    extract_object_description_items,
+    find_document_items,
+    hash_files,
+)
 from llm_analyzer import analyze_tender
 from notifier import format_tender_message, send_startup_message, send_summary, send_tender_message
 from scraper import (
     get_tender_page, parse_result_info, search_eis, search_eis_by_okpd2,
-    to_common_info_url,
+    to_common_info_url, to_documents_url,
 )
 from winner_analytics   import run_update   as run_winner_update, classify_category, recommend_bid
 from customer_scorer    import run_new_customers, run_refresh_customers, get_customer_risk_label
@@ -484,12 +491,22 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
                 and preliminary_result.total_score >= config.DOCUMENT_DOWNLOAD_MIN_SCORE
             )
             if should_download_docs:
-                docs = download_documents(pnum, page_html, page_url)
+                docs_url = _documents_url_from_page(page_html, page_url) or to_documents_url(tender.get("url", "") or pnum)
+                docs_html, _ = get_tender_page(docs_url)
+                docs = download_documents(pnum, docs_html or page_html, docs_url if docs_html else page_url)
                 files = docs.get("files", [])
+                if not files and docs_html:
+                    logger.info("%s: на вкладке документов файлы не найдены, пробую common-info fallback", pnum)
+                    docs = download_documents(pnum, page_html, page_url)
+                    files = docs.get("files", [])
+                logger.info("%s: скачано документов %d", pnum, len(files))
                 document_text = collect_document_text(files, config.MAX_DOCUMENT_TEXT_CHARS)
                 tender["document_count"] = len(files)
                 tender["documents_dir"] = docs.get("dir", "")
                 tender["documents_hash"] = hash_files(files)
+                spec = extract_object_description_items(files)
+                if spec.get("items") and not db.list_tender_items(pnum):
+                    db.replace_tender_items(pnum, spec["items"])
                 full_text_for_terms += "\n" + document_text
                 scoring_text = "\n".join([scoring_text, document_text])
 
@@ -623,15 +640,44 @@ def _stage_completed_today(stage: str, skip_completed_today: bool) -> bool:
     return False
 
 
+def _documents_url_from_page(page_html: str, page_url: str) -> str:
+    for link, _label in find_document_items(page_html, page_url):
+        if "documents.html" in link.lower():
+            return link
+    return ""
+
+
+def _once_delta_dates(backfill_active: bool) -> tuple[str | None, str | None]:
+    if backfill_active:
+        return None, None
+    configured_from = str(getattr(config, "PUBLISH_DATE_FROM", "") or "").strip()
+    configured_to = str(getattr(config, "PUBLISH_DATE_TO", "") or "").strip()
+    if configured_from or configured_to:
+        return None, None
+    last_started = db.get_last_successful_run_started("stage1")
+    if not last_started:
+        return None, None
+    if isinstance(last_started, str):
+        last_started = datetime.fromisoformat(last_started)
+    date_from = last_started.date().isoformat()
+    date_to = datetime.now().date().isoformat()
+    logger.info("once: Stage1 дельта по дате публикации %s — %s", date_from, date_to)
+    return date_from, date_to
+
+
 def run_once(
     dry_run: bool = False,
     skip_completed_today: bool = False,
     backfill_active: bool = False,
+    stage2_limit: int | None = None,
 ) -> tuple[int, int]:
+    date_from, date_to = _once_delta_dates(backfill_active)
     found, _ = run_stage1(
         dry_run=dry_run,
         skip_completed_today=skip_completed_today,
         backfill_active=backfill_active,
+        date_from=date_from,
+        date_to=date_to,
     )
 
     # LLM-триаж в автоцикл НЕ включаем — он запускается вручную кнопкой в /control
@@ -640,7 +686,7 @@ def run_once(
     if _stage_completed_today("stage2", skip_completed_today):
         processed, notified = 0, 0
     else:
-        processed, notified = run_stage2(dry_run=dry_run)
+        processed, notified = run_stage2(dry_run=dry_run, limit=stage2_limit)
     return found + processed, notified
 
 
@@ -799,6 +845,7 @@ def main() -> None:
             dry_run=args.test,
             skip_completed_today=args.skip_completed_today,
             backfill_active=args.backfill_active,
+            stage2_limit=args.limit,
         )
     else:
         if schedule is None:

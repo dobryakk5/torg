@@ -11,3 +11,4 @@ catdoc
 
 # Headless Office converter fallback for .doc/.odt and other office formats.
 libreoffice-writer
+libreoffice-calc

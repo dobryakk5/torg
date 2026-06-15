@@ -623,6 +623,7 @@ async def tender_detail(request: Request, purchase_number: str):
     criteria = None
     spec = []
     spec_rollup = {"total": 0, "priced": 0, "count": 0}
+    details = {}
     try:
         import decision_aid
         import document_processor as dp
@@ -636,9 +637,15 @@ async def tender_detail(request: Request, purchase_number: str):
         spec_rollup = _spec_rollup(spec)
     except Exception:
         logger.exception("list_tender_items failed for %s", purchase_number)
+    try:
+        details = db.get_tender_details(purchase_number) or {}
+    except Exception:
+        logger.exception("get_tender_details failed for %s", purchase_number)
+    work_scope = (details.get("work_scope") or _build_work_scope(tender)) if not spec else None
     return templates.TemplateResponse(request, "detail.html",
         {"tender": tender, "card": card, "criteria": criteria,
-         "work_stages": WORK_STAGES, "spec": spec, "spec_rollup": spec_rollup})
+         "work_stages": WORK_STAGES, "spec": spec, "spec_rollup": spec_rollup,
+         "work_scope": work_scope})
 
 
 @app.get("/rules", response_class=HTMLResponse)
@@ -1145,6 +1152,67 @@ def _decide_text(tender: dict) -> str:
         or tender.get("title")
         or ""
     )
+
+
+def _readable_doc_name(path: Path) -> str:
+    try:
+        return path.name.encode("latin1").decode("utf-8")
+    except Exception:
+        return path.name
+
+
+def _work_scope_doc_score(path: Path) -> int:
+    name = _readable_doc_name(path).lower().replace("ё", "е")
+    score = 0
+    if "техническ" in name:
+        score += 80
+    if "тз" in name or "техническое задание" in name:
+        score += 80
+    if "описание" in name and "объект" in name:
+        score += 70
+    if "услуг" in name or "работ" in name:
+        score += 45
+    if "прилож" in name:
+        score += 20
+    if any(x in name for x in ("контракт", "договор", "нмц", "расчет", "обоснован", "проект")):
+        score -= 80
+    return score
+
+
+def _work_scope_source_text(tender: dict) -> tuple[str, str]:
+    docs_dir = tender.get("documents_dir") or ""
+    if docs_dir:
+        try:
+            import document_processor as dp
+            files = [p for p in Path(docs_dir).iterdir() if p.is_file()]
+            files.sort(key=lambda p: (_work_scope_doc_score(p), -p.stat().st_size), reverse=True)
+            chunks: list[str] = []
+            source = ""
+            for path in files[:8]:
+                text = dp.extract_text_from_file(path)
+                if not text or len(text.strip()) < 80:
+                    continue
+                chunks.append(text)
+                if not source:
+                    source = _readable_doc_name(path)
+                if sum(len(c) for c in chunks) >= 30000:
+                    break
+            if chunks:
+                return "\n\n".join(chunks), source
+        except Exception:
+            logger.exception("work_scope document text failed for %s", tender.get("purchase_number"))
+    return _decide_text(tender), ""
+
+
+def _build_work_scope(tender: dict) -> dict:
+    text, source = _work_scope_source_text(tender)
+    import document_processor as dp
+    scope = dp.extract_work_scope(text, source=source)
+    if not scope.get("text"):
+        scope["text"] = (tender.get("title") or "").strip()
+    if source and not scope.get("source"):
+        scope["source"] = source
+    return scope
 
 
 def _explain_cache_key(purchase_number: str, text: str, card: dict) -> str:

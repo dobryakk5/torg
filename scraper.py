@@ -12,6 +12,7 @@ import re
 import time
 from datetime import datetime
 from typing import Any, Optional
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -110,6 +111,49 @@ def to_common_info_url(url_or_number: str) -> str:
         )
     return (
         "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html"
+        f"?regNumber={reg_number}"
+    )
+
+
+def to_documents_url(url_or_number: str) -> str:
+    """Build the public documents notice URL from any EIS URL or regNumber."""
+    value = str(url_or_number or "")
+    match = re.search(r"\b\d{11,22}\b", value)
+    if not match:
+        return value
+    reg_number = match.group(0)
+    lower_value = value.lower()
+    parsed = urlparse(value) if "://" in value else None
+    is_223 = "notice223" in lower_value or "/223/" in lower_value or re.fullmatch(r"3\d{10}", reg_number)
+
+    if parsed and "documents.html" in lower_value:
+        if is_223:
+            query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+            if "purchaseNoticeNumber" not in query:
+                query["purchaseNoticeNumber"] = query.pop("regNumber", reg_number)
+            return urlunparse(parsed._replace(query=urlencode(query)))
+        return value
+
+    if parsed and "common-info.html" in lower_value:
+        path = re.sub(r"common-info\.html", "documents.html", parsed.path, flags=re.I)
+        query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        if is_223 and "purchaseNoticeNumber" not in query:
+            query["purchaseNoticeNumber"] = query.pop("regNumber", reg_number)
+        return urlunparse(parsed._replace(path=path, query=urlencode(query)))
+
+    if parsed and "view.html" in lower_value:
+        path = re.sub(r"view\.html$", "documents.html", parsed.path, flags=re.I)
+        return urlunparse(parsed._replace(path=path))
+
+    if is_223:
+        query = dict(parse_qsl(parsed.query, keep_blank_values=True)) if parsed else {}
+        query.setdefault("purchaseNoticeNumber", reg_number)
+        return (
+            "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?"
+            + urlencode(query)
+        )
+    return (
+        "https://zakupki.gov.ru/epz/order/notice/zk20/view/documents.html"
         f"?regNumber={reg_number}"
     )
 

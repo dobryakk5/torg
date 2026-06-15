@@ -33,7 +33,8 @@ import config
 import database as db
 from document_processor import (
     download_documents, collect_document_text, extract_financial_terms,
-    extract_object_description_items, extract_participant_requirements, hash_files,
+    extract_object_description_items, extract_participant_requirements,
+    extract_work_scope, extract_work_scope_from_files, hash_files,
 )
 from filter_engine import run_stage2_filters
 from scraper import (
@@ -124,12 +125,15 @@ def save_doc_refresh(
     tender: dict,
     doc_text: str,
     requirements: list[dict],
+    work_scope: dict | None = None,
 ) -> None:
     pnum = tender.get("purchase_number", "")
     details = deep_merge(db.get_tender_details(pnum) or {}, {})
     requirements = strip_nul(requirements)
     details["doc_requirements"] = requirements
     details["requirements_special"] = bool(requirements)
+    if work_scope:
+        details["work_scope"] = strip_nul(work_scope)
     db.save_tender_details(pnum, strip_nul(details))
     tender = strip_nul(tender)
     doc_text = strip_nul(doc_text or "")
@@ -291,7 +295,8 @@ def main() -> None:
 
             if do_docs:
                 reqs = extract_participant_requirements(full_text)
-                save_doc_refresh(t, doc_text, reqs)
+                work_scope = extract_work_scope_from_files(files) or extract_work_scope(doc_text)
+                save_doc_refresh(t, doc_text, reqs, work_scope)
                 spec = extract_object_description_items(files)
                 if spec.get("items") and not db.list_tender_items(pnum):
                     db.replace_tender_items(pnum, spec["items"])
