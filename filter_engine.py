@@ -511,6 +511,7 @@ def _filter_scope(tender: dict[str, Any], text: str, stage: str) -> FilterScore:
     name = "Объём и границы работ"
     unlimited = _match_bucket(text, 3, "unlimited")
     bounded = _match_bucket(text, 3, "bounded")
+    place_warnings, place_stops = _non_moscow_work_place_risks(tender, text)
 
     score = 3
     signals: list[str] = []
@@ -524,8 +525,14 @@ def _filter_scope(tender: dict[str, Any], text: str, stage: str) -> FilterScore:
         signals += _context_signals(text, unlimited[:4])
     if not bounded and not unlimited:
         signals.append("⚠ явных границ объёма не найдено")
+    if place_warnings:
+        score -= 1
+        signals += [f"⚠ выездной/локальный риск: {x}" for x in place_warnings]
+    if place_stops:
+        score = 1
+        signals = [f"✗ не московский лот, работа только на месте: {x}" for x in place_stops] + signals
 
-    stop = len(unlimited) >= 2 or any("неогранич" in x for x in unlimited)
+    stop = bool(place_stops) or len(unlimited) >= 2 or any("неогранич" in x for x in unlimited)
     return FilterScore(3, name, score, signals, stop_factor=stop)
 
 
@@ -734,6 +741,65 @@ def _details_dict(tender: dict[str, Any]) -> dict[str, Any]:
         except Exception:
             return {}
     return {}
+
+
+def _is_moscow_lot(tender: dict[str, Any]) -> bool:
+    values = [
+        tender.get("region", ""),
+        tender.get("customer", ""),
+        tender.get("title", ""),
+    ]
+    details = _details_dict(tender)
+    for key in ("customer_address", "delivery_place", "place", "region"):
+        value = details.get(key)
+        if isinstance(value, str):
+            values.append(value)
+        elif isinstance(value, dict):
+            values.extend(str(v) for v in value.values() if v)
+
+    haystack = _normalize(" ".join(str(v) for v in values if v))
+    return re.search(r"(?<![а-яa-z])москва(?![а-яa-z])", haystack) is not None
+
+
+def _work_scope_text(tender: dict[str, Any], fallback_text: str) -> str:
+    details = _details_dict(tender)
+    scope = details.get("work_scope")
+    parts: list[str] = []
+    if isinstance(scope, dict):
+        for key in ("title", "text", "source"):
+            value = scope.get(key)
+            if isinstance(value, str):
+                parts.append(value)
+        for key in ("items", "conditions"):
+            value = scope.get(key)
+            if isinstance(value, list):
+                parts.extend(str(item) for item in value if item)
+    elif isinstance(scope, str):
+        parts.append(scope)
+
+    if parts:
+        return _normalize("\n".join(parts))
+    return fallback_text
+
+
+def _non_moscow_work_place_risks(tender: dict[str, Any], text: str) -> tuple[list[str], list[str]]:
+    if _is_moscow_lot(tender):
+        return [], []
+
+    scope_text = _work_scope_text(tender, text)
+    warnings: list[str] = []
+    stops: list[str] = []
+
+    if "за пределы" in scope_text:
+        warnings.append("есть формулировка «за пределы»")
+    if "строго на рабочем месте заказчика" in scope_text:
+        stops.append("«строго на рабочем месте Заказчика»")
+    if "строго на рабочих местах заказчика" in scope_text:
+        stops.append("«строго на рабочих местах Заказчика»")
+    if "удаленное оказание услуг не предусмотрено" in scope_text:
+        stops.append("«Удаленное оказание услуг не предусмотрено»")
+
+    return warnings, stops
 
 
 def _contract_security_from_details(tender: dict[str, Any]) -> float | None:

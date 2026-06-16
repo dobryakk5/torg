@@ -126,7 +126,7 @@ def save_doc_refresh(
     doc_text: str,
     requirements: list[dict],
     work_scope: dict | None = None,
-) -> None:
+) -> dict:
     pnum = tender.get("purchase_number", "")
     details = deep_merge(db.get_tender_details(pnum) or {}, {})
     requirements = strip_nul(requirements)
@@ -170,6 +170,7 @@ def save_doc_refresh(
                 pnum,
             ),
         )
+    return details
 
 
 def save_info_refresh(
@@ -296,7 +297,8 @@ def main() -> None:
             if do_docs:
                 reqs = extract_participant_requirements(full_text)
                 work_scope = extract_work_scope_from_files(files) or extract_work_scope(doc_text)
-                save_doc_refresh(t, doc_text, reqs, work_scope)
+                saved_details = save_doc_refresh(t, doc_text, reqs, work_scope)
+                t["details_json"] = saved_details
                 spec = extract_object_description_items(files)
                 if spec.get("items") and not db.list_tender_items(pnum):
                     db.replace_tender_items(pnum, spec["items"])
@@ -310,6 +312,8 @@ def main() -> None:
             if do_info:
                 score, decision = save_info_refresh(t, full_text, details, reqs)
                 n_info += 1
+            elif do_docs:
+                score, decision = save_info_refresh(t, full_text, {}, reqs)
 
             logger.info(
                 "  [%d/%d] %s: info=%s docs=%s файлов %d, требований %d, скор %d/%s %s",

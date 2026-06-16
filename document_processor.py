@@ -860,6 +860,37 @@ def _looks_like_object_description(path: Path) -> bool:
     return "описание" in name and "объект" in name and "закуп" in name
 
 
+def _extract_zip_document_files(path: Path) -> list[Path]:
+    if path.suffix.lower() != ".zip":
+        return []
+    try:
+        _extract_zip(path)
+    except Exception:
+        return []
+    extract_dir = path.parent / (path.stem + "_unzipped")
+    if not extract_dir.exists():
+        return []
+    return [
+        item for item in extract_dir.rglob("*")
+        if item.is_file() and item.suffix.lower() in {".docx", ".doc"}
+    ]
+
+
+def _looks_like_object_description_content(path: Path) -> bool:
+    if _looks_like_object_description(path):
+        return True
+    try:
+        text = extract_text_from_file(path)[:5000]
+    except Exception:
+        return False
+    low = text.lower().replace("ё", "е")
+    return (
+        "описание объекта закупки" in low
+        or "спецификация на поставку" in low
+        or ("раздел 1. спецификация" in low and "предмет контракта" in low)
+    )
+
+
 def _row_values(row) -> list[str]:
     values: list[str] = []
     last = None
@@ -870,6 +901,10 @@ def _row_values(row) -> list[str]:
             values.append(value)
         last = value
     return values
+
+
+def _row_values_by_column(row) -> list[str]:
+    return [re.sub(r"\s+", " ", cell.text or "").strip() for cell in row.cells]
 
 
 def _parse_qty(raw: str) -> float | None:
@@ -903,6 +938,14 @@ def _find_header_index(values: list[str], *needles: str, exclude: str = "") -> i
     return None
 
 
+def _find_any_header_index(values: list[str], variants: Iterable[tuple[str, ...]], exclude: str = "") -> int | None:
+    for needles in variants:
+        idx = _find_header_index(values, *needles, exclude=exclude)
+        if idx is not None:
+            return idx
+    return None
+
+
 def _append_requirement(item: dict, requirement: str) -> None:
     requirement = re.sub(r"\s+", " ", requirement or "").strip()
     if not requirement:
@@ -918,19 +961,24 @@ def _extract_indicator_table_items(table) -> list[dict]:
     items_by_key: dict[tuple[int, str, float], dict] = {}
 
     for row in table.rows:
-        values = _row_values(row)
+        values = _row_values_by_column(row)
         if not values:
             continue
         low = " ".join(values).lower().replace("ё", "е")
-        if "наименование" in low and "количество" in low and "единица" in low:
+        if "наименование" in low and ("количество" in low or "кол-во" in low) and "единица" in low:
             header = values
             name_idx = _find_header_index(values, "наименование", exclude="показател")
             unit_idx = _find_header_index(values, "единица")
-            qty_idx = _find_header_index(values, "количество")
-            indicator_idx = _find_header_index(values, "наименование", "показател")
+            qty_idx = _find_any_header_index(values, [("количество",), ("кол-во",)])
+            indicator_idx = _find_any_header_index(values, [
+                ("наименование", "показател"),
+                ("наименование", "характерист"),
+            ])
             value_idx = (
                 _find_header_index(values, "содержание")
                 or _find_header_index(values, "значение", "показател")
+                or _find_header_index(values, "значение", "характерист")
+                or _find_header_index(values, "значение")
             )
             continue
         if not header or name_idx is None or unit_idx is None or qty_idx is None:
@@ -1025,9 +1073,15 @@ def extract_object_description_items(files: Iterable[Path | str]) -> dict:
     их не видит.
     """
     paths = [Path(p) for p in files or []]
+    expanded_paths: list[Path] = []
+    for path in paths:
+        expanded_paths.append(path)
+        if path.suffix.lower() == ".zip":
+            expanded_paths.extend(_extract_zip_document_files(path))
+    paths = expanded_paths
     candidates = [
         p for p in paths
-        if p.suffix.lower() in {".docx", ".doc"} and _looks_like_object_description(p)
+        if p.suffix.lower() in {".docx", ".doc"} and _looks_like_object_description_content(p)
     ]
     if not candidates:
         return {"items": [], "note": "Файл «Описание объекта закупки» не найден."}

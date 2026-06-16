@@ -36,6 +36,7 @@ from document_processor import (
     download_documents,
     extract_financial_terms,
     extract_object_description_items,
+    extract_work_scope_from_files,
     find_document_items,
     hash_files,
 )
@@ -507,6 +508,12 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
                 spec = extract_object_description_items(files)
                 if spec.get("items") and not db.list_tender_items(pnum):
                     db.replace_tender_items(pnum, spec["items"])
+                work_scope = extract_work_scope_from_files(files)
+                if work_scope:
+                    details = db.get_tender_details(pnum) or {}
+                    details["work_scope"] = work_scope
+                    db.save_tender_details(pnum, details)
+                    tender["details_json"] = details
                 full_text_for_terms += "\n" + document_text
                 scoring_text = "\n".join([scoring_text, document_text])
 
