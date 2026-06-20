@@ -652,9 +652,13 @@ body::before {
           <tbody>
             {% for row in table.get('rows') %}
             <tr>
+              {% if table.get('columns') and row|length < table.get('columns')|length %}
+              <td colspan="{{ table.get('columns')|length }}">{{ row | join(' ') }}</td>
+              {% else %}
               {% for cell in row %}
               <td>{{ cell }}</td>
               {% endfor %}
+              {% endif %}
             </tr>
             {% endfor %}
           </tbody>
