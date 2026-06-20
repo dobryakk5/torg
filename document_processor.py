@@ -645,6 +645,118 @@ def _work_scope_doc_score(path: Path) -> int:
     return score
 
 
+def _docx_block_items(doc):
+    try:
+        from docx.table import Table
+        from docx.text.paragraph import Paragraph
+        from docx.oxml.table import CT_Tbl
+        from docx.oxml.text.paragraph import CT_P
+    except ImportError:
+        return
+
+    for child in doc.element.body.iterchildren():
+        if isinstance(child, CT_P):
+            yield Paragraph(child, doc)
+        elif isinstance(child, CT_Tbl):
+            yield Table(child, doc)
+
+
+def _work_scope_table_caption(prev_paragraphs: list[str]) -> str:
+    for text in reversed(prev_paragraphs[-4:]):
+        low = text.lower().replace("ё", "е")
+        if (
+            "таблица" in low
+            or "список" in low
+            or any(x in low for x in ("объекты предоставления услуг", "приоритет", "подменного оборудования"))
+        ):
+            return text.strip(" .:")
+    return ""
+
+
+def _looks_like_work_scope_table(rows: list[list[str]], caption: str) -> bool:
+    if len(rows) < 2 or max((len(row) for row in rows), default=0) < 2:
+        return False
+
+    header_text = " ".join(rows[0])
+    low = f"{caption} {header_text}".lower().replace("ё", "е")
+    if "термин" in low and "определение" in low:
+        return False
+    if any(x in low for x in ("информационная карта", "обоснование начальной", "расчет нмц")):
+        return False
+
+    good_markers = (
+        "объект", "услуг", "работ", "тип объекта", "количество",
+        "уровень приоритета", "срок устранения", "неисправност",
+        "подменного оборудования", "перечень",
+    )
+    return any(marker in low for marker in good_markers)
+
+
+def _row_looks_like_table_header(row: list[str]) -> bool:
+    if not row:
+        return False
+    first = row[0].strip()
+    if re.fullmatch(r"\d{1,4}\.?", first):
+        return False
+    low = " ".join(row).lower().replace("ё", "е")
+    return any(x in low for x in (
+        "№", "номер", "наименование", "тип", "количество", "уровень",
+        "срок", "объект", "услуг", "работ", "описание",
+    ))
+
+
+def _generic_table_columns(width: int) -> list[str]:
+    if width == 2:
+        return ["№", "Описание"]
+    return [f"Колонка {i}" for i in range(1, width + 1)]
+
+
+def _extract_work_scope_docx_tables(path: Path, max_tables: int = 6) -> list[dict]:
+    if path.suffix.lower() != ".docx" or _work_scope_doc_score(path) <= 0:
+        return []
+    try:
+        from docx import Document
+    except ImportError:
+        return []
+    try:
+        doc = Document(str(path))
+    except Exception as exc:
+        logger.warning("Не удалось открыть DOCX для таблиц описания работ %s: %s", path.name, exc)
+        return []
+
+    tables: list[dict] = []
+    prev_paragraphs: list[str] = []
+    for block in _docx_block_items(doc):
+        if hasattr(block, "text"):
+            text = re.sub(r"\s+", " ", block.text or "").strip()
+            if text:
+                prev_paragraphs.append(text)
+                prev_paragraphs = prev_paragraphs[-8:]
+            continue
+
+        rows = [_row_values(row) for row in block.rows]
+        rows = [row for row in rows if any(row)]
+        caption = _work_scope_table_caption(prev_paragraphs)
+        if not _looks_like_work_scope_table(rows, caption):
+            continue
+
+        header_is_data = not _row_looks_like_table_header(rows[0])
+        width = max(len(row) for row in rows)
+        columns = _generic_table_columns(width) if header_is_data else rows[0]
+        data_rows = rows if header_is_data else rows[1:]
+        if not data_rows:
+            continue
+        tables.append({
+            "caption": caption,
+            "columns": columns,
+            "rows": data_rows,
+            "source": _display_filename(path),
+        })
+        if len(tables) >= max_tables:
+            break
+    return tables
+
+
 def extract_work_scope_from_files(files: Iterable[Path | str], max_chars: int = 30000) -> dict:
     paths = [Path(path) for path in files or []]
     paths = [path for path in paths if path.is_file()]
@@ -653,9 +765,12 @@ def extract_work_scope_from_files(files: Iterable[Path | str], max_chars: int = 
     paths.sort(key=lambda path: (_work_scope_doc_score(path), -path.stat().st_size), reverse=True)
 
     chunks: list[str] = []
+    tables: list[dict] = []
     source = ""
     total = 0
     for path in paths[:8]:
+        if len(tables) < 6:
+            tables.extend(_extract_work_scope_docx_tables(path, max_tables=6 - len(tables)))
         text = extract_text_from_file(path)
         if not text or len(text.strip()) < 80:
             continue
@@ -668,7 +783,10 @@ def extract_work_scope_from_files(files: Iterable[Path | str], max_chars: int = 
 
     if not chunks:
         return {}
-    return extract_work_scope("\n\n".join(chunks), source=source)
+    scope = extract_work_scope("\n\n".join(chunks), source=source)
+    if tables:
+        scope["tables"] = tables
+    return scope
 
 
 # ── Критерии оценки заявок («Как начисляются баллы») ─────────────────────────

@@ -379,6 +379,8 @@ body::before {
 .work-scope-list { margin:.15rem 0 0; padding-left:1.1rem; }
 .work-scope-list li { font-size:.8rem; line-height:1.55; color:var(--text); margin:.25rem 0; }
 .work-scope-text { font-size:.8rem; line-height:1.55; color:var(--text); white-space:pre-wrap; }
+.work-scope-table-wrap { overflow-x:auto; margin:.55rem 0 .85rem; }
+.work-scope-table-title { margin:.65rem 0 .25rem; color:var(--dim); font-size:.68rem; line-height:1.4; }
 .work-scope-subtitle { margin:.75rem 0 .25rem; color:var(--dim); font-size:.68rem; text-transform:uppercase; letter-spacing:.06em; }
 .work-scope-source { margin-top:.55rem; font-size:.64rem; color:var(--dim); }
 
@@ -529,28 +531,20 @@ body::before {
         {% endif %}
       </div>
 
-      <!-- Финмодель -->
+      <!-- Обеспечение -->
       <div class="decide-block">
-        <h4>Деньги (оценка
-          {% if card.finance.quality == 'weak' %}<span class="tag warn">грубая</span>{% else %}<span class="tag">{{ card.finance.quality }}</span>{% endif %})
-        </h4>
+        <h4>Обеспечение</h4>
         {% set f = card.finance %}
-        {% if f.nmck is none %}
-        <div class="fin-na">НМЦК не указана — расчёт невозможен.</div>
-        {% else %}
         {% macro money(v) %}{% if v is none %}<span class="fin-na">не найдено</span>{% else %}{{ v | fmt_price }}{% endif %}{% endmacro %}
-        <div class="fin-row"><span class="muted">НМЦК</span><span>{{ money(f.nmck) }}</span></div>
-        <div class="fin-row"><span class="muted">Реком. ставка</span><span>{{ money(f.recommended_bid) }}</span></div>
-        <div class="fin-row"><span class="muted">Налог УСН 6%</span><span>− {{ money(f.tax_usn) }}</span></div>
-        <div class="fin-row"><span class="muted">Аванс</span><span>{% if f.advance_pct is none %}<span class="fin-na">не найден</span>{% else %}{{ f.advance_pct }}%{% endif %}</span></div>
-        <div class="fin-row"><span class="muted">Обеспеч. исполнения</span><span>{{ money(f.contract_security) }}</span></div>
-        <div class="fin-row"><span class="muted">Кассовый разрыв</span><span>{{ money(f.cash_gap) }}</span></div>
-        <div class="fin-row"><span class="muted">Чистая маржа</span>
-          <span style="color:{{ 'var(--go)' if f.verdict=='выгодно' else ('var(--caution)' if f.verdict=='на грани' else 'var(--nogo)') }}">
-            {{ money(f.net_margin) }}{% if f.net_margin_pct is not none %} ({{ (f.net_margin_pct*100)|round|int }}%){% endif %} · {{ f.verdict }}
-          </span>
-        </div>
-        {% if f.assumptions %}<div class="ge" style="margin-top:.4rem;font-size:.7rem">⚠️ {{ f.assumptions | join(' ') }}</div>{% endif %}
+        {% if f.app_security is none and f.contract_security is none and f.warranty_security is none %}
+        <div class="fin-na">Суммы обеспечения не найдены в извлечённых данных.</div>
+        {% else %}
+        <div class="fin-row"><span class="muted">Заявки</span><span>{{ money(f.app_security) }}</span></div>
+        <div class="fin-row"><span class="muted">Исполнения</span><span>{{ money(f.contract_security) }}</span></div>
+        <div class="fin-row"><span class="muted">Гарантийное</span><span>{{ money(f.warranty_security) }}</span></div>
+        {% if f.total_security is not none %}
+        <div class="fin-row"><span class="muted">Всего</span><span>{{ money(f.total_security) }}</span></div>
+        {% endif %}
         {% endif %}
       </div>
 
@@ -639,7 +633,35 @@ body::before {
     {% if work_scope and work_scope.get('title') %}
     <div class="work-scope-text" style="margin-bottom:.55rem">{{ work_scope.get('title') }}</div>
     {% endif %}
-    {% if work_scope and work_scope.get('items') %}
+    {% if work_scope and work_scope.get('tables') %}
+      {% for table in work_scope.get('tables') %}
+      {% if table.get('caption') %}
+      <div class="work-scope-table-title">{{ table.get('caption') }}</div>
+      {% endif %}
+      <div class="work-scope-table-wrap">
+        <table class="spec-table">
+          {% if table.get('columns') %}
+          <thead>
+            <tr>
+              {% for col in table.get('columns') %}
+              <th>{{ col }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          {% endif %}
+          <tbody>
+            {% for row in table.get('rows') %}
+            <tr>
+              {% for cell in row %}
+              <td>{{ cell }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endfor %}
+    {% elif work_scope and work_scope.get('items') %}
     <ul class="work-scope-list">
       {% for item in work_scope.get('items') %}
       <li>{{ item }}</li>

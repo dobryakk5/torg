@@ -360,9 +360,18 @@ def _build_can_do(text, has_text) -> dict:
 
 def estimate_economics(tender: dict[str, Any], category: str = "прочее") -> dict[str, Any]:
     """Грубая финмодель. None = «не определили». `quality` помечает точность."""
+    app_sec = _num(tender.get("application_security_amount"))
+    con_sec = _contract_security_amount(tender)
+    war_sec = _num(tender.get("warranty_security_amount"))
+    security_values = [v for v in (app_sec, con_sec, war_sec) if v is not None]
+    total_sec = round(sum(security_values)) if security_values else None
     none_fin = {
         "quality": "weak", "nmck": None, "recommended_bid": None, "tax_usn": None,
-        "app_security": None, "contract_security": None, "advance_pct": None,
+        "app_security": round(app_sec) if app_sec is not None else None,
+        "contract_security": round(con_sec) if con_sec is not None else None,
+        "warranty_security": round(war_sec) if war_sec is not None else None,
+        "total_security": total_sec,
+        "advance_pct": None,
         "cash_gap": None, "net_margin": None, "net_margin_pct": None,
         "verdict": "unknown", "assumptions": [],
     }
@@ -398,8 +407,6 @@ def estimate_economics(tender: dict[str, Any], category: str = "прочее") -
     assumptions.append(f"себестоимость оценена грубо ({int(cost_rate*100)}% от ставки): "
                        "нет данных по трудозатратам.")
 
-    app_sec = _num(tender.get("application_security_amount"))
-    con_sec = _contract_security_amount(tender)
     advance_pct = _num(tender.get("advance_percent"))
 
     advance_amount = round(recommended * advance_pct / 100) if advance_pct else 0
@@ -424,6 +431,8 @@ def estimate_economics(tender: dict[str, Any], category: str = "прочее") -
         "tax_usn": tax_usn,
         "app_security": round(app_sec) if app_sec is not None else None,
         "contract_security": round(con_sec) if con_sec is not None else None,
+        "warranty_security": round(war_sec) if war_sec is not None else None,
+        "total_security": total_sec,
         "advance_pct": advance_pct,
         "cash_gap": cash_gap,
         "net_margin": net_margin,

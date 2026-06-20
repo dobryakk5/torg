@@ -1,5 +1,6 @@
 import decision_aid
 import database
+import document_processor
 import filter_engine
 import scraper
 
@@ -90,3 +91,36 @@ def test_date_only_deadline_stays_active_until_end_of_day():
 
     assert database.deadline_is_expired("12.06.2026", now=noon) is False
     assert database.deadline_is_expired("12.06.2026", now=next_day) is True
+
+
+def test_work_scope_preserves_docx_tables(tmp_path):
+    from docx import Document
+
+    path = tmp_path / "Описание объекта закупки.docx"
+    doc = Document()
+    doc.add_paragraph("Описание объекта закупки")
+    doc.add_paragraph("Оказание услуг по сопровождению системы")
+    doc.add_paragraph("Таблица 1 – Объекты предоставления услуг:")
+    table = doc.add_table(rows=1, cols=3)
+    table.rows[0].cells[0].text = "№ п/п"
+    table.rows[0].cells[1].text = "Тип объекта"
+    table.rows[0].cells[2].text = "Количество"
+    for idx in range(1, 13):
+        row = table.add_row().cells
+        row[0].text = str(idx)
+        row[1].text = f"Коммутатор {idx}"
+        row[2].text = "1 шт."
+    doc.add_paragraph("Используемые термины и сокращения")
+    terms = doc.add_table(rows=2, cols=2)
+    terms.rows[0].cells[0].text = "Термин"
+    terms.rows[0].cells[1].text = "Определение"
+    terms.rows[1].cells[0].text = "Заявка"
+    terms.rows[1].cells[1].text = "Обращение Заказчика"
+    doc.save(path)
+
+    scope = document_processor.extract_work_scope_from_files([path])
+
+    assert len(scope["tables"]) == 1
+    assert scope["tables"][0]["columns"] == ["№ п/п", "Тип объекта", "Количество"]
+    assert len(scope["tables"][0]["rows"]) == 12
+    assert scope["tables"][0]["rows"][-1] == ["12", "Коммутатор 12", "1 шт."]

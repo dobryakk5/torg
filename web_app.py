@@ -641,7 +641,14 @@ async def tender_detail(request: Request, purchase_number: str):
         details = db.get_tender_details(purchase_number) or {}
     except Exception:
         logger.exception("get_tender_details failed for %s", purchase_number)
-    work_scope = (details.get("work_scope") or _build_work_scope(tender)) if not spec else None
+    work_scope = None
+    if not spec:
+        stored_work_scope = details.get("work_scope") or {}
+        work_scope = stored_work_scope or _build_work_scope(tender)
+        if stored_work_scope and not stored_work_scope.get("tables") and tender.get("documents_dir"):
+            rebuilt_work_scope = _build_work_scope(tender)
+            if rebuilt_work_scope.get("tables"):
+                work_scope = rebuilt_work_scope
     return templates.TemplateResponse(request, "detail.html",
         {"tender": tender, "card": card, "criteria": criteria,
          "work_stages": WORK_STAGES, "spec": spec, "spec_rollup": spec_rollup,
@@ -1205,6 +1212,19 @@ def _work_scope_source_text(tender: dict) -> tuple[str, str]:
 
 
 def _build_work_scope(tender: dict) -> dict:
+    docs_dir = tender.get("documents_dir") or ""
+    if docs_dir:
+        try:
+            import document_processor as dp
+            files = [p for p in Path(docs_dir).iterdir() if p.is_file()]
+            scope = dp.extract_work_scope_from_files(files)
+            if scope:
+                if not scope.get("text"):
+                    scope["text"] = (tender.get("title") or "").strip()
+                return scope
+        except Exception:
+            logger.exception("work_scope document parse failed for %s", tender.get("purchase_number"))
+
     text, source = _work_scope_source_text(tender)
     import document_processor as dp
     scope = dp.extract_work_scope(text, source=source)
