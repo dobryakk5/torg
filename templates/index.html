@@ -350,6 +350,87 @@ tbody td {
   border-color: var(--nogo-bdr);
   background: var(--nogo-bg);
 }
+.manual-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(6, 6, 11, .72);
+  backdrop-filter: blur(10px);
+}
+.manual-modal.open { display: flex; }
+.manual-dialog {
+  width: min(520px, 100%);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  background: var(--surf);
+  box-shadow: 0 24px 80px rgba(0,0,0,.45);
+}
+.manual-dialog-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .9rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.manual-dialog-hdr h2 {
+  font-family: var(--display);
+  font-size: 1.05rem;
+  letter-spacing: .08em;
+  color: var(--text);
+}
+.manual-close {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  background: var(--surf2);
+  color: var(--dim);
+  cursor: pointer;
+}
+.manual-close:hover { color: var(--text); border-color: var(--accent); }
+.manual-form {
+  display: grid;
+  gap: .8rem;
+  padding: 1rem;
+}
+.manual-field {
+  display: grid;
+  gap: .35rem;
+}
+.manual-field label {
+  font-size: .65rem;
+  color: var(--dim);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.manual-field input {
+  width: 100%;
+  background: var(--surf2);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  border-radius: 5px;
+  padding: .55rem .65rem;
+  font-family: var(--mono);
+  font-size: .78rem;
+  outline: none;
+}
+.manual-field input:focus { border-color: var(--accent); }
+.manual-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .6rem;
+  padding-top: .25rem;
+}
+.manual-error {
+  min-height: 1rem;
+  color: var(--nogo);
+  font-size: .68rem;
+}
 @media (max-width: 900px) {
   .filter-search,
   .filter-phrase { flex: 1 1 100%; justify-content: flex-start; }
@@ -485,7 +566,10 @@ tr:hover .fbar-label { color: var(--dim); }
     <button class="tab tab-rejected {% if active == 'REJECTED' %}active{% endif %}" onclick="showTab('REJECTED')">
       Отказ <span class="cnt">{{ rejected_tenders|length }}</span>
     </button>
-    <a href="/board" class="tab" style="text-decoration:none;margin-left:auto;opacity:.65;font-size:.65rem">
+    <button type="button" class="tab" style="margin-left:auto;opacity:.85;font-size:.65rem" onclick="openManualTenderModal()">
+      +Тендер
+    </button>
+    <a href="/board" class="tab" style="text-decoration:none;opacity:.65;font-size:.65rem">
       📋 Доска
     </a>
     <a href="/search" class="tab" style="text-decoration:none;opacity:.65;font-size:.65rem">
@@ -505,6 +589,38 @@ tr:hover .fbar-label { color: var(--dim); }
     </a>
   </div>
 </nav>
+
+<div id="manualTenderModal" class="manual-modal" aria-hidden="true" onclick="closeManualTenderModal(event)">
+  <div class="manual-dialog" role="dialog" aria-modal="true" aria-labelledby="manualTenderTitle" onclick="event.stopPropagation()">
+    <div class="manual-dialog-hdr">
+      <h2 id="manualTenderTitle">Добавить тендер</h2>
+      <button type="button" class="manual-close" onclick="closeManualTenderModal()" aria-label="Закрыть">X</button>
+    </div>
+    <form id="manualTenderForm" class="manual-form" onsubmit="submitManualTender(event)">
+      <div class="manual-field">
+        <label for="manualTitle">Название</label>
+        <input id="manualTitle" name="title" type="text" required maxlength="500" autocomplete="off">
+      </div>
+      <div class="manual-field">
+        <label for="manualSource">Источник (ссылка)</label>
+        <input id="manualSource" name="source_url" type="url" required placeholder="https://..." autocomplete="off">
+      </div>
+      <div class="manual-field">
+        <label for="manualNmck">НМЦК</label>
+        <input id="manualNmck" name="nmck" type="number" required min="0" step="0.01" inputmode="decimal">
+      </div>
+      <div class="manual-field">
+        <label for="manualDeadline">Срок</label>
+        <input id="manualDeadline" name="deadline" type="date" required>
+      </div>
+      <div id="manualTenderError" class="manual-error"></div>
+      <div class="manual-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeManualTenderModal()">Отмена</button>
+        <button id="manualTenderSubmit" type="submit" class="btn btn-primary">Добавить</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <!-- ── Content ────────────────────────────────────────────────────────── -->
 <main class="main">
@@ -988,6 +1104,60 @@ tr:hover .fbar-label { color: var(--dim); }
 
 <script>
 const ACTIVE_INIT = '{{ active }}';
+
+function openManualTenderModal() {
+  const modal = document.getElementById('manualTenderModal');
+  const form = document.getElementById('manualTenderForm');
+  const err = document.getElementById('manualTenderError');
+  if (form) form.reset();
+  if (err) err.textContent = '';
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  setTimeout(() => document.getElementById('manualTitle')?.focus(), 0);
+}
+
+function closeManualTenderModal(event) {
+  if (event && event.target && event.target.id !== 'manualTenderModal') return;
+  const modal = document.getElementById('manualTenderModal');
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+async function submitManualTender(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const err = document.getElementById('manualTenderError');
+  const btn = document.getElementById('manualTenderSubmit');
+  err.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Добавляю...';
+  try {
+    const fields = form.elements;
+    const payload = {
+      title: fields.namedItem('title').value.trim(),
+      source_url: fields.namedItem('source_url').value.trim(),
+      nmck: fields.namedItem('nmck').value.trim(),
+      deadline: fields.namedItem('deadline').value
+    };
+    const r = await fetch('/api/tenders/manual', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || ('HTTP ' + r.status));
+    location.href = '/tender/' + encodeURIComponent(data.purchase_number);
+  } catch (e) {
+    err.textContent = 'Не удалось добавить тендер: ' + String(e.message || e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Добавить';
+  }
+}
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeManualTenderModal();
+});
 
 function showTab(name) {
   document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');

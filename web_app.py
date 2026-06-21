@@ -948,6 +948,40 @@ async def api_tenders(
     ))
 
 
+@app.post("/api/tenders/manual")
+async def api_create_manual_tender(request: Request):
+    data = await request.json()
+    title = (data.get("title") or "").strip()
+    source_url = (data.get("source_url") or "").strip()
+    deadline = (data.get("deadline") or "").strip()
+    nmck_value = data.get("nmck")
+    raw_nmck = "" if nmck_value is None else str(nmck_value).strip()
+
+    if not title:
+        raise HTTPException(400, "Название обязательно")
+    parsed_url = urlparse(source_url)
+    if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+        raise HTTPException(400, "Источник должен быть ссылкой http(s)")
+    if deadline and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", deadline):
+        raise HTTPException(400, "Срок должен быть в формате ГГГГ-ММ-ДД")
+
+    nmck = None
+    if raw_nmck:
+        normalized = raw_nmck.replace("\u00a0", "").replace(" ", "").replace(",", ".")
+        try:
+            nmck = float(normalized)
+        except ValueError as exc:
+            raise HTTPException(400, "НМЦК должна быть числом") from exc
+        if nmck < 0:
+            raise HTTPException(400, "НМЦК не может быть отрицательной")
+
+    try:
+        purchase_number = db.create_manual_tender(title, source_url, nmck, deadline)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return JSONResponse(content={"ok": True, "purchase_number": purchase_number})
+
+
 @app.get("/api/bid/{purchase_number}")
 async def api_bid(purchase_number: str):
     from winner_analytics import classify_category, recommend_bid as _calc_bid

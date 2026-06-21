@@ -255,6 +255,7 @@ CREATE TABLE IF NOT EXISTS tenders (
     deadline                     TEXT,
     url                          TEXT,
     platform                     TEXT,
+    project_type                 TEXT,
     region                       TEXT,
     customer_inn                 TEXT,
     published_at                 TEXT,
@@ -672,6 +673,7 @@ def ensure_extra_columns() -> None:
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS work_due DATE",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS work_note TEXT",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS work_updated_at TIMESTAMPTZ",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS project_type TEXT",
             # MVP4b-1: спецификация позиций тендера (без FK — уникальность pn не гарантирована).
             """CREATE TABLE IF NOT EXISTS tender_items (
                 id SERIAL PRIMARY KEY,
@@ -997,6 +999,75 @@ def get_tender_state(purchase_number: str) -> Optional[dict[str, Any]]:
         cur.execute("SELECT * FROM tenders WHERE purchase_number = %s", (purchase_number,))
         row = cur.fetchone()
     return _to_jsonable(dict(row)) if row else None
+
+
+def create_manual_tender(
+    title: str,
+    source_url: str,
+    price: float | Decimal | None,
+    deadline: str,
+) -> str:
+    """Создаёт тендер, добавленный пользователем вручную из веб-интерфейса."""
+    import uuid
+
+    title = (title or "").strip()
+    source_url = (source_url or "").strip()
+    deadline = (deadline or "").strip()
+    if not title:
+        raise ValueError("Название обязательно")
+    if not source_url:
+        raise ValueError("Источник обязателен")
+    if price is not None and Decimal(str(price)) < 0:
+        raise ValueError("НМЦК не может быть отрицательной")
+
+    pnum = f"manual-m{uuid.uuid4().hex[:16]}"
+    now = _now()
+    primary_text = "\n".join([title, source_url, deadline, "manual"])
+    score = 24
+    reason = "Создан вручную: требуется ручная проверка"
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO tenders
+                (purchase_number, title, price, deadline, url, platform, project_type,
+                 matched_keywords, primary_text, primary_score, primary_reasons,
+                 total_score, score, score_reasons, filter_total, filter_decision,
+                 status, decision, content_hash, last_changed_at, first_seen_at,
+                 last_seen_at, primary_checked_at, created_at, updated_at)
+            VALUES
+                (%(pnum)s, %(title)s, %(price)s, %(deadline)s, %(url)s, 'manual', 'manual',
+                 'manual', %(primary_text)s, %(score)s, %(reason)s,
+                 %(score)s, %(score)s, %(reason)s, %(score)s, 'CAUTION',
+                 'manual', 'pending', %(content_hash)s, %(now)s, %(now)s,
+                 %(now)s, %(now)s, %(now)s, %(now)s)
+            """,
+            {
+                "pnum": pnum,
+                "title": title,
+                "price": price,
+                "deadline": deadline,
+                "url": source_url,
+                "primary_text": primary_text[:4000],
+                "score": score,
+                "reason": reason,
+                "content_hash": hashlib.sha256(
+                    json.dumps(
+                        {
+                            "title": title,
+                            "price": str(price or ""),
+                            "deadline": deadline,
+                            "url": source_url,
+                            "project_type": "manual",
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ).encode("utf-8")
+                ).hexdigest(),
+                "now": now,
+            },
+        )
+    return pnum
 
 
 def is_seen(purchase_number: str) -> bool:
