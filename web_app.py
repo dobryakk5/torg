@@ -34,7 +34,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 import zipfile
 
 from fastapi import FastAPI, Request, HTTPException, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
 import config
@@ -44,6 +44,11 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Тендерный монитор", version="3.0.0")
 templates = Jinja2Templates(directory="templates")
+
+FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<rect width="64" height="64" rx="12" fill="#06060B"/>
+<text x="32" y="46" text-anchor="middle" font-family="Arial, sans-serif" font-size="44" font-weight="800" fill="#EADDC8">Т</text>
+</svg>"""
 
 # ── MVP4a: стадии работы по тендеру (Kanban-доска) ───────────────────────────
 WORK_STAGES = [
@@ -366,6 +371,16 @@ async def on_startup():
 @app.on_event("shutdown")
 async def on_shutdown():
     db.close_db()
+
+
+@app.get("/favicon.svg", include_in_schema=False)
+async def favicon_svg():
+    return Response(content=FAVICON_SVG, media_type="image/svg+xml")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon_ico():
+    return Response(content=FAVICON_SVG, media_type="image/svg+xml")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
