@@ -93,6 +93,35 @@ def test_date_only_deadline_stays_active_until_end_of_day():
     assert database.deadline_is_expired("12.06.2026", now=next_day) is True
 
 
+def test_tender_detail_opens_expired_tender_from_db(monkeypatch):
+    import asyncio
+    import web_app
+
+    tender = {
+        "purchase_number": "32616106894",
+        "title": "Архивный тендер",
+        "deadline": "13.02.2014",
+        "price": 1000,
+    }
+
+    monkeypatch.setattr(web_app.db, "get_tender", lambda purchase_number: tender)
+    monkeypatch.setattr(web_app.db, "list_tender_items", lambda purchase_number: [])
+    monkeypatch.setattr(web_app.db, "get_tender_details", lambda purchase_number: {})
+    monkeypatch.setattr(decision_aid, "build_card", lambda tender, text=None: {"verdict": "view"})
+    monkeypatch.setattr(document_processor, "extract_evaluation_criteria", lambda text: {})
+    monkeypatch.setattr(web_app, "_decide_text", lambda tender: "")
+    monkeypatch.setattr(
+        web_app.templates,
+        "TemplateResponse",
+        lambda request, template_name, context: {"template": template_name, "context": context},
+    )
+
+    response = asyncio.run(web_app.tender_detail(None, "32616106894"))
+
+    assert response["template"] == "detail.html"
+    assert response["context"]["tender"]["purchase_number"] == "32616106894"
+
+
 def test_work_scope_preserves_docx_tables(tmp_path):
     from docx import Document
 
