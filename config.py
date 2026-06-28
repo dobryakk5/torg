@@ -6,6 +6,7 @@ config.py — настройки тендерного монитора.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -25,6 +26,26 @@ def _load_dotenv() -> None:
 
 
 _load_dotenv()
+
+
+def env_bool(key: str, default: bool = False) -> bool:
+    """Читает bool из env: 1/true/yes/on — True, 0/false/no/off/пусто — False."""
+    raw = os.getenv(key)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on", "да"}
+
+
+def load_json_env(key: str, default):
+    """Читает JSON из env, возвращая default при пустом или некорректном значении."""
+    raw = os.getenv(key, "").strip()
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return default
+
 
 DATA_DIR      = BASE_DIR / "data"
 DOCUMENTS_DIR = DATA_DIR / "documents"
@@ -127,6 +148,12 @@ DOCUMENT_DOWNLOAD_MIN_SCORE = int(os.getenv("DOCUMENT_DOWNLOAD_MIN_SCORE", "30")
 MAX_DOCUMENTS_PER_TENDER  = int(os.getenv("MAX_DOCUMENTS_PER_TENDER",  "8"))
 MAX_DOCUMENT_TEXT_CHARS   = int(os.getenv("MAX_DOCUMENT_TEXT_CHARS",   "30000"))
 LLM_TEXT_CHARS            = int(os.getenv("LLM_TEXT_CHARS",            "12000"))
+
+# --- Тендерплан ---
+SOURCE_TENDERPLAN_ENABLED = env_bool("SOURCE_TENDERPLAN_ENABLED", False)
+TENDERPLAN_TOKEN          = os.getenv("TENDERPLAN_TOKEN", "").strip()
+TENDERPLAN_BASE_URL       = os.getenv("TENDERPLAN_BASE_URL", "https://tenderplan.ru").strip()
+TENDERPLAN_LIST_PARAMS    = load_json_env("TENDERPLAN_LIST_PARAMS_JSON", {"limit": 50})
 
 # ============================================================
 # КЛЮЧЕВЫЕ СЛОВА ДЛЯ ПОИСКА
@@ -297,6 +324,8 @@ def get_runtime(key: str, default=None):
                 return float(val)
             if isinstance(default, list):
                 return _json.loads(val)
+            if isinstance(default, dict):
+                return _json.loads(val)
             return val
     except Exception:
         pass
@@ -313,5 +342,10 @@ def get_runtime(key: str, default=None):
                 return _json.loads(env_val)
             except Exception:
                 return [s.strip() for s in env_val.split(",") if s.strip()]
+        if isinstance(default, dict):
+            try:
+                return _json.loads(env_val)
+            except Exception:
+                return default
         return env_val
     return default

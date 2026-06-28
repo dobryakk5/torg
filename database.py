@@ -1001,6 +1001,34 @@ def get_tender_state(purchase_number: str) -> Optional[dict[str, Any]]:
     return _to_jsonable(dict(row)) if row else None
 
 
+def get_existing_purchase_numbers(purchase_numbers: list[str]) -> set[str]:
+    """Возвращает номера закупок, которые уже есть в таблице tenders."""
+    numbers = list({
+        str(pnum or "").strip()
+        for pnum in purchase_numbers
+        if str(pnum or "").strip()
+    })
+    if not numbers:
+        return set()
+
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT purchase_number
+              FROM tenders
+             WHERE purchase_number = ANY(%s)
+            """,
+            (numbers,),
+        )
+        return {row[0] for row in cur.fetchall()}
+
+
+def tender_exists(purchase_number: str) -> bool:
+    """Проверяет существование закупки по purchase_number без SELECT *."""
+    return bool(get_existing_purchase_numbers([purchase_number]))
+
+
 def create_manual_tender(
     title: str,
     source_url: str,

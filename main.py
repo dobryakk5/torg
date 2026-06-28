@@ -103,15 +103,38 @@ def _process_stage1_tenders(
     matched_keyword: str,
     dry_run: bool,
     seen_this_run: set[str],
+    only_new: bool = False,
 ) -> tuple[int, int, int]:
     saved = 0
     newly_counted = 0
     primary_candidates = 0
 
+    existing_pnums: set[str] = set()
+    if only_new:
+        existing_pnums = db.get_existing_purchase_numbers([
+            tender.get("purchase_number", "")
+            for tender in tenders
+            if isinstance(tender, dict)
+        ])
+        logger.info(
+            "Stage1 only_new: из %d карточек уже есть в БД %d",
+            len(tenders),
+            len(existing_pnums),
+        )
+
     for tender in tenders:
-        pnum = tender.get("purchase_number", "")
+        pnum = str(tender.get("purchase_number", "") or "").strip()
         if not pnum:
+            logger.warning(
+                "Stage1 skip: карточка без purchase_number, source=%s, title=%s",
+                matched_keyword,
+                str(tender.get("title", "") or "")[:120],
+            )
             continue
+        if only_new and pnum in existing_pnums:
+            logger.info("Stage1 skip existing: %s", pnum)
+            continue
+        tender["purchase_number"] = pnum
         if db.deadline_is_expired(tender.get("deadline")):
             logger.info(
                 "Stage1 skip expired deadline: %s, deadline=%s, %s",
@@ -176,8 +199,10 @@ def run_stage1(
     fz223: bool | None = None,
     okpd2: bool | None = None,
     b2b: bool | None = None,
+    tenderplan: bool | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    only_new: bool = False,
 ) -> tuple[int, int]:
     """
     Массовая подгрузка карточек и первичный скоринг без ТЗ.
@@ -211,6 +236,7 @@ def run_stage1(
     use_223 = fz223 if fz223 is not None else config.SEARCH_223FZ
     use_okpd2 = okpd2 if okpd2 is not None else getattr(config, "OKPD2_SEARCH_ENABLED", True)
     use_b2b = b2b if b2b is not None else getattr(config, "SOURCE_B2B_ENABLED", False)
+    use_tenderplan = tenderplan if tenderplan is not None else getattr(config, "SOURCE_TENDERPLAN_ENABLED", False)
     pages = config.BACKFILL_SEARCH_PAGES if (backfill_active or auto_active) else config.SEARCH_PAGES
 
     logger.info(
@@ -317,6 +343,33 @@ def run_stage1(
                 logger.error(msg)
                 errors.append(msg)
                 continue
+
+    # ── Канал 4: Tenderplan ───────────────────────────────────────────────────
+    if use_tenderplan:
+        from sources.tenderplan import search_tenderplan
+        phase_started_at = datetime.now().isoformat(timespec="seconds")
+        phase_mode = "stage1:tenderplan"
+        if skip_completed_today and db.was_stage_completed_today(phase_mode):
+            logger.info("Tenderplan уже готов сегодня — пропускаю")
+        else:
+            try:
+                tp_tenders = search_tenderplan(
+                    token=getattr(config, "TENDERPLAN_TOKEN", ""),
+                    base_url=getattr(config, "TENDERPLAN_BASE_URL", "https://tenderplan.ru"),
+                    list_params=getattr(config, "TENDERPLAN_LIST_PARAMS", {}),
+                )
+                db.reconnect_db()
+                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
+                    tp_tenders, "tenderplan", dry_run, seen_this_run, only_new=only_new,
+                )
+                saved += phase_saved
+                unique_saved += phase_unique
+                primary_candidates += phase_candidates
+                db.log_run(phase_mode, phase_started_at, found=len(tp_tenders), processed=phase_saved, notified=0, errors="")
+            except Exception as exc:
+                msg = f"Ошибка Tenderplan-канала: {exc}"
+                logger.error(msg)
+                errors.append(msg)
 
     logger.info("Этап 1 завершён: найдено %d, кандидатов на этап 2: %d", unique_saved, primary_candidates)
     db.log_run("stage1", started_at, found=unique_saved, processed=saved, notified=0, errors="; ".join(errors))
@@ -792,6 +845,8 @@ def main() -> None:
     parser.add_argument("--stage2", action="store_true", help="Только детальный анализ кандидатов")
     parser.add_argument("--stage3", action="store_true", help="После дедлайна подтянуть результаты/победителей")
     parser.add_argument("--results", action="store_true", help="Алиас для --stage3")
+    parser.add_argument("--tenderplan-only", action="store_true", help="Только импорт Tenderplan")
+    parser.add_argument("--only-new", action="store_true", help="Stage1/Tenderplan: обрабатывать только новые закупки")
     parser.add_argument("--once", action="store_true", help="Один полный цикл: stage1 + stage2")
     parser.add_argument("--test", action="store_true", help="Тестовый полный цикл без отправки в Telegram")
     parser.add_argument("--reset-db", action="store_true", help="Сбросить PostgreSQL-таблицы проекта и создать чистую схему")
@@ -823,6 +878,8 @@ def main() -> None:
     config.BACKFILL_SEARCH_PAGES        = config.get_runtime("BACKFILL_SEARCH_PAGES",        config.BACKFILL_SEARCH_PAGES)
     config.SOURCE_B2B_ENABLED           = config.get_runtime("SOURCE_B2B_ENABLED",           config.SOURCE_B2B_ENABLED)
     config.B2B_SEARCH_PAGES             = config.get_runtime("B2B_SEARCH_PAGES",             config.B2B_SEARCH_PAGES)
+    config.SOURCE_TENDERPLAN_ENABLED    = config.get_runtime("SOURCE_TENDERPLAN_ENABLED",    config.SOURCE_TENDERPLAN_ENABLED)
+    config.TENDERPLAN_LIST_PARAMS       = config.get_runtime("TENDERPLAN_LIST_PARAMS",       config.TENDERPLAN_LIST_PARAMS)
     # LLM-настройки (провайдер/модели/триаж) — тоже из БД с откатом на env.
     config.LLM_PROVIDER                 = config.get_runtime("LLM_PROVIDER",                 config.LLM_PROVIDER)
     config.OPENROUTER_TRIAGE_MODEL      = config.get_runtime("OPENROUTER_TRIAGE_MODEL",      config.OPENROUTER_TRIAGE_MODEL)
@@ -831,11 +888,23 @@ def main() -> None:
 
     if args.analytics:
         run_analytics(dry_run=args.test)
+    elif args.tenderplan_only:
+        run_stage1(
+            dry_run=args.test,
+            skip_completed_today=False,
+            backfill_active=False,
+            keywords=[],
+            okpd2=False,
+            b2b=False,
+            tenderplan=True,
+            only_new=args.only_new,
+        )
     elif args.stage1:
         run_stage1(
             dry_run=args.test,
             skip_completed_today=args.skip_completed_today,
             backfill_active=args.backfill_active,
+            only_new=args.only_new,
         )
     elif args.triage:
         run_triage(dry_run=args.test, limit=args.limit)
