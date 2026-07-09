@@ -46,6 +46,7 @@ from scraper import (
     get_tender_page, parse_result_info, search_eis, search_eis_by_okpd2,
     to_common_info_url, to_documents_url,
 )
+from sources.tenderplan import search_tenderplan, download_tenderplan_documents as _download_tp_docs, _is_eis_number
 from winner_analytics   import run_update   as run_winner_update, classify_category, recommend_bid
 from customer_scorer    import run_new_customers, run_refresh_customers, get_customer_risk_label
 from change_detector    import check_once   as check_changes
@@ -346,7 +347,6 @@ def run_stage1(
 
     # ── Канал 4: Tenderplan ───────────────────────────────────────────────────
     if use_tenderplan:
-        from sources.tenderplan import search_tenderplan
         phase_started_at = datetime.now().isoformat(timespec="seconds")
         phase_mode = "stage1:tenderplan"
         if skip_completed_today and db.was_stage_completed_today(phase_mode):
@@ -525,13 +525,22 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
         scoring_text = tender.get("primary_text", "") or ""
 
         try:
-            page_url = to_common_info_url(tender.get("url", "") or pnum)
-            tender["url"] = page_url
-            page_html, page_text = get_tender_page(page_url)
+            is_tenderplan = (tender.get("platform") or "") == "Tenderplan"
+            is_eis = (tender.get("platform") or "ЕИС") == "ЕИС"
+
+            # Для ЕИС-тендеров (включая те, что пришли через Tenderplan с ЕИС-номером) —
+            # тянем страницу zakupki.gov.ru. Для коммерческих Tenderplan — пропускаем.
+            if is_tenderplan and not _is_eis_number(pnum):
+                page_html, page_text = "", ""
+                logger.info("%s: коммерческий Tenderplan-тендер, страницу ЕИС не тянем", pnum)
+            else:
+                page_url = to_common_info_url(tender.get("url", "") or pnum)
+                tender["url"] = page_url
+                page_html, page_text = get_tender_page(page_url)
+
             full_text_for_terms = "\n".join([scoring_text, page_text])
             scoring_text = "\n".join([scoring_text, page_text])
 
-            is_eis = (tender.get("platform") or "ЕИС") == "ЕИС"
             terms = extract_financial_terms(full_text_for_terms)
             for key, value in terms.items():
                 if value not in (None, ""):
@@ -569,6 +578,44 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
                     tender["details_json"] = details
                 full_text_for_terms += "\n" + document_text
                 scoring_text = "\n".join([scoring_text, document_text])
+
+            # ── Tenderplan: скачиваем документы через API, если включён канал ──────
+            is_tenderplan = (tender.get("platform") or "") == "Tenderplan"
+            if is_tenderplan and config.DOWNLOAD_DOCUMENTS and not document_text:
+                tp_token = getattr(config, "TENDERPLAN_TOKEN", "")
+                if tp_token:
+                    logger.info("%s: пробую скачать документы через Tenderplan API", pnum)
+                    try:
+                        tp_docs = _download_tp_docs(
+                            pnum,
+                            token=tp_token,
+                            base_url=getattr(config, "TENDERPLAN_BASE_URL", "https://tenderplan.ru"),
+                            max_chars=config.MAX_DOCUMENT_TEXT_CHARS,
+                        )
+                        tp_files = tp_docs.get("files", [])
+                        if tp_files:
+                            document_text = tp_docs.get("text", "")
+                            tender["document_count"] = len(tp_files)
+                            tender["documents_dir"] = tp_docs.get("dir", "")
+                            tender["documents_hash"] = hash_files(tp_files)
+                            spec = extract_object_description_items(tp_files)
+                            if spec.get("items") and not db.list_tender_items(pnum):
+                                db.replace_tender_items(pnum, spec["items"])
+                            work_scope = extract_work_scope_from_files(tp_files)
+                            if work_scope:
+                                details = db.get_tender_details(pnum) or {}
+                                details["work_scope"] = work_scope
+                                db.save_tender_details(pnum, details)
+                                tender["details_json"] = details
+                            full_text_for_terms += "\n" + document_text
+                            scoring_text = "\n".join([scoring_text, document_text])
+                            logger.info("%s: Tenderplan скачано документов %d", pnum, len(tp_files))
+                        else:
+                            logger.info("%s: Tenderplan не вернул документов", pnum)
+                    except Exception as exc:
+                        logger.warning("Ошибка скачивания Tenderplan-документов %s: %s", pnum, exc)
+                else:
+                    logger.info("%s: Tenderplan-канал без токена — документы не скачиваются", pnum)
 
             terms = extract_financial_terms(full_text_for_terms)
             for key, value in terms.items():
@@ -899,6 +946,9 @@ def main() -> None:
             tenderplan=True,
             only_new=args.only_new,
         )
+        # Сразу запускаем детальный анализ, чтобы скачать ТЗ через Tenderplan API
+        if not _stage_completed_today("stage2", args.skip_completed_today):
+            run_stage2(dry_run=args.test, limit=args.limit)
     elif args.stage1:
         run_stage1(
             dry_run=args.test,

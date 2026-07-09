@@ -20,11 +20,12 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
+import config
 
-# ЕИС: 11–22 цифры
+logger = logging.getLogger(__name__)
 _EIS_RE = re.compile(r"^\d{11,22}$")
 # 223-ФЗ: ровно 11 цифр, начинается с 3
 _EIS_223_RE = re.compile(r"^3\d{10}$")
@@ -112,6 +113,96 @@ def _map_item(item: dict[str, Any]) -> dict[str, Any] | None:
         "primary_text":    primary_text,
         "region":          region,
         "matched_keywords": ["tenderplan"],
+    }
+
+
+def download_tenderplan_documents(
+    purchase_number: str,
+    *,
+    token: str = "",
+    base_url: str = "https://tenderplan.ru",
+    timeout: int = 60,
+    retries: int = 3,
+    verify_ssl: bool = True,
+    max_chars: int | None = None,
+) -> dict:
+    """
+    Скачивает документы одного Tenderplan-тендера (Purchase_number = _id для коммерческих
+    или номер ЕИС для госзакупок). Возвращает dict:
+        { "files": [Path, ...], "dir": str, "text": str, "count": int }
+
+    Работает через TenderplanClient:
+      1) try_tender_json(ATTACHMENTS_ENDPOINTS, purchase_number) — список attachments.
+      2) download_document() для каждого attachment → local files.
+      3) collect_document_text() — извлечение текста.
+
+    Если токена нет или attachments пуст — возвращает { "files": [], "dir": "", "text": "", "count": 0 }.
+    """
+    from tenderplan.tenderplan_collect import ATTACHMENTS_ENDPOINTS, TenderplanClient, TenderplanError
+
+    if not token:
+        logger.warning("Tenderplan: TENDERPLAN_TOKEN не задан — пропускаю скачивание документов %s", purchase_number)
+        return {"files": [], "dir": "", "text": "", "count": 0}
+
+    client = TenderplanClient(
+        base_url=base_url,
+        token=token,
+        timeout=timeout,
+        retries=retries,
+        verify_ssl=verify_ssl,
+    )
+
+    # Папка назначения: data/documents/<purchase_number>/
+    from document_processor import safe_filename as _safe_fn
+
+    target_dir = config.DOCUMENTS_DIR / _safe_fn(purchase_number)
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1) Получаем список attachments
+    try:
+        attachments_payload, endpoint, param = client.try_tender_json(
+            ATTACHMENTS_ENDPOINTS, purchase_number
+        )
+    except TenderplanError as exc:
+        logger.warning("Tenderplan attachments для %s не получены: %s", purchase_number, exc)
+        return {"files": [], "dir": str(target_dir), "text": "", "count": 0}
+
+    if attachments_payload is None:
+        logger.info("Tenderplan: attachments для %s не найдены (endpoint недоступен)", purchase_number)
+        return {"files": [], "dir": str(target_dir), "text": "", "count": 0}
+
+    # 2) Извлекаем массив attachment-записей из payload
+    from tenderplan.tenderplan_collect import extract_list
+    attachment_items = extract_list(attachments_payload)
+    if not attachment_items:
+        logger.info("Tenderplan: attachments для %s пуст", purchase_number)
+        return {"files": [], "dir": str(target_dir), "text": "", "count": 0}
+
+    logger.info("Tenderplan: найдено %d документов для %s", len(attachment_items), purchase_number)
+
+    # 3) Скачиваем
+    downloaded: list[Path] = []
+    for idx, attachment in enumerate(attachment_items, start=1):
+        if not isinstance(attachment, dict):
+            continue
+        try:
+            result = client.download_document(attachment, target_dir, idx)
+            if result.get("status") == "downloaded" and result.get("path"):
+                downloaded.append(Path(result["path"]))
+        except TenderplanError as exc:
+            logger.warning("Tenderplan doc %d/%d для %s: %s", idx, len(attachment_items), purchase_number, exc)
+        except Exception as exc:
+            logger.warning("Tenderplan doc %d/%d для %s: %s", idx, len(attachment_items), purchase_number, exc)
+
+    # 4) Извлекаем текст
+    from document_processor import collect_document_text, hash_files
+    doc_text = collect_document_text(downloaded, max_chars=max_chars)
+
+    return {
+        "files": downloaded,
+        "dir": str(target_dir),
+        "text": doc_text,
+        "count": len(downloaded),
     }
 
 
