@@ -149,6 +149,34 @@ MAX_DOCUMENTS_PER_TENDER  = int(os.getenv("MAX_DOCUMENTS_PER_TENDER",  "8"))
 MAX_DOCUMENT_TEXT_CHARS   = int(os.getenv("MAX_DOCUMENT_TEXT_CHARS",   "30000"))
 LLM_TEXT_CHARS            = int(os.getenv("LLM_TEXT_CHARS",            "12000"))
 
+# --- TLS/SSL для ЕИС ---
+def _default_eis_ca_bundle() -> str:
+    """Возвращает системный CA bundle, если он доступен.
+
+    ЕИС использует цепочку Russian Trusted CA. Она присутствует в системном
+    хранилище macOS, но может отсутствовать в certifi внутри pyenv/venv.
+    Явный EIS_CA_BUNDLE из .env всегда имеет приоритет.
+    """
+    explicit = os.getenv("EIS_CA_BUNDLE", "").strip()
+    if explicit:
+        return explicit
+
+    candidates = (
+        "/etc/ssl/cert.pem",                  # macOS
+        "/etc/ssl/certs/ca-certificates.crt", # Debian/Ubuntu
+        "/etc/pki/tls/certs/ca-bundle.crt",   # RHEL/CentOS
+    )
+    for candidate in candidates:
+        if Path(candidate).is_file():
+            return candidate
+    return ""
+
+
+EIS_CA_BUNDLE = _default_eis_ca_bundle()
+EIS_VERIFY_SSL = env_bool("EIS_VERIFY_SSL", True)
+# Используется только когда URL содержит один номер без исходного типа извещения.
+EIS_DEFAULT_NOTICE_TYPE = os.getenv("EIS_DEFAULT_NOTICE_TYPE", "ea20").strip() or "ea20"
+
 # --- Тендерплан ---
 SOURCE_TENDERPLAN_ENABLED = env_bool("SOURCE_TENDERPLAN_ENABLED", False)
 TENDERPLAN_TOKEN          = os.getenv("TENDERPLAN_TOKEN", "").strip()

@@ -11050,3 +11050,652 @@ SSL SYSCALL error: Operation timed out
 2026-06-28 23:12:15,703 [INFO] main: Stage2 8-фильтровый скор 27/NO-GO: Оказание услуг по техническ ому сопровожден ию компонентов информацион но - телекоммуникац (0273100001126000248)
 2026-06-28 23:12:41,992 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0112200000826002193 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x1043eafd0>, 'Connection to zakupki.gov.ru timed out. (connect timeout=25)'))
 2026-06-28 23:13:05,021 [INFO] main: Stage2 8-фильтровый скор 28/NO-GO: Выполнение работ по созданию комплексной системы видеонаблюдения с функцией видеоаналитики (0112200000826002193)
+2026-07-09 13:06:06,314 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-09 13:06:20,504 [INFO] main: ══════════════════════════════════════════════════
+2026-07-09 13:06:20,506 [INFO] main: Этап 1: поиск карточек (0 ключей, цена 20,000–590,000 ₽, период=all-active, 44-ФЗ=True, 223-ФЗ=True, ОКПД2=False)
+2026-07-09 13:06:20,951 [ERROR] sources.tenderplan: Tenderplan API ошибка: Не удалось получить список торгов.
+
+/api/tenders/getlist: HTTP 401: 
+/api/tenders/v2/getlist: HTTP 401: 
+
+Проверьте параметры GET /api/tenders/getlist и переменную TENDERPLAN_LIST_PARAMS_JSON.
+2026-07-09 13:06:21,385 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-09 13:06:21,385 [INFO] main: Stage1 only_new: из 0 карточек уже есть в БД 0
+2026-07-09 13:06:21,923 [INFO] main: Этап 1 завершён: найдено 0, кандидатов на этап 2: 0
+2026-07-09 13:06:22,444 [INFO] main: ══════════════════════════════════════════════════
+2026-07-09 13:06:22,444 [INFO] main: Этап 2: детальный анализ документов
+2026-07-09 13:06:24,223 [INFO] main: Кандидатов на детальный анализ: 4
+2026-07-09 13:06:49,362 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/notice223/common-info.html?regNumber=32616150810 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x107d79bd0>, 'Connection to zakupki.gov.ru timed out. (connect timeout=25)'))
+2026-07-09 13:11:06,120 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-09 13:11:26,426 [INFO] main: ══════════════════════════════════════════════════
+2026-07-09 13:11:26,427 [INFO] main: Этап 1: поиск карточек (0 ключей, цена 20,000–590,000 ₽, период=all-active, 44-ФЗ=True, 223-ФЗ=True, ОКПД2=False)
+2026-07-09 13:11:26,763 [ERROR] sources.tenderplan: Tenderplan API ошибка: Не удалось получить список торгов.
+
+/api/tenders/getlist: HTTP 401: 
+/api/tenders/v2/getlist: HTTP 401: 
+
+Проверьте параметры GET /api/tenders/getlist и переменную TENDERPLAN_LIST_PARAMS_JSON.
+2026-07-09 13:11:27,115 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-09 13:11:27,117 [INFO] main: Stage1 only_new: из 0 карточек уже есть в БД 0
+2026-07-09 13:11:27,626 [INFO] main: Этап 1 завершён: найдено 0, кандидатов на этап 2: 0
+2026-07-09 13:11:28,062 [INFO] main: ══════════════════════════════════════════════════
+2026-07-09 13:11:28,063 [INFO] main: Этап 2: детальный анализ документов
+2026-07-09 13:11:28,684 [INFO] main: Кандидатов на детальный анализ: 4
+2026-07-09 13:11:53,694 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/notice223/common-info.html?regNumber=32616150810 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x106a5dbd0>, 'Connection to zakupki.gov.ru timed out. (connect timeout=25)'))
+2026-07-09 13:12:22,075 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/notice223/common-info.html?regNumber=32616150810 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x106a5e850>, 'Connection to zakupki.gov.ru timed out. (connect timeout=25)'))
+2026-07-14 07:58:44,390 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-14 07:58:45,631 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 07:58:45,632 [INFO] main: Этап 1: поиск карточек (0 ключей, цена 20,000–590,000 ₽, период=all-active, 44-ФЗ=True, 223-ФЗ=True, ОКПД2=False)
+2026-07-14 07:58:46,166 [ERROR] sources.tenderplan: Tenderplan API ошибка: Не удалось получить список торгов.
+
+/api/tenders/getlist: HTTP 401: 
+/api/tenders/v2/getlist: HTTP 401: 
+
+Проверьте параметры GET /api/tenders/getlist и переменную TENDERPLAN_LIST_PARAMS_JSON.
+2026-07-14 07:58:46,241 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-14 07:58:46,241 [INFO] main: Stage1 only_new: из 0 карточек уже есть в БД 0
+2026-07-14 07:58:46,309 [INFO] main: Этап 1 завершён: найдено 0, кандидатов на этап 2: 0
+2026-07-14 07:58:46,362 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 07:58:46,362 [INFO] main: Этап 2: детальный анализ документов
+2026-07-14 07:58:46,449 [INFO] main: Кандидатов на детальный анализ: 2
+2026-07-14 07:58:46,497 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0372200180126000053 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 07:58:49,877 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0372200180126000053 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 07:58:56,836 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0372200180126000053 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 07:59:07,266 [INFO] main: 0372200180126000053: пробую скачать документы через Tenderplan API
+2026-07-14 07:59:07,382 [INFO] sources.tenderplan: Tenderplan: attachments для 0372200180126000053 не найдены (endpoint недоступен)
+2026-07-14 07:59:07,383 [INFO] main: 0372200180126000053: Tenderplan не вернул документов
+2026-07-14 07:59:07,484 [INFO] main: Stage2 8-фильтровый скор 29/CAUTION: Оказание услуг по брендингу и дизайну веб-портала для нужд СПб ГБУ "ЦФКСиЗ ВО" в 2026 году (0372200180126000053)
+2026-07-14 07:59:08,379 [INFO] main: Stage2 8-фильтровый скор 27/NO-GO: Битрикс сайт для Ledgar (manual-m143df685d7ce459a)
+2026-07-14 07:59:08,599 [INFO] main: Этап 2 завершён: обработано 2, отправлено 0
+2026-07-14 07:59:08,740 [INFO] main: Статистика: всего 2481, primary-кандидатов 1926, детально проверено 811, отправлено 0
+2026-07-14 08:05:38,480 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-14 08:05:45,559 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 08:05:45,560 [INFO] main: Этап 1: поиск карточек (0 ключей, цена 20,000–590,000 ₽, период=all-active, 44-ФЗ=True, 223-ФЗ=True, ОКПД2=False)
+2026-07-14 08:05:45,787 [ERROR] sources.tenderplan: Tenderplan API ошибка: Не удалось получить список торгов.
+
+/api/tenders/getlist: HTTP 401: 
+/api/tenders/v2/getlist: HTTP 401: 
+
+Проверьте параметры GET /api/tenders/getlist и переменную TENDERPLAN_LIST_PARAMS_JSON.
+2026-07-14 08:05:46,079 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-14 08:05:46,079 [INFO] main: Stage1 only_new: из 0 карточек уже есть в БД 0
+2026-07-14 08:05:46,351 [INFO] main: Этап 1 завершён: найдено 0, кандидатов на этап 2: 0
+2026-07-14 08:05:46,627 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 08:05:46,627 [INFO] main: Этап 2: детальный анализ документов
+2026-07-14 08:05:46,920 [INFO] main: Кандидатов на детальный анализ: 0
+2026-07-14 08:05:46,921 [INFO] main: Этап 2 завершён: обработано 0, отправлено 0
+2026-07-14 08:05:47,699 [INFO] main: Статистика: всего 2481, primary-кандидатов 1926, детально проверено 811, отправлено 0
+2026-07-14 13:23:01,473 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-14 13:23:02,699 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 13:23:02,700 [INFO] main: Этап 1: поиск карточек (0 ключей, цена 20,000–590,000 ₽, период=all-active, 44-ФЗ=True, 223-ФЗ=True, ОКПД2=False)
+2026-07-14 13:23:03,000 [INFO] sources.tenderplan: Tenderplan: получено 50 записей (/api/tenders/getlist)
+2026-07-14 13:23:03,002 [INFO] sources.tenderplan: Tenderplan: замаплено 50 тендеров
+2026-07-14 13:23:03,085 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-14 13:23:03,154 [INFO] main: Stage1 only_new: из 50 карточек уже есть в БД 0
+2026-07-14 13:23:04,091 [INFO] main: Stage1 inserted: скор 24, Право использования программного обеспечения для ЭВМ «ТехноКад-Муниципалитет мод (6a56091d3951804ff39fb792)
+2026-07-14 13:23:04,654 [INFO] main: Stage1 inserted: скор 24, Право использования программного обеспечения для ЭВМ «ТехноКад-Муниципалитет мод (6a5606393951804ff392ed8e)
+2026-07-14 13:23:05,138 [INFO] main: Stage1 inserted: скор 24, Закупка в 2026 году образовательного набора для практического изучения принципов (6a5604413951804ff383d4d3)
+2026-07-14 13:23:06,118 [INFO] main: Stage1 inserted: скор 24, Оказание услуг информационно-технического характера, консультационных, рекламных (32616203126)
+2026-07-14 13:23:06,438 [INFO] main: Stage1 inserted: скор 24, Закупка в 2026 году образовательного набора для практического изучения принципов (6a5602d33951804ff3796b27)
+2026-07-14 13:23:06,741 [INFO] main: Stage1 inserted: скор 25, Запрос технико-коммерческих предложений в рамках мониторинга рынка на ОКПД 2 71. (6a55ff643951804ff3614246)
+2026-07-14 13:23:07,085 [INFO] main: Stage1 inserted: скор 24, Оказание услуг по доработке автоматизированных систем 1C:Аванкор ПИФ 3, 1C:УХ УН (6a55fe823951804ff34f0603)
+2026-07-14 13:23:07,416 [INFO] main: Stage1 inserted: скор 26, Выполнение работ по созданию информационной системы «Герои земли Тюменской» (0367200006826000166)
+2026-07-14 13:23:07,722 [INFO] main: Stage1 inserted: скор 25, Приборы, аппаратура и устройства учебные и демонстрационные для нужд ГКУ СО КК " (0318200072026000005)
+2026-07-14 13:23:08,051 [INFO] main: Stage1 inserted: скор 26, Выполнение работ по инспекции, проектированию, изготовлению и монтажу лифтов в ж (6a55f3953951804ff3e96127)
+2026-07-14 13:23:08,365 [INFO] main: Stage1 inserted: скор 25, Оказание услуг по развитию и сопровождению информационных систем по учёту предос (0167200002526000016)
+2026-07-14 13:23:08,681 [INFO] main: Stage1 inserted: скор 24, Оказание услуг по технической модернизации программного комплекса «Медэксперт ТФ (0245100000726000044)
+2026-07-14 13:23:09,012 [INFO] main: Stage1 inserted: скор 27, Тендер на внедрение информационной системы управления автотранспортом для группы (6a55ecbe3951804ff390f61e)
+2026-07-14 13:23:09,387 [INFO] main: Stage1 inserted: скор 26, Оказание услуг, связанных с организацией и проведением обучений по программам IT (6a55e9103951804ff37c818b)
+2026-07-14 13:23:09,704 [INFO] main: Stage1 inserted: скор 25, Оказание услуг по сопровождению и модернизации комплексной системы автоматизации (6a55e5843951804ff363e502)
+2026-07-14 13:23:10,047 [INFO] main: Stage1 inserted: скор 26, Электронный аукцион на выполнение работ по развитию автоматизированной системы " (0373200069626000738)
+2026-07-14 13:23:10,351 [INFO] main: Stage1 inserted: скор 24, Выполнение работ по разработке программы в области энергосбережения и повышения  (6a55dac03951804ff3c316b4)
+2026-07-14 13:23:10,351 [INFO] main: Stage1 skip expired deadline: 6a55d3fd3951804ff3448e50, deadline=14.07.2026 10:04, Оказание услуг по организации системы управления очередью
+2026-07-14 13:23:10,663 [INFO] main: Stage1 inserted: скор 25, Оказание услуг по разработке «Программы по энергосбережению и повышению энергети (6a55ca803951804ff3e0624b)
+2026-07-14 13:23:11,013 [INFO] main: Stage1 inserted: скор 24, Создание комплектной модульной системы приёма, хранения и регазификации сжиженно (0891200000626007775)
+2026-07-14 13:23:11,333 [INFO] main: Stage1 inserted: скор 27, Оказание услуг по внедрению дополнительного модуля информационно-аналитической с (0161300000126000590)
+2026-07-14 13:23:11,656 [INFO] main: Stage1 inserted: скор 25, Услуги по информационно-консультативному обслуживанию, модификации и обновлению  (0120100009326000065)
+2026-07-14 13:23:11,972 [INFO] main: Stage1 inserted: скор 27, Оказание услуг по созданию системы защиты информации и проведению комплекса орга (0123600007926000036)
+2026-07-14 13:23:12,262 [INFO] main: Stage1 inserted: скор 25, Выполнение работ в сфере информационно-коммуникационных технологий (создание ЛВС (0291100000426000105)
+2026-07-14 13:23:12,562 [INFO] main: Stage1 inserted: скор 24, оказание услуги по разработке программы в области энергосбережения и повышения э (6a5547d93951804ff33d98d8)
+2026-07-14 13:23:12,887 [INFO] main: Stage1 inserted: скор 26, Выполнение работ по развитию федеральной государственной информационной системы  (0173100013026000062)
+2026-07-14 13:23:13,312 [INFO] main: Stage1 inserted: скор 25, Выполнение работ по развитию государственной информационной системы Самарской об (0342200015426000033)
+2026-07-14 13:23:14,046 [INFO] main: Stage1 inserted: скор 26, Оказание услуг по технической поддержки туристского интернет-портала welcome.mos (0148200001026000015)
+2026-07-14 13:23:14,371 [INFO] main: Stage1 inserted: скор 24, Выполнение работ по переводу результатов спортсменов по видам программ официальн (0373200101026000183)
+2026-07-14 13:23:14,697 [INFO] main: Stage1 inserted: скор 24, Выполнение работ по созданию автоматизированной информационной системы Госфонда  (0373100060026000119)
+2026-07-14 13:23:15,069 [INFO] main: Stage1 inserted: скор 25, Оказание услуг по цифровизации государственных услуг Смоленской области. (0163200000326003766)
+2026-07-14 13:23:15,410 [INFO] main: Stage1 inserted: скор 24, 2026-04551 Выполнение работ по развитию государственной информационной системы В (0131200001026004208)
+2026-07-14 13:23:15,715 [INFO] main: Stage1 inserted: скор 26, Развитие (модернизация) подсистемы «Единая рентгенологическая информационная сис (0348200081026000901)
+2026-07-14 13:23:16,013 [INFO] main: Stage1 inserted: скор 26, Закупка в 2027 году услуг по техническому сопровождению сайта МБУК Никольский КД (0348300348426000016)
+2026-07-14 13:23:16,329 [INFO] main: Stage1 inserted: скор 24, на выполнение работ по модернизации автоматизированной системы управления «Управ (0174500001126004205)
+2026-07-14 13:23:16,629 [INFO] main: Stage1 inserted: скор 24, Оказание услуги по разработке природоохранной экологической документации (0375100001226000321)
+2026-07-14 13:23:16,936 [INFO] main: Stage1 inserted: скор 24, Оказание услуг по интеграции подсистемы «Центральный архив медицинских изображен (0105500000226001430)
+2026-07-14 13:23:17,246 [INFO] main: Stage1 inserted: скор 23, Оказание услуг по предоставлению в аренду ККТ («облачная касса») и услуг по сбор (6a54fe1f3951804ff35c529a)
+2026-07-14 13:23:17,565 [INFO] main: Stage1 inserted: скор 23, Оказание услуг по предоставлению в аренду ККТ («облачная касса») и услуг по сбор (6a54fb303951804ff3526d2c)
+2026-07-14 13:23:17,873 [INFO] main: Stage1 inserted: скор 26, Выбор подрядчика на проведение работ по миграции ИТ-системы и трансформации проц (6a54fb173951804ff3521034)
+2026-07-14 13:23:18,185 [INFO] main: Stage1 inserted: скор 25, Настройка, модификации и внедрение программных продуктов 1С (32616200953)
+2026-07-14 13:23:18,488 [INFO] main: Stage1 inserted: скор 27, Оказание услуг по технической поддержки интернет сайта (32616200941)
+2026-07-14 13:23:18,794 [INFO] main: Stage1 inserted: скор 26, Лот №3 L7DDoS+Antibot_2026_СБЛ (6a54f5523951804ff332d108)
+2026-07-14 13:23:19,132 [INFO] main: Stage1 inserted: скор 26, Лот №1 L7DDoS+Antibot_2026_УП (6a54f54b3951804ff332b567)
+2026-07-14 13:23:19,431 [INFO] main: Stage1 inserted: скор 26, Лот №2 L7DDoS+Antibot_2026_ММ (6a54f5433951804ff3329bf8)
+2026-07-14 13:23:19,746 [INFO] main: Stage1 inserted: скор 26, Лот №4 L7DDoS+Antibot_2026_ИС (6a54f53b3951804ff3328684)
+2026-07-14 13:23:20,039 [INFO] main: Stage1 inserted: скор 26, Сервис по защите веб-приложений «Компания СИМПЛ», включающий предоставление услу (6a54f51c3951804ff3321d9d)
+2026-07-14 13:23:20,347 [INFO] main: Stage1 inserted: скор 25, мониторинг цен в электронной форме на Выполнение работ, включая исследовательски (6a54f4263951804ff32bce7b)
+2026-07-14 13:23:20,671 [INFO] main: Stage1 inserted: скор 26, Развитие (модернизация) подсистемы «Единая автоматизированная система управления (0348200081026000900)
+2026-07-14 13:23:21,185 [INFO] main: Stage1 inserted: скор 24, Выполнение работ по разработке, настройке и внедрению информационно-инфраструкту (0373200101026000182)
+2026-07-14 13:23:21,240 [INFO] main: Этап 1 завершён: найдено 49, кандидатов на этап 2: 47
+2026-07-14 13:23:21,290 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 13:23:21,290 [INFO] main: Этап 2: детальный анализ документов
+2026-07-14 13:23:21,370 [INFO] main: Кандидатов на детальный анализ: 20
+2026-07-14 13:23:21,414 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0123600007926000036 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:23:24,808 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0123600007926000036 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:23:31,174 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0123600007926000036 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:23:40,723 [INFO] main: 0123600007926000036: пробую скачать документы через Tenderplan API
+2026-07-14 13:23:40,882 [INFO] sources.tenderplan: Tenderplan: attachments для 0123600007926000036 не найдены (endpoint недоступен)
+2026-07-14 13:23:40,883 [INFO] main: 0123600007926000036: Tenderplan не вернул документов
+2026-07-14 13:23:40,979 [INFO] main: Stage2 8-фильтровый скор 31/CAUTION: Оказание услуг по созданию системы защиты информации и проведению комплекса организационны (0123600007926000036)
+2026-07-14 13:23:40,983 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:23:41,749 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/notice223/common-info.html?regNumber=32616200941 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:23:45,310 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/notice223/common-info.html?regNumber=32616200941 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:23:52,256 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/notice223/common-info.html?regNumber=32616200941 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:24:01,664 [INFO] main: 32616200941: пробую скачать документы через Tenderplan API
+2026-07-14 13:24:01,830 [INFO] sources.tenderplan: Tenderplan: attachments для 32616200941 не найдены (endpoint недоступен)
+2026-07-14 13:24:01,831 [INFO] main: 32616200941: Tenderplan не вернул документов
+2026-07-14 13:24:02,022 [INFO] main: Stage2 8-фильтровый скор 31/CAUTION: Оказание услуг по технической поддержки интернет сайта (32616200941)
+2026-07-14 13:24:02,023 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:24:02,784 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0161300000126000590 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:24:06,096 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0161300000126000590 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:24:12,947 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0161300000126000590 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:24:23,153 [INFO] main: 0161300000126000590: пробую скачать документы через Tenderplan API
+2026-07-14 13:24:23,763 [INFO] sources.tenderplan: Tenderplan: attachments для 0161300000126000590 не найдены (endpoint недоступен)
+2026-07-14 13:24:23,764 [INFO] main: 0161300000126000590: Tenderplan не вернул документов
+2026-07-14 13:24:23,868 [INFO] main: Stage2 8-фильтровый скор 31/CAUTION: Оказание услуг по внедрению дополнительного модуля информационно-аналитической системы упр (0161300000126000590)
+2026-07-14 13:24:23,869 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:24:24,596 [INFO] main: 6a55ecbe3951804ff390f61e: коммерческий Tenderplan-тендер, страницу ЕИС не тянем
+2026-07-14 13:24:24,697 [INFO] main: 6a55ecbe3951804ff390f61e: пробую скачать документы через Tenderplan API
+2026-07-14 13:24:25,566 [INFO] sources.tenderplan: Tenderplan: attachments для 6a55ecbe3951804ff390f61e пуст
+2026-07-14 13:24:25,567 [INFO] main: 6a55ecbe3951804ff390f61e: Tenderplan не вернул документов
+2026-07-14 13:24:25,665 [INFO] main: Stage2 8-фильтровый скор 31/CAUTION: Тендер на внедрение информационной системы управления автотранспортом для группы компаний  (6a55ecbe3951804ff390f61e)
+2026-07-14 13:24:25,665 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:24:26,422 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0373200069626000738 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:24:30,082 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0373200069626000738 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:24:36,725 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0373200069626000738 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:24:46,267 [INFO] main: 0373200069626000738: пробую скачать документы через Tenderplan API
+2026-07-14 13:24:46,374 [INFO] sources.tenderplan: Tenderplan: attachments для 0373200069626000738 не найдены (endpoint недоступен)
+2026-07-14 13:24:46,375 [INFO] main: 0373200069626000738: Tenderplan не вернул документов
+2026-07-14 13:24:46,482 [INFO] main: Stage2 8-фильтровый скор 30/NO-GO: Электронный аукцион на выполнение работ по развитию автоматизированной системы "Личный каб (0373200069626000738)
+2026-07-14 13:24:46,732 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0173100013026000062 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:24:50,131 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0173100013026000062 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:24:56,855 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0173100013026000062 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:25:06,975 [INFO] main: 0173100013026000062: пробую скачать документы через Tenderplan API
+2026-07-14 13:25:07,096 [INFO] sources.tenderplan: Tenderplan: attachments для 0173100013026000062 не найдены (endpoint недоступен)
+2026-07-14 13:25:07,097 [INFO] main: 0173100013026000062: Tenderplan не вернул документов
+2026-07-14 13:25:07,193 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: Выполнение работ по развитию федеральной государственной информационной системы в области  (0173100013026000062)
+2026-07-14 13:25:07,193 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:25:07,929 [INFO] main: 6a54f53b3951804ff3328684: коммерческий Tenderplan-тендер, страницу ЕИС не тянем
+2026-07-14 13:25:08,243 [INFO] main: 6a54f53b3951804ff3328684: пробую скачать документы через Tenderplan API
+2026-07-14 13:25:08,349 [INFO] sources.tenderplan: Tenderplan: найдено 13 документов для 6a54f53b3951804ff3328684
+2026-07-14 13:25:09,159 [WARNING] document_processor: Не удалось извлечь текст из Заявка на участие в закупке (форма) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Заявка на участие в закупке (форма) (1).docx'
+2026-07-14 13:25:09,159 [WARNING] document_processor: Не удалось извлечь текст из Коммерческое предложение (шаблон) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Коммерческое предложение (шаблон) (1).docx'
+2026-07-14 13:25:09,159 [WARNING] document_processor: Не удалось извлечь текст из Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Согласие на обработку ПДн.docx'
+2026-07-14 13:25:09,159 [WARNING] document_processor: Не удалось извлечь текст из Заверения_о_добросовестности (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Заверения_о_добросовестности (1).docx'
+2026-07-14 13:25:09,160 [WARNING] document_processor: Не удалось извлечь текст из Кибербезопасность. Общие требования к КА.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Кибербезопасность. Общие требования к КА.docx'
+2026-07-14 13:25:09,160 [WARNING] document_processor: Не удалось извлечь текст из Форма письма санкционные списки.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Форма письма санкционные списки.docx'
+2026-07-14 13:25:09,160 [WARNING] document_processor: Не удалось извлечь текст из 3. Справка об опыте.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/3. Справка об опыте.docx'
+2026-07-14 13:25:09,160 [WARNING] document_processor: Не удалось извлечь текст из 2. Образцы форм.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/2. Образцы форм.docx'
+2026-07-14 13:25:09,160 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:25:09,160 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:25:09,160 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:25:09,160 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:25:09,160 [WARNING] document_processor: Не удалось извлечь текст из Документы о закупке.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Документы о закупке.docx'
+2026-07-14 13:25:09,161 [WARNING] document_processor: Не удалось извлечь текст из Заявка на участие в закупке (форма) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Заявка на участие в закупке (форма) (1).docx'
+2026-07-14 13:25:09,162 [WARNING] document_processor: Не удалось извлечь текст из Коммерческое предложение (шаблон) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Коммерческое предложение (шаблон) (1).docx'
+2026-07-14 13:25:09,162 [WARNING] document_processor: Не удалось извлечь текст из Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Согласие на обработку ПДн.docx'
+2026-07-14 13:25:09,162 [WARNING] document_processor: Не удалось извлечь текст из Заверения_о_добросовестности (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Заверения_о_добросовестности (1).docx'
+2026-07-14 13:25:09,162 [WARNING] document_processor: Не удалось извлечь текст из Кибербезопасность. Общие требования к КА.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Кибербезопасность. Общие требования к КА.docx'
+2026-07-14 13:25:09,162 [WARNING] document_processor: Не удалось извлечь текст из Форма письма санкционные списки.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Форма письма санкционные списки.docx'
+2026-07-14 13:25:09,162 [WARNING] document_processor: Не удалось извлечь текст из 3. Справка об опыте.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/3. Справка об опыте.docx'
+2026-07-14 13:25:09,162 [WARNING] document_processor: Не удалось извлечь текст из 2. Образцы форм.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/2. Образцы форм.docx'
+2026-07-14 13:25:09,162 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:25:09,162 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:25:09,162 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:25:09,162 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:25:09,162 [WARNING] document_processor: Не удалось извлечь текст из Документы о закупке.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Документы о закупке.docx'
+2026-07-14 13:25:09,163 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:25:09,163 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:25:09,163 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:25:09,163 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:25:09,163 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:25:09,163 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:25:09,163 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:25:09,163 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:25:09,163 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Согласие на обработку ПДн.docx'
+2026-07-14 13:25:09,163 [WARNING] document_processor: Не удалось извлечь текст из Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Согласие на обработку ПДн.docx'
+2026-07-14 13:25:09,163 [WARNING] document_processor: Не удалось извлечь текст из Заявка на участие в закупке (форма) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Заявка на участие в закупке (форма) (1).docx'
+2026-07-14 13:25:09,163 [WARNING] document_processor: Не удалось извлечь текст из Коммерческое предложение (шаблон) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Коммерческое предложение (шаблон) (1).docx'
+2026-07-14 13:25:09,164 [WARNING] document_processor: Не удалось извлечь текст из Заверения_о_добросовестности (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f53b3951804ff3328684/Заверения_о_добросовестности (1).docx'
+2026-07-14 13:25:09,164 [INFO] main: 6a54f53b3951804ff3328684: Tenderplan скачано документов 13
+2026-07-14 13:25:09,274 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: Лот №4 L7DDoS+Antibot_2026_ИС (6a54f53b3951804ff3328684)
+2026-07-14 13:25:09,274 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:25:10,018 [INFO] main: 6a55f3953951804ff3e96127: коммерческий Tenderplan-тендер, страницу ЕИС не тянем
+2026-07-14 13:25:10,114 [INFO] main: 6a55f3953951804ff3e96127: пробую скачать документы через Tenderplan API
+2026-07-14 13:25:10,177 [INFO] sources.tenderplan: Tenderplan: найдено 3 документов для 6a55f3953951804ff3e96127
+2026-07-14 13:25:28,451 [INFO] main: 6a55f3953951804ff3e96127: Tenderplan не вернул документов
+2026-07-14 13:25:28,606 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: Выполнение работ по инспекции, проектированию, изготовлению и монтажу лифтов в жилых модул (6a55f3953951804ff3e96127)
+2026-07-14 13:25:28,607 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:25:29,334 [INFO] main: 6a54f54b3951804ff332b567: коммерческий Tenderplan-тендер, страницу ЕИС не тянем
+2026-07-14 13:25:29,427 [INFO] main: 6a54f54b3951804ff332b567: пробую скачать документы через Tenderplan API
+2026-07-14 13:25:29,497 [INFO] sources.tenderplan: Tenderplan: найдено 13 документов для 6a54f54b3951804ff332b567
+2026-07-14 13:25:29,850 [WARNING] document_processor: Не удалось извлечь текст из Заявка на участие в закупке (форма) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Заявка на участие в закупке (форма) (1).docx'
+2026-07-14 13:25:29,850 [WARNING] document_processor: Не удалось извлечь текст из Коммерческое предложение (шаблон) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Коммерческое предложение (шаблон) (1).docx'
+2026-07-14 13:25:29,850 [WARNING] document_processor: Не удалось извлечь текст из Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Согласие на обработку ПДн.docx'
+2026-07-14 13:25:29,851 [WARNING] document_processor: Не удалось извлечь текст из Заверения_о_добросовестности (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Заверения_о_добросовестности (1).docx'
+2026-07-14 13:25:29,851 [WARNING] document_processor: Не удалось извлечь текст из Кибербезопасность. Общие требования к КА.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Кибербезопасность. Общие требования к КА.docx'
+2026-07-14 13:25:29,851 [WARNING] document_processor: Не удалось извлечь текст из Форма письма санкционные списки.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Форма письма санкционные списки.docx'
+2026-07-14 13:25:29,852 [WARNING] document_processor: Не удалось извлечь текст из 3. Справка об опыте.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/3. Справка об опыте.docx'
+2026-07-14 13:25:29,852 [WARNING] document_processor: Не удалось извлечь текст из 2. Образцы форм.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/2. Образцы форм.docx'
+2026-07-14 13:25:29,852 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:25:29,852 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:25:29,852 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:25:29,852 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:25:29,853 [WARNING] document_processor: Не удалось извлечь текст из Документы о закупке.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Документы о закупке.docx'
+2026-07-14 13:25:29,855 [WARNING] document_processor: Не удалось извлечь текст из Заявка на участие в закупке (форма) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Заявка на участие в закупке (форма) (1).docx'
+2026-07-14 13:25:29,855 [WARNING] document_processor: Не удалось извлечь текст из Коммерческое предложение (шаблон) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Коммерческое предложение (шаблон) (1).docx'
+2026-07-14 13:25:29,855 [WARNING] document_processor: Не удалось извлечь текст из Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Согласие на обработку ПДн.docx'
+2026-07-14 13:25:29,855 [WARNING] document_processor: Не удалось извлечь текст из Заверения_о_добросовестности (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Заверения_о_добросовестности (1).docx'
+2026-07-14 13:25:29,856 [WARNING] document_processor: Не удалось извлечь текст из Кибербезопасность. Общие требования к КА.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Кибербезопасность. Общие требования к КА.docx'
+2026-07-14 13:25:29,856 [WARNING] document_processor: Не удалось извлечь текст из Форма письма санкционные списки.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Форма письма санкционные списки.docx'
+2026-07-14 13:25:29,856 [WARNING] document_processor: Не удалось извлечь текст из 3. Справка об опыте.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/3. Справка об опыте.docx'
+2026-07-14 13:25:29,857 [WARNING] document_processor: Не удалось извлечь текст из 2. Образцы форм.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/2. Образцы форм.docx'
+2026-07-14 13:25:29,857 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:25:29,857 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:25:29,857 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:25:29,857 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:25:29,858 [WARNING] document_processor: Не удалось извлечь текст из Документы о закупке.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Документы о закупке.docx'
+2026-07-14 13:25:29,859 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:25:29,859 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:25:29,859 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:25:29,859 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:25:29,859 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:25:29,859 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:25:29,860 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:25:29,860 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:25:29,860 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Согласие на обработку ПДн.docx'
+2026-07-14 13:25:29,860 [WARNING] document_processor: Не удалось извлечь текст из Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Согласие на обработку ПДн.docx'
+2026-07-14 13:25:29,860 [WARNING] document_processor: Не удалось извлечь текст из Заявка на участие в закупке (форма) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Заявка на участие в закупке (форма) (1).docx'
+2026-07-14 13:25:29,860 [WARNING] document_processor: Не удалось извлечь текст из Коммерческое предложение (шаблон) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Коммерческое предложение (шаблон) (1).docx'
+2026-07-14 13:25:29,860 [WARNING] document_processor: Не удалось извлечь текст из Заверения_о_добросовестности (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f54b3951804ff332b567/Заверения_о_добросовестности (1).docx'
+2026-07-14 13:25:29,860 [INFO] main: 6a54f54b3951804ff332b567: Tenderplan скачано документов 13
+2026-07-14 13:25:29,957 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: Лот №1 L7DDoS+Antibot_2026_УП (6a54f54b3951804ff332b567)
+2026-07-14 13:25:29,958 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:25:30,684 [INFO] main: 6a55e9103951804ff37c818b: коммерческий Tenderplan-тендер, страницу ЕИС не тянем
+2026-07-14 13:25:30,784 [INFO] main: 6a55e9103951804ff37c818b: пробую скачать документы через Tenderplan API
+2026-07-14 13:25:30,845 [INFO] sources.tenderplan: Tenderplan: найдено 9 документов для 6a55e9103951804ff37c818b
+2026-07-14 13:25:32,514 [INFO] main: 6a55e9103951804ff37c818b: Tenderplan скачано документов 9
+2026-07-14 13:25:32,624 [INFO] main: Stage2 8-фильтровый скор 32/GO: Оказание услуг, связанных с организацией и проведением обучений по программам IT-инструмен (6a55e9103951804ff37c818b)
+2026-07-14 13:25:32,625 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:43:06,252 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-14 13:43:07,506 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 13:43:07,506 [INFO] main: Этап 1: поиск карточек (0 ключей, цена 20,000–590,000 ₽, период=all-active, 44-ФЗ=True, 223-ФЗ=True, ОКПД2=False)
+2026-07-14 13:43:07,594 [INFO] sources.tenderplan: Tenderplan: получено 50 записей (/api/tenders/getlist)
+2026-07-14 13:43:07,595 [INFO] sources.tenderplan: Tenderplan: замаплено 50 тендеров
+2026-07-14 13:43:07,680 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-14 13:43:07,731 [INFO] main: Stage1 only_new: из 50 карточек уже есть в БД 44
+2026-07-14 13:43:08,349 [INFO] main: Stage1 inserted: скор 24, Отбор предложений в электронной форме на право заключения договора на выполнение (6a560d913951804ff3e0046d)
+2026-07-14 13:43:08,651 [INFO] main: Stage1 inserted: скор 26, 26/435-13. Титул КВ 2026г.: Коксовый цех.  «Трансформаторная подстанция комплект (6a560d5c3951804ff3dcbb25)
+2026-07-14 13:43:08,973 [INFO] main: Stage1 inserted: скор 25, Оказание услуг по разработке программы мониторинга состояния и загрязнения окруж (6a560c463951804ff3c6151f)
+2026-07-14 13:43:09,282 [INFO] main: Stage1 inserted: скор 27, Услуги по разработке, адаптации и модификации программ для ЭВМ (консультационные (0819300000126000058)
+2026-07-14 13:43:09,591 [INFO] main: Stage1 inserted: скор 26, Оказание услуги комплексной поддержки и развития мобильного приложения «Мой Урал (6a560a6e3951804ff3a6b71f)
+2026-07-14 13:43:09,592 [INFO] main: Stage1 skip existing: 6a56091d3951804ff39fb792
+2026-07-14 13:43:09,593 [INFO] main: Stage1 skip existing: 6a5606393951804ff392ed8e
+2026-07-14 13:43:09,593 [INFO] main: Stage1 skip existing: 6a5604413951804ff383d4d3
+2026-07-14 13:43:09,593 [INFO] main: Stage1 skip existing: 32616203126
+2026-07-14 13:43:09,593 [INFO] main: Stage1 skip existing: 6a5602d33951804ff3796b27
+2026-07-14 13:43:09,593 [INFO] main: Stage1 skip existing: 6a55ff643951804ff3614246
+2026-07-14 13:43:09,593 [INFO] main: Stage1 skip existing: 6a55fe823951804ff34f0603
+2026-07-14 13:43:09,594 [INFO] main: Stage1 skip existing: 0367200006826000166
+2026-07-14 13:43:09,594 [INFO] main: Stage1 skip existing: 0318200072026000005
+2026-07-14 13:43:09,594 [INFO] main: Stage1 skip existing: 6a55f3953951804ff3e96127
+2026-07-14 13:43:09,594 [INFO] main: Stage1 skip existing: 0167200002526000016
+2026-07-14 13:43:09,594 [INFO] main: Stage1 skip existing: 0245100000726000044
+2026-07-14 13:43:09,594 [INFO] main: Stage1 skip existing: 6a55ecbe3951804ff390f61e
+2026-07-14 13:43:09,594 [INFO] main: Stage1 skip existing: 6a55e9103951804ff37c818b
+2026-07-14 13:43:09,594 [INFO] main: Stage1 skip existing: 6a55e5843951804ff363e502
+2026-07-14 13:43:09,594 [INFO] main: Stage1 skip existing: 0373200069626000738
+2026-07-14 13:43:09,594 [INFO] main: Stage1 skip existing: 6a55dac03951804ff3c316b4
+2026-07-14 13:43:09,595 [INFO] main: Stage1 skip expired deadline: 6a55d3fd3951804ff3448e50, deadline=14.07.2026 10:04, Оказание услуг по организации системы управления очередью
+2026-07-14 13:43:09,595 [INFO] main: Stage1 skip existing: 6a55ca803951804ff3e0624b
+2026-07-14 13:43:09,595 [INFO] main: Stage1 skip existing: 0891200000626007775
+2026-07-14 13:43:09,595 [INFO] main: Stage1 skip existing: 0161300000126000590
+2026-07-14 13:43:09,595 [INFO] main: Stage1 skip existing: 0120100009326000065
+2026-07-14 13:43:09,595 [INFO] main: Stage1 skip existing: 0123600007926000036
+2026-07-14 13:43:09,595 [INFO] main: Stage1 skip existing: 0291100000426000105
+2026-07-14 13:43:09,595 [INFO] main: Stage1 skip existing: 6a5547d93951804ff33d98d8
+2026-07-14 13:43:09,595 [INFO] main: Stage1 skip existing: 0173100013026000062
+2026-07-14 13:43:09,595 [INFO] main: Stage1 skip existing: 0342200015426000033
+2026-07-14 13:43:09,595 [INFO] main: Stage1 skip existing: 0148200001026000015
+2026-07-14 13:43:09,595 [INFO] main: Stage1 skip existing: 0373200101026000183
+2026-07-14 13:43:09,595 [INFO] main: Stage1 skip existing: 0373100060026000119
+2026-07-14 13:43:09,595 [INFO] main: Stage1 skip existing: 0163200000326003766
+2026-07-14 13:43:09,595 [INFO] main: Stage1 skip existing: 0131200001026004208
+2026-07-14 13:43:09,596 [INFO] main: Stage1 skip existing: 0348200081026000901
+2026-07-14 13:43:09,596 [INFO] main: Stage1 skip existing: 0348300348426000016
+2026-07-14 13:43:09,596 [INFO] main: Stage1 skip existing: 0174500001126004205
+2026-07-14 13:43:09,596 [INFO] main: Stage1 skip existing: 0375100001226000321
+2026-07-14 13:43:09,596 [INFO] main: Stage1 skip existing: 0105500000226001430
+2026-07-14 13:43:09,596 [INFO] main: Stage1 skip existing: 6a54fe1f3951804ff35c529a
+2026-07-14 13:43:09,596 [INFO] main: Stage1 skip existing: 6a54fb303951804ff3526d2c
+2026-07-14 13:43:09,596 [INFO] main: Stage1 skip existing: 6a54fb173951804ff3521034
+2026-07-14 13:43:09,596 [INFO] main: Stage1 skip existing: 32616200953
+2026-07-14 13:43:09,596 [INFO] main: Stage1 skip existing: 32616200941
+2026-07-14 13:43:09,596 [INFO] main: Stage1 skip existing: 6a54f5523951804ff332d108
+2026-07-14 13:43:09,596 [INFO] main: Stage1 skip existing: 6a54f54b3951804ff332b567
+2026-07-14 13:43:09,596 [INFO] main: Stage1 skip existing: 6a54f5433951804ff3329bf8
+2026-07-14 13:43:09,650 [INFO] main: Этап 1 завершён: найдено 5, кандидатов на этап 2: 5
+2026-07-14 13:43:09,699 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 13:43:09,699 [INFO] main: Этап 2: детальный анализ документов
+2026-07-14 13:43:09,768 [INFO] main: Кандидатов на детальный анализ: 20
+2026-07-14 13:43:09,825 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0819300000126000058 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:43:13,699 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0819300000126000058 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:43:20,703 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0819300000126000058 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:43:30,801 [INFO] main: 0819300000126000058: пробую скачать документы через Tenderplan API
+2026-07-14 13:43:30,996 [INFO] sources.tenderplan: Tenderplan: attachments для 0819300000126000058 не найдены (endpoint недоступен)
+2026-07-14 13:43:30,997 [INFO] main: 0819300000126000058: Tenderplan не сохранил документов
+2026-07-14 13:43:31,095 [INFO] main: Stage2 8-фильтровый скор 31/CAUTION: Услуги по разработке, адаптации и модификации программ для ЭВМ (консультационные услуги по (0819300000126000058)
+2026-07-14 13:43:31,099 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:43:31,816 [INFO] main: 6a560a6e3951804ff3a6b71f: коммерческий Tenderplan-тендер, страницу ЕИС не тянем
+2026-07-14 13:43:31,914 [INFO] main: 6a560a6e3951804ff3a6b71f: пробую скачать документы через Tenderplan API
+2026-07-14 13:43:31,967 [INFO] sources.tenderplan: Tenderplan: attachments для 6a560a6e3951804ff3a6b71f пуст
+2026-07-14 13:43:31,967 [INFO] main: 6a560a6e3951804ff3a6b71f: Tenderplan не сохранил документов
+2026-07-14 13:43:32,062 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: Оказание услуги комплексной поддержки и развития мобильного приложения «Мой Уралхим» (6a560a6e3951804ff3a6b71f)
+2026-07-14 13:43:32,062 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:43:32,864 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0148200001026000015 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:43:36,194 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0148200001026000015 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:43:42,778 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0148200001026000015 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:43:52,962 [INFO] main: 0148200001026000015: пробую скачать документы через Tenderplan API
+2026-07-14 13:43:53,070 [INFO] sources.tenderplan: Tenderplan: attachments для 0148200001026000015 не найдены (endpoint недоступен)
+2026-07-14 13:43:53,070 [INFO] main: 0148200001026000015: Tenderplan не сохранил документов
+2026-07-14 13:43:53,162 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: Оказание услуг по технической поддержки туристского интернет-портала welcome.mosreg.ru в 2 (0148200001026000015)
+2026-07-14 13:43:53,162 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:43:53,886 [INFO] main: 6a560d5c3951804ff3dcbb25: коммерческий Tenderplan-тендер, страницу ЕИС не тянем
+2026-07-14 13:43:53,975 [INFO] main: 6a560d5c3951804ff3dcbb25: пробую скачать документы через Tenderplan API
+2026-07-14 13:43:54,026 [INFO] sources.tenderplan: Tenderplan: attachments для 6a560d5c3951804ff3dcbb25 пуст
+2026-07-14 13:43:54,026 [INFO] main: 6a560d5c3951804ff3dcbb25: Tenderplan не сохранил документов
+2026-07-14 13:43:54,116 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: 26/435-13. Титул КВ 2026г.: Коксовый цех.  «Трансформаторная подстанция комплектная. ТП-45 (6a560d5c3951804ff3dcbb25)
+2026-07-14 13:43:54,116 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:43:54,837 [INFO] main: 6a54fb173951804ff3521034: коммерческий Tenderplan-тендер, страницу ЕИС не тянем
+2026-07-14 13:43:54,925 [INFO] main: 6a54fb173951804ff3521034: пробую скачать документы через Tenderplan API
+2026-07-14 13:43:54,991 [INFO] sources.tenderplan: Tenderplan: найдено 9 документов для 6a54fb173951804ff3521034
+2026-07-14 13:43:57,079 [INFO] main: 6a54fb173951804ff3521034: Tenderplan реально скачано документов 9
+2026-07-14 13:43:57,180 [INFO] main: Stage2 8-фильтровый скор 29/NO-GO: Выбор подрядчика на проведение работ по миграции ИТ-системы и трансформации процессов разр (6a54fb173951804ff3521034)
+2026-07-14 13:43:57,392 [INFO] main: 6a55e9103951804ff37c818b: коммерческий Tenderplan-тендер, страницу ЕИС не тянем
+2026-07-14 13:43:57,495 [INFO] main: 6a55e9103951804ff37c818b: пробую скачать документы через Tenderplan API
+2026-07-14 13:43:57,561 [INFO] sources.tenderplan: Tenderplan: найдено 9 документов для 6a55e9103951804ff37c818b
+2026-07-14 13:43:59,333 [INFO] main: 6a55e9103951804ff37c818b: Tenderplan реально скачано документов 9
+2026-07-14 13:43:59,569 [INFO] main: Stage2 8-фильтровый скор 32/GO: Оказание услуг, связанных с организацией и проведением обучений по программам IT-инструмен (6a55e9103951804ff37c818b)
+2026-07-14 13:43:59,570 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:44:00,294 [INFO] main: 6a54f5523951804ff332d108: коммерческий Tenderplan-тендер, страницу ЕИС не тянем
+2026-07-14 13:44:00,391 [INFO] main: 6a54f5523951804ff332d108: пробую скачать документы через Tenderplan API
+2026-07-14 13:44:00,622 [INFO] sources.tenderplan: Tenderplan: найдено 13 документов для 6a54f5523951804ff332d108
+2026-07-14 13:44:38,153 [WARNING] document_processor: Не удалось извлечь текст из Заявка на участие в закупке (форма) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Заявка на участие в закупке (форма) (1).docx'
+2026-07-14 13:44:38,155 [WARNING] document_processor: Не удалось извлечь текст из Коммерческое предложение (шаблон) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Коммерческое предложение (шаблон) (1).docx'
+2026-07-14 13:44:38,155 [WARNING] document_processor: Не удалось извлечь текст из Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Согласие на обработку ПДн.docx'
+2026-07-14 13:44:38,156 [WARNING] document_processor: Не удалось извлечь текст из Заверения_о_добросовестности (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Заверения_о_добросовестности (1).docx'
+2026-07-14 13:44:38,156 [WARNING] document_processor: Не удалось извлечь текст из Кибербезопасность. Общие требования к КА.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Кибербезопасность. Общие требования к КА.docx'
+2026-07-14 13:44:38,157 [WARNING] document_processor: Не удалось извлечь текст из Форма письма санкционные списки.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Форма письма санкционные списки.docx'
+2026-07-14 13:44:38,157 [WARNING] document_processor: Не удалось извлечь текст из 3. Справка об опыте.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/3. Справка об опыте.docx'
+2026-07-14 13:44:38,157 [WARNING] document_processor: Не удалось извлечь текст из 2. Образцы форм.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/2. Образцы форм.docx'
+2026-07-14 13:44:38,157 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:44:38,158 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:44:38,158 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:44:38,158 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:44:38,158 [WARNING] document_processor: Не удалось извлечь текст из Документы о закупке.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Документы о закупке.docx'
+2026-07-14 13:44:38,160 [WARNING] document_processor: Не удалось извлечь текст из Заявка на участие в закупке (форма) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Заявка на участие в закупке (форма) (1).docx'
+2026-07-14 13:44:38,160 [WARNING] document_processor: Не удалось извлечь текст из Коммерческое предложение (шаблон) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Коммерческое предложение (шаблон) (1).docx'
+2026-07-14 13:44:38,161 [WARNING] document_processor: Не удалось извлечь текст из Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Согласие на обработку ПДн.docx'
+2026-07-14 13:44:38,161 [WARNING] document_processor: Не удалось извлечь текст из Заверения_о_добросовестности (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Заверения_о_добросовестности (1).docx'
+2026-07-14 13:44:38,161 [WARNING] document_processor: Не удалось извлечь текст из Кибербезопасность. Общие требования к КА.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Кибербезопасность. Общие требования к КА.docx'
+2026-07-14 13:44:38,162 [WARNING] document_processor: Не удалось извлечь текст из Форма письма санкционные списки.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Форма письма санкционные списки.docx'
+2026-07-14 13:44:38,162 [WARNING] document_processor: Не удалось извлечь текст из 3. Справка об опыте.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/3. Справка об опыте.docx'
+2026-07-14 13:44:38,162 [WARNING] document_processor: Не удалось извлечь текст из 2. Образцы форм.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/2. Образцы форм.docx'
+2026-07-14 13:44:38,162 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:44:38,162 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:44:38,162 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:44:38,162 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:44:38,163 [WARNING] document_processor: Не удалось извлечь текст из Документы о закупке.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Документы о закупке.docx'
+2026-07-14 13:44:38,164 [WARNING] document_processor: Не удалось извлечь текст из Заявка на участие в закупке (форма) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Заявка на участие в закупке (форма) (1).docx'
+2026-07-14 13:44:38,164 [WARNING] document_processor: Не удалось извлечь текст из Коммерческое предложение (шаблон) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Коммерческое предложение (шаблон) (1).docx'
+2026-07-14 13:44:38,164 [WARNING] document_processor: Не удалось извлечь текст из Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Согласие на обработку ПДн.docx'
+2026-07-14 13:44:38,164 [WARNING] document_processor: Не удалось извлечь текст из Заверения_о_добросовестности (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Заверения_о_добросовестности (1).docx'
+2026-07-14 13:44:38,165 [WARNING] document_processor: Не удалось извлечь текст из Кибербезопасность. Общие требования к КА.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Кибербезопасность. Общие требования к КА.docx'
+2026-07-14 13:44:38,165 [WARNING] document_processor: Не удалось извлечь текст из Форма письма санкционные списки.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Форма письма санкционные списки.docx'
+2026-07-14 13:44:38,165 [WARNING] document_processor: Не удалось извлечь текст из 3. Справка об опыте.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/3. Справка об опыте.docx'
+2026-07-14 13:44:38,165 [WARNING] document_processor: Не удалось извлечь текст из 2. Образцы форм.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/2. Образцы форм.docx'
+2026-07-14 13:44:38,165 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:44:38,165 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:44:38,165 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:44:38,165 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:44:38,166 [WARNING] document_processor: Не удалось извлечь текст из Документы о закупке.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Документы о закупке.docx'
+2026-07-14 13:44:38,166 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:44:38,166 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:44:38,166 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:44:38,166 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:44:38,167 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:44:38,167 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:44:38,167 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:44:38,167 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:44:38,167 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Согласие на обработку ПДн.docx'
+2026-07-14 13:44:38,167 [WARNING] document_processor: Не удалось извлечь текст из Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Согласие на обработку ПДн.docx'
+2026-07-14 13:44:38,167 [WARNING] document_processor: Не удалось извлечь текст из Заявка на участие в закупке (форма) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Заявка на участие в закупке (форма) (1).docx'
+2026-07-14 13:44:38,167 [WARNING] document_processor: Не удалось извлечь текст из Коммерческое предложение (шаблон) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Коммерческое предложение (шаблон) (1).docx'
+2026-07-14 13:44:38,168 [WARNING] document_processor: Не удалось извлечь текст из Заверения_о_добросовестности (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5523951804ff332d108/Заверения_о_добросовестности (1).docx'
+2026-07-14 13:44:38,168 [INFO] main: 6a54f5523951804ff332d108: Tenderplan реально скачано документов 13
+2026-07-14 13:44:38,312 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: Лот №3 L7DDoS+Antibot_2026_СБЛ (6a54f5523951804ff332d108)
+2026-07-14 13:44:38,313 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:44:39,084 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0348200081026000900 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:44:42,549 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0348200081026000900 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:44:49,216 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0348200081026000900 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:44:58,957 [INFO] main: 0348200081026000900: пробую скачать документы через Tenderplan API
+2026-07-14 13:44:59,132 [INFO] sources.tenderplan: Tenderplan: attachments для 0348200081026000900 не найдены (endpoint недоступен)
+2026-07-14 13:44:59,132 [INFO] main: 0348200081026000900: Tenderplan не сохранил документов
+2026-07-14 13:44:59,301 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: Развитие (модернизация) подсистемы «Единая автоматизированная система управления службой с (0348200081026000900)
+2026-07-14 13:44:59,301 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:45:00,219 [INFO] main: 6a54f51c3951804ff3321d9d: коммерческий Tenderplan-тендер, страницу ЕИС не тянем
+2026-07-14 13:45:00,315 [INFO] main: 6a54f51c3951804ff3321d9d: пробую скачать документы через Tenderplan API
+2026-07-14 13:45:00,381 [INFO] sources.tenderplan: Tenderplan: найдено 2 документов для 6a54f51c3951804ff3321d9d
+2026-07-14 13:45:22,809 [WARNING] document_processor: Не удалось извлечь текст из ТЗ_защита веб-ресурсов.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f51c3951804ff3321d9d/ТЗ_защита веб-ресурсов.docx'
+2026-07-14 13:45:22,811 [WARNING] document_processor: Не удалось извлечь текст из Форма КП для заполнения поставщиком.xlsx: File is not a zip file
+2026-07-14 13:45:22,813 [WARNING] document_processor: Не удалось извлечь текст из ТЗ_защита веб-ресурсов.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f51c3951804ff3321d9d/ТЗ_защита веб-ресурсов.docx'
+2026-07-14 13:45:22,813 [WARNING] document_processor: Не удалось извлечь текст из Форма КП для заполнения поставщиком.xlsx: File is not a zip file
+2026-07-14 13:45:22,813 [WARNING] document_processor: Не удалось извлечь текст из ТЗ_защита веб-ресурсов.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f51c3951804ff3321d9d/ТЗ_защита веб-ресурсов.docx'
+2026-07-14 13:45:22,814 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ_защита веб-ресурсов.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f51c3951804ff3321d9d/ТЗ_защита веб-ресурсов.docx'
+2026-07-14 13:45:22,814 [WARNING] document_processor: Не удалось извлечь текст из ТЗ_защита веб-ресурсов.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f51c3951804ff3321d9d/ТЗ_защита веб-ресурсов.docx'
+2026-07-14 13:45:22,814 [WARNING] document_processor: Не удалось извлечь текст из Форма КП для заполнения поставщиком.xlsx: File is not a zip file
+2026-07-14 13:45:22,814 [INFO] main: 6a54f51c3951804ff3321d9d: Tenderplan реально скачано документов 2
+2026-07-14 13:45:23,010 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: Сервис по защите веб-приложений «Компания СИМПЛ», включающий предоставление услуги защиты  (6a54f51c3951804ff3321d9d)
+2026-07-14 13:45:23,011 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:45:23,801 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0348200081026000901 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:45:27,368 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0348200081026000901 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:45:34,419 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0348200081026000901 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:45:44,420 [INFO] main: 0348200081026000901: пробую скачать документы через Tenderplan API
+2026-07-14 13:45:45,782 [INFO] sources.tenderplan: Tenderplan: attachments для 0348200081026000901 не найдены (endpoint недоступен)
+2026-07-14 13:45:45,786 [INFO] main: 0348200081026000901: Tenderplan не сохранил документов
+2026-07-14 13:45:45,880 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: Развитие (модернизация) подсистемы «Единая рентгенологическая информационная система» госу (0348200081026000901)
+2026-07-14 13:45:45,881 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:45:46,669 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0367200006826000166 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:45:50,385 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0367200006826000166 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:45:57,116 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0367200006826000166 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:46:06,717 [INFO] main: 0367200006826000166: пробую скачать документы через Tenderplan API
+2026-07-14 13:46:07,800 [INFO] sources.tenderplan: Tenderplan: attachments для 0367200006826000166 не найдены (endpoint недоступен)
+2026-07-14 13:46:07,801 [INFO] main: 0367200006826000166: Tenderplan не сохранил документов
+2026-07-14 13:46:08,017 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: Выполнение работ по созданию информационной системы «Герои земли Тюменской» (0367200006826000166)
+2026-07-14 13:46:08,017 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:46:08,780 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0348300348426000016 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:46:12,366 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0348300348426000016 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:46:18,980 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0348300348426000016 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:46:28,530 [INFO] main: 0348300348426000016: пробую скачать документы через Tenderplan API
+2026-07-14 13:46:29,857 [INFO] sources.tenderplan: Tenderplan: attachments для 0348300348426000016 не найдены (endpoint недоступен)
+2026-07-14 13:46:29,858 [INFO] main: 0348300348426000016: Tenderplan не сохранил документов
+2026-07-14 13:46:30,082 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: Закупка в 2027 году услуг по техническому сопровождению сайта МБУК Никольский КДЦ «Полёт». (0348300348426000016)
+2026-07-14 13:46:30,083 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:46:31,056 [INFO] main: 6a54f5433951804ff3329bf8: коммерческий Tenderplan-тендер, страницу ЕИС не тянем
+2026-07-14 13:46:31,276 [INFO] main: 6a54f5433951804ff3329bf8: пробую скачать документы через Tenderplan API
+2026-07-14 13:46:31,735 [INFO] sources.tenderplan: Tenderplan: найдено 13 документов для 6a54f5433951804ff3329bf8
+2026-07-14 13:46:32,467 [WARNING] document_processor: Не удалось извлечь текст из Заявка на участие в закупке (форма) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Заявка на участие в закупке (форма) (1).docx'
+2026-07-14 13:46:32,467 [WARNING] document_processor: Не удалось извлечь текст из Коммерческое предложение (шаблон) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Коммерческое предложение (шаблон) (1).docx'
+2026-07-14 13:46:32,467 [WARNING] document_processor: Не удалось извлечь текст из Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Согласие на обработку ПДн.docx'
+2026-07-14 13:46:32,468 [WARNING] document_processor: Не удалось извлечь текст из Заверения_о_добросовестности (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Заверения_о_добросовестности (1).docx'
+2026-07-14 13:46:32,468 [WARNING] document_processor: Не удалось извлечь текст из Кибербезопасность. Общие требования к КА.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Кибербезопасность. Общие требования к КА.docx'
+2026-07-14 13:46:32,468 [WARNING] document_processor: Не удалось извлечь текст из Форма письма санкционные списки.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Форма письма санкционные списки.docx'
+2026-07-14 13:46:32,468 [WARNING] document_processor: Не удалось извлечь текст из 3. Справка об опыте.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/3. Справка об опыте.docx'
+2026-07-14 13:46:32,468 [WARNING] document_processor: Не удалось извлечь текст из 2. Образцы форм.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/2. Образцы форм.docx'
+2026-07-14 13:46:32,469 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:46:32,469 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:46:32,469 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:46:32,469 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:46:32,469 [WARNING] document_processor: Не удалось извлечь текст из Документы о закупке.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Документы о закупке.docx'
+2026-07-14 13:46:32,471 [WARNING] document_processor: Не удалось извлечь текст из Заявка на участие в закупке (форма) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Заявка на участие в закупке (форма) (1).docx'
+2026-07-14 13:46:32,471 [WARNING] document_processor: Не удалось извлечь текст из Коммерческое предложение (шаблон) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Коммерческое предложение (шаблон) (1).docx'
+2026-07-14 13:46:32,471 [WARNING] document_processor: Не удалось извлечь текст из Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Согласие на обработку ПДн.docx'
+2026-07-14 13:46:32,472 [WARNING] document_processor: Не удалось извлечь текст из Заверения_о_добросовестности (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Заверения_о_добросовестности (1).docx'
+2026-07-14 13:46:32,472 [WARNING] document_processor: Не удалось извлечь текст из Кибербезопасность. Общие требования к КА.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Кибербезопасность. Общие требования к КА.docx'
+2026-07-14 13:46:32,472 [WARNING] document_processor: Не удалось извлечь текст из Форма письма санкционные списки.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Форма письма санкционные списки.docx'
+2026-07-14 13:46:32,472 [WARNING] document_processor: Не удалось извлечь текст из 3. Справка об опыте.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/3. Справка об опыте.docx'
+2026-07-14 13:46:32,473 [WARNING] document_processor: Не удалось извлечь текст из 2. Образцы форм.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/2. Образцы форм.docx'
+2026-07-14 13:46:32,473 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:46:32,473 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:46:32,473 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:46:32,473 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:46:32,474 [WARNING] document_processor: Не удалось извлечь текст из Документы о закупке.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Документы о закупке.docx'
+2026-07-14 13:46:32,475 [WARNING] document_processor: Не удалось извлечь текст из Заявка на участие в закупке (форма) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Заявка на участие в закупке (форма) (1).docx'
+2026-07-14 13:46:32,475 [WARNING] document_processor: Не удалось извлечь текст из Коммерческое предложение (шаблон) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Коммерческое предложение (шаблон) (1).docx'
+2026-07-14 13:46:32,475 [WARNING] document_processor: Не удалось извлечь текст из Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Согласие на обработку ПДн.docx'
+2026-07-14 13:46:32,475 [WARNING] document_processor: Не удалось извлечь текст из Заверения_о_добросовестности (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Заверения_о_добросовестности (1).docx'
+2026-07-14 13:46:32,475 [WARNING] document_processor: Не удалось извлечь текст из Кибербезопасность. Общие требования к КА.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Кибербезопасность. Общие требования к КА.docx'
+2026-07-14 13:46:32,475 [WARNING] document_processor: Не удалось извлечь текст из Форма письма санкционные списки.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Форма письма санкционные списки.docx'
+2026-07-14 13:46:32,475 [WARNING] document_processor: Не удалось извлечь текст из 3. Справка об опыте.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/3. Справка об опыте.docx'
+2026-07-14 13:46:32,476 [WARNING] document_processor: Не удалось извлечь текст из 2. Образцы форм.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/2. Образцы форм.docx'
+2026-07-14 13:46:32,476 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:46:32,476 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:46:32,476 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:46:32,476 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:46:32,476 [WARNING] document_processor: Не удалось извлечь текст из Документы о закупке.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Документы о закупке.docx'
+2026-07-14 13:46:32,477 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:46:32,478 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ИС.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_ИС.docx'
+2026-07-14 13:46:32,478 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:46:32,478 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_ММ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_ММ.docx'
+2026-07-14 13:46:32,478 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:46:32,479 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_СБЛ.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_СБЛ.docx'
+2026-07-14 13:46:32,479 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:46:32,480 [WARNING] document_processor: Не удалось извлечь текст из ТЗ L7DDoS+Antibot_2026_УП.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/ТЗ L7DDoS+Antibot_2026_УП.docx'
+2026-07-14 13:46:32,480 [WARNING] document_processor: Не удалось открыть DOCX для таблиц описания работ Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Согласие на обработку ПДн.docx'
+2026-07-14 13:46:32,480 [WARNING] document_processor: Не удалось извлечь текст из Согласие на обработку ПДн.docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Согласие на обработку ПДн.docx'
+2026-07-14 13:46:32,480 [WARNING] document_processor: Не удалось извлечь текст из Заявка на участие в закупке (форма) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Заявка на участие в закупке (форма) (1).docx'
+2026-07-14 13:46:32,481 [WARNING] document_processor: Не удалось извлечь текст из Коммерческое предложение (шаблон) (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Коммерческое предложение (шаблон) (1).docx'
+2026-07-14 13:46:32,481 [WARNING] document_processor: Не удалось извлечь текст из Заверения_о_добросовестности (1).docx: Package not found at '/Users/pavellebedev/Desktop/proj/torg/data/documents/6a54f5433951804ff3329bf8/Заверения_о_добросовестности (1).docx'
+2026-07-14 13:46:32,481 [INFO] main: 6a54f5433951804ff3329bf8: Tenderplan реально скачано документов 13
+2026-07-14 13:46:32,581 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: Лот №2 L7DDoS+Antibot_2026_ММ (6a54f5433951804ff3329bf8)
+2026-07-14 13:46:32,582 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:46:33,363 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/notice223/common-info.html?regNumber=32616200953 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:46:37,186 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/notice223/common-info.html?regNumber=32616200953 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:46:44,143 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/notice223/common-info.html?regNumber=32616200953 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:46:54,327 [INFO] main: 32616200953: пробую скачать документы через Tenderplan API
+2026-07-14 13:46:54,524 [INFO] sources.tenderplan: Tenderplan: attachments для 32616200953 не найдены (endpoint недоступен)
+2026-07-14 13:46:54,525 [INFO] main: 32616200953: Tenderplan не сохранил документов
+2026-07-14 13:46:54,617 [INFO] main: Stage2 8-фильтровый скор 29/NO-GO: Настройка, модификации и внедрение программных продуктов 1С (32616200953)
+2026-07-14 13:46:54,885 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0163200000326003766 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:46:58,891 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0163200000326003766 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:47:05,388 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0163200000326003766 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:47:15,109 [INFO] main: 0163200000326003766: пробую скачать документы через Tenderplan API
+2026-07-14 13:47:15,230 [INFO] sources.tenderplan: Tenderplan: attachments для 0163200000326003766 не найдены (endpoint недоступен)
+2026-07-14 13:47:15,231 [INFO] main: 0163200000326003766: Tenderplan не сохранил документов
+2026-07-14 13:47:15,332 [INFO] main: Stage2 8-фильтровый скор 29/CAUTION: Оказание услуг по цифровизации государственных услуг Смоленской области. (0163200000326003766)
+2026-07-14 13:47:15,584 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0120100009326000065 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:47:19,017 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0120100009326000065 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:47:25,617 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0120100009326000065 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:47:35,708 [INFO] main: 0120100009326000065: пробую скачать документы через Tenderplan API
+2026-07-14 13:47:36,038 [INFO] sources.tenderplan: Tenderplan: attachments для 0120100009326000065 не найдены (endpoint недоступен)
+2026-07-14 13:47:36,039 [INFO] main: 0120100009326000065: Tenderplan не сохранил документов
+2026-07-14 13:47:36,130 [INFO] main: Stage2 8-фильтровый скор 29/CAUTION: Услуги по информационно-консультативному обслуживанию, модификации и обновлению программно (0120100009326000065)
+2026-07-14 13:47:36,392 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0291100000426000105 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:47:40,367 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0291100000426000105 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:47:47,293 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0291100000426000105 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:47:56,859 [INFO] main: 0291100000426000105: пробую скачать документы через Tenderplan API
+2026-07-14 13:47:57,859 [INFO] sources.tenderplan: Tenderplan: attachments для 0291100000426000105 не найдены (endpoint недоступен)
+2026-07-14 13:47:57,860 [INFO] main: 0291100000426000105: Tenderplan не сохранил документов
+2026-07-14 13:47:57,963 [INFO] main: Stage2 8-фильтровый скор 29/CAUTION: Выполнение работ в сфере информационно-коммуникационных технологий (создание ЛВС в Улетовс (0291100000426000105)
+2026-07-14 13:47:58,229 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0318200072026000005 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:48:02,307 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0318200072026000005 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:48:08,705 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/notice/zk20/view/common-info.html?regNumber=0318200072026000005 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:48:19,639 [INFO] main: 0318200072026000005: пробую скачать документы через Tenderplan API
+2026-07-14 13:48:20,482 [INFO] sources.tenderplan: Tenderplan: attachments для 0318200072026000005 не найдены (endpoint недоступен)
+2026-07-14 13:48:20,483 [INFO] main: 0318200072026000005: Tenderplan не сохранил документов
+2026-07-14 13:48:20,696 [INFO] main: Stage2 8-фильтровый скор 29/CAUTION: Приборы, аппаратура и устройства учебные и демонстрационные для нужд ГКУ СО КК "Краснодарс (0318200072026000005)
+2026-07-14 13:48:21,153 [INFO] main: 6a55ca803951804ff3e0624b: коммерческий Tenderplan-тендер, страницу ЕИС не тянем
+2026-07-14 13:48:21,374 [INFO] main: 6a55ca803951804ff3e0624b: пробую скачать документы через Tenderplan API
+2026-07-14 13:48:22,175 [INFO] sources.tenderplan: Tenderplan: найдено 1 документов для 6a55ca803951804ff3e0624b
+2026-07-14 13:48:22,793 [INFO] main: 6a55ca803951804ff3e0624b: Tenderplan реально скачано документов 1
+2026-07-14 13:48:23,091 [INFO] main: Stage2 8-фильтровый скор 28/CAUTION: Оказание услуг по разработке «Программы по энергосбережению и повышению энергетической эфф (6a55ca803951804ff3e0624b)
+2026-07-14 13:48:23,670 [INFO] main: 6a55e5843951804ff363e502: коммерческий Tenderplan-тендер, страницу ЕИС не тянем
+2026-07-14 13:48:23,887 [INFO] main: 6a55e5843951804ff363e502: пробую скачать документы через Tenderplan API
+2026-07-14 13:48:24,752 [INFO] sources.tenderplan: Tenderplan: найдено 3 документов для 6a55e5843951804ff363e502
+2026-07-14 13:48:26,577 [INFO] main: 6a55e5843951804ff363e502: Tenderplan реально скачано документов 3
+2026-07-14 13:48:26,819 [INFO] main: Stage2 8-фильтровый скор 27/CAUTION: Оказание услуг по сопровождению и модернизации комплексной системы автоматизации финансово (6a55e5843951804ff363e502)
+2026-07-14 13:48:27,334 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 13:48:27,334 [INFO] main: ИТОГО ЭТАПА 2: кандидатов 20; успешно 20; ошибок 0; GO 1; CAUTION 17; NO-GO 2; отправлено 0
+2026-07-14 13:48:27,335 [INFO] main: ИТОГО ПО ДОКУМЕНТАМ: заявлено загрузчиками 50; реально сохранено 50; тендеров с извлечённым текстом 4
+2026-07-14 13:48:27,448 [INFO] main: ИТОГО ЗАПУСКА TENDERPLAN: найдено новых 5; кандидатов Stage2 5; детально обработано 20; отправлено 0
+2026-07-14 13:48:27,652 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 13:48:27,652 [INFO] main: ИТОГО В БД: всего 2535; primary-кандидатов 1978; детально проверено 840; отправлено 0; интересно 0; отклонено 40
+2026-07-14 13:59:53,939 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-14 13:59:55,349 [INFO] main: Запуск по расписанию каждые 3 ч.: stage1 + stage2
+2026-07-14 13:59:55,350 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 13:59:55,361 [INFO] main: telegram_decisions.py запущен (PID 58447)
+2026-07-14 13:59:55,366 [INFO] main: change_detector.py запущен (PID 58448)
+2026-07-14 13:59:55,367 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 13:59:55,367 [INFO] main: Этап 1: поиск карточек (14 ключей, цена 20,000–590,000 ₽, период=all-active, 44-ФЗ=True, 223-ФЗ=True, ОКПД2=False)
+2026-07-14 13:59:55,368 [INFO] scraper: Ищу '1С-Битрикс', страница 1 (все активные)
+2026-07-14 13:59:55,426 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/extendedsearch/results.html?searchString=1%D0%A1-%D0%91%D0%B8%D1%82%D1%80%D0%B8%D0%BA%D1%81&morphology=on&search-filter=%D0%94%D0%B0%D1%82%D0%B5+%D1%80%D0%B0%D0%B7%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D1%8F&sortDirection=false&recordsPerPage=_20&showLotsInfoHidden=false&sortBy=UPDATE_DATE&currencyIdGeneral=-1&af=on&fz44=on&fz223=on&priceFrom=20000&priceTo=590000&pageNumber=1 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 13:59:59,463 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/extendedsearch/results.html?searchString=1%D0%A1-%D0%91%D0%B8%D1%82%D1%80%D0%B8%D0%BA%D1%81&morphology=on&search-filter=%D0%94%D0%B0%D1%82%D0%B5+%D1%80%D0%B0%D0%B7%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D1%8F&sortDirection=false&recordsPerPage=_20&showLotsInfoHidden=false&sortBy=UPDATE_DATE&currencyIdGeneral=-1&af=on&fz44=on&fz223=on&priceFrom=20000&priceTo=590000&pageNumber=1 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 14:00:06,353 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/extendedsearch/results.html?searchString=1%D0%A1-%D0%91%D0%B8%D1%82%D1%80%D0%B8%D0%BA%D1%81&morphology=on&search-filter=%D0%94%D0%B0%D1%82%D0%B5+%D1%80%D0%B0%D0%B7%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D1%8F&sortDirection=false&recordsPerPage=_20&showLotsInfoHidden=false&sortBy=UPDATE_DATE&currencyIdGeneral=-1&af=on&fz44=on&fz223=on&priceFrom=20000&priceTo=590000&pageNumber=1 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 14:00:15,662 [ERROR] scraper: Не удалось получить страницу 1 для '1С-Битрикс'
+2026-07-14 14:00:15,663 [INFO] scraper: Найдено 0 закупок по запросу '1С-Битрикс'
+2026-07-14 14:00:15,734 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-14 14:00:15,792 [INFO] scraper: Ищу 'личный кабинет', страница 1 (все активные)
+2026-07-14 14:00:15,836 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/extendedsearch/results.html?searchString=%D0%BB%D0%B8%D1%87%D0%BD%D1%8B%D0%B9+%D0%BA%D0%B0%D0%B1%D0%B8%D0%BD%D0%B5%D1%82&morphology=on&search-filter=%D0%94%D0%B0%D1%82%D0%B5+%D1%80%D0%B0%D0%B7%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D1%8F&sortDirection=false&recordsPerPage=_20&showLotsInfoHidden=false&sortBy=UPDATE_DATE&currencyIdGeneral=-1&af=on&fz44=on&fz223=on&priceFrom=20000&priceTo=590000&pageNumber=1 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 14:00:19,660 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/extendedsearch/results.html?searchString=%D0%BB%D0%B8%D1%87%D0%BD%D1%8B%D0%B9+%D0%BA%D0%B0%D0%B1%D0%B8%D0%BD%D0%B5%D1%82&morphology=on&search-filter=%D0%94%D0%B0%D1%82%D0%B5+%D1%80%D0%B0%D0%B7%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D1%8F&sortDirection=false&recordsPerPage=_20&showLotsInfoHidden=false&sortBy=UPDATE_DATE&currencyIdGeneral=-1&af=on&fz44=on&fz223=on&priceFrom=20000&priceTo=590000&pageNumber=1 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 14:00:19,890 [WARNING] main: Запуск остановлен пользователем
+2026-07-14 14:00:19,982 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 14:00:19,982 [INFO] main: ИТОГО В БД: всего 2535; primary-кандидатов 1978; детально проверено 840; отправлено 0; интересно 0; отклонено 40
+2026-07-14 21:37:02,356 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-14 21:37:03,668 [INFO] main: Запуск по расписанию каждые 3 ч.: stage1 + stage2
+2026-07-14 21:37:03,668 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 21:37:03,672 [INFO] main: telegram_decisions.py запущен (PID 82879)
+2026-07-14 21:37:03,675 [INFO] main: change_detector.py запущен (PID 82880)
+2026-07-14 21:37:03,675 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 21:37:03,675 [INFO] main: Этап 1: поиск карточек (14 ключей, цена 20,000–590,000 ₽, период=all-active, 44-ФЗ=True, 223-ФЗ=True, ОКПД2=False)
+2026-07-14 21:37:03,675 [INFO] scraper: Ищу '1С-Битрикс', страница 1 (все активные)
+2026-07-14 21:37:03,753 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/extendedsearch/results.html?searchString=1%D0%A1-%D0%91%D0%B8%D1%82%D1%80%D0%B8%D0%BA%D1%81&morphology=on&search-filter=%D0%94%D0%B0%D1%82%D0%B5+%D1%80%D0%B0%D0%B7%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D1%8F&sortDirection=false&recordsPerPage=_20&showLotsInfoHidden=false&sortBy=UPDATE_DATE&currencyIdGeneral=-1&af=on&fz44=on&fz223=on&priceFrom=20000&priceTo=590000&pageNumber=1 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 21:37:07,574 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/extendedsearch/results.html?searchString=1%D0%A1-%D0%91%D0%B8%D1%82%D1%80%D0%B8%D0%BA%D1%81&morphology=on&search-filter=%D0%94%D0%B0%D1%82%D0%B5+%D1%80%D0%B0%D0%B7%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D1%8F&sortDirection=false&recordsPerPage=_20&showLotsInfoHidden=false&sortBy=UPDATE_DATE&currencyIdGeneral=-1&af=on&fz44=on&fz223=on&priceFrom=20000&priceTo=590000&pageNumber=1 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 21:37:14,058 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/extendedsearch/results.html?searchString=1%D0%A1-%D0%91%D0%B8%D1%82%D1%80%D0%B8%D0%BA%D1%81&morphology=on&search-filter=%D0%94%D0%B0%D1%82%D0%B5+%D1%80%D0%B0%D0%B7%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D1%8F&sortDirection=false&recordsPerPage=_20&showLotsInfoHidden=false&sortBy=UPDATE_DATE&currencyIdGeneral=-1&af=on&fz44=on&fz223=on&priceFrom=20000&priceTo=590000&pageNumber=1 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 21:37:14,986 [WARNING] main: Запуск остановлен пользователем
+2026-07-14 21:37:15,095 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 21:37:15,095 [INFO] main: ИТОГО В БД: всего 2535; primary-кандидатов 1978; детально проверено 840; отправлено 0; интересно 0; отклонено 40
+2026-07-14 21:40:27,580 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-14 21:40:35,134 [INFO] main: Запуск по расписанию каждые 3 ч.: stage1 + stage2
+2026-07-14 21:40:35,135 [WARNING] notifier: Telegram не настроен (нет токена или chat_id)
+2026-07-14 21:40:35,144 [INFO] main: telegram_decisions.py запущен (PID 83848)
+2026-07-14 21:40:35,148 [INFO] main: change_detector.py запущен (PID 83849)
+2026-07-14 21:40:35,149 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 21:40:35,150 [INFO] main: Этап 1: поиск карточек (14 ключей, цена 20,000–590,000 ₽, период=all-active, 44-ФЗ=True, 223-ФЗ=True, ОКПД2=False)
+2026-07-14 21:40:35,150 [INFO] scraper: Ищу '1С-Битрикс', страница 1 (все активные)
+2026-07-14 21:41:00,196 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/extendedsearch/results.html?searchString=1%D0%A1-%D0%91%D0%B8%D1%82%D1%80%D0%B8%D0%BA%D1%81&morphology=on&search-filter=%D0%94%D0%B0%D1%82%D0%B5+%D1%80%D0%B0%D0%B7%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D1%8F&sortDirection=false&recordsPerPage=_20&showLotsInfoHidden=false&sortBy=UPDATE_DATE&currencyIdGeneral=-1&af=on&fz44=on&fz223=on&priceFrom=20000&priceTo=590000&pageNumber=1 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x107166660>, 'Connection to zakupki.gov.ru timed out. (connect timeout=25)'))
+2026-07-14 21:41:03,909 [WARNING] scraper: Ошибка запроса (попытка 2): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/extendedsearch/results.html?searchString=1%D0%A1-%D0%91%D0%B8%D1%82%D1%80%D0%B8%D0%BA%D1%81&morphology=on&search-filter=%D0%94%D0%B0%D1%82%D0%B5+%D1%80%D0%B0%D0%B7%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D1%8F&sortDirection=false&recordsPerPage=_20&showLotsInfoHidden=false&sortBy=UPDATE_DATE&currencyIdGeneral=-1&af=on&fz44=on&fz223=on&priceFrom=20000&priceTo=590000&pageNumber=1 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 21:41:10,487 [WARNING] scraper: Ошибка запроса (попытка 3): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/extendedsearch/results.html?searchString=1%D0%A1-%D0%91%D0%B8%D1%82%D1%80%D0%B8%D0%BA%D1%81&morphology=on&search-filter=%D0%94%D0%B0%D1%82%D0%B5+%D1%80%D0%B0%D0%B7%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D1%8F&sortDirection=false&recordsPerPage=_20&showLotsInfoHidden=false&sortBy=UPDATE_DATE&currencyIdGeneral=-1&af=on&fz44=on&fz223=on&priceFrom=20000&priceTo=590000&pageNumber=1 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 21:41:20,350 [ERROR] scraper: Не удалось получить страницу 1 для '1С-Битрикс'
+2026-07-14 21:41:20,351 [INFO] scraper: Найдено 0 закупок по запросу '1С-Битрикс'
+2026-07-14 21:41:20,481 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-14 21:41:20,585 [INFO] scraper: Ищу 'личный кабинет', страница 1 (все активные)
+2026-07-14 21:41:20,632 [WARNING] scraper: Ошибка запроса (попытка 1): HTTPSConnectionPool(host='zakupki.gov.ru', port=443): Max retries exceeded with url: /epz/order/extendedsearch/results.html?searchString=%D0%BB%D0%B8%D1%87%D0%BD%D1%8B%D0%B9+%D0%BA%D0%B0%D0%B1%D0%B8%D0%BD%D0%B5%D1%82&morphology=on&search-filter=%D0%94%D0%B0%D1%82%D0%B5+%D1%80%D0%B0%D0%B7%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D1%8F&sortDirection=false&recordsPerPage=_20&showLotsInfoHidden=false&sortBy=UPDATE_DATE&currencyIdGeneral=-1&af=on&fz44=on&fz223=on&priceFrom=20000&priceTo=590000&pageNumber=1 (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2026-07-14 21:41:23,133 [WARNING] main: Запуск остановлен пользователем
+2026-07-14 21:41:23,344 [INFO] main: ══════════════════════════════════════════════════
+2026-07-14 21:41:23,344 [INFO] main: ИТОГО В БД: всего 2535; primary-кандидатов 1978; детально проверено 840; отправлено 0; интересно 0; отклонено 40

@@ -409,61 +409,84 @@ def parse_signals(s: str) -> list[str]:
 def parse_stop(s: str) -> list[str]:
     return [x.strip() for x in (s or "").split("|") if x.strip()]
 
+def _web_extract_reg_number(value: str) -> str:
+    match = re.search(r"\b\d{11,22}\b", str(value or ""))
+    return match.group(0) if match else ""
+
+
+def _web_notice_type(source: str) -> str:
+    if "://" not in str(source or ""):
+        return ""
+    parsed = urlparse(source)
+    if "zakupki.gov.ru" not in parsed.netloc.lower():
+        return ""
+    match = re.search(r"/epz/order/notice/([^/]+)/", parsed.path, flags=re.I)
+    if not match or match.group(1).lower() == "notice223":
+        return ""
+    return match.group(1)
+
+
 def zakupki_common_info_url(url: str, purchase_number: str = "") -> str:
-    value = f"{url or ''} {purchase_number or ''}"
-    match = re.search(r"\b\d{11,22}\b", value)
-    if not match:
-        return url or ""
-    reg_number = match.group(0)
-    lower_value = value.lower()
-    if "notice223" in lower_value or "/223/" in lower_value or re.fullmatch(r"3\d{10}", reg_number):
+    source = str(url or "").strip()
+    reg_number = _web_extract_reg_number(source) or _web_extract_reg_number(purchase_number)
+    if not reg_number:
+        return source
+
+    lower_source = source.lower()
+    is_223 = (
+        "notice223" in lower_source
+        or "/223/" in lower_source
+        or bool(re.fullmatch(r"3\d{10}", reg_number))
+    )
+
+    query = dict(parse_qsl(urlparse(source).query, keep_blank_values=True)) if source else {}
+    if is_223:
+        query.pop("purchaseNoticeNumber", None)
+        query["regNumber"] = reg_number
         return (
-            "https://zakupki.gov.ru/epz/order/notice/notice223/common-info.html"
-            f"?regNumber={reg_number}"
+            "https://zakupki.gov.ru/epz/order/notice/notice223/common-info.html?"
+            + urlencode(query)
         )
+
+    notice_type = _web_notice_type(source) or str(
+        getattr(config, "EIS_DEFAULT_NOTICE_TYPE", "ea20") or "ea20"
+    ).strip()
+    query["regNumber"] = reg_number
     return (
-        "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html"
-        f"?regNumber={reg_number}"
+        f"https://zakupki.gov.ru/epz/order/notice/{notice_type}/view/common-info.html?"
+        + urlencode(query)
     )
 
 
 def zakupki_documents_url(url: str, purchase_number: str = "") -> str:
-    value = f"{url or ''} {purchase_number or ''}"
-    match = re.search(r"\b\d{11,22}\b", value)
-    reg_number = match.group(0) if match else (purchase_number or "")
-    source = url or ""
-    lower_source = source.lower()
-    parsed = urlparse(source) if source else None
-    is_223 = "notice223" in lower_source or "/223/" in lower_source or re.fullmatch(r"3\d{10}", reg_number)
-    if "documents.html" in lower_source:
-        if is_223 and parsed:
-            query = dict(parse_qsl(parsed.query, keep_blank_values=True))
-            if "purchaseNoticeNumber" not in query:
-                query["purchaseNoticeNumber"] = query.pop("regNumber", reg_number)
-                return urlunparse(parsed._replace(query=urlencode(query)))
+    source = str(url or "").strip()
+    reg_number = _web_extract_reg_number(source) or _web_extract_reg_number(purchase_number)
+    if not reg_number:
         return source
-    if source and "common-info.html" in lower_source:
-        parsed = urlparse(re.sub(r"common-info\.html", "documents.html", source, flags=re.I))
-        if is_223:
-            query = dict(parse_qsl(parsed.query, keep_blank_values=True))
-            if "purchaseNoticeNumber" not in query:
-                query["purchaseNoticeNumber"] = query.pop("regNumber", reg_number)
-            return urlunparse(parsed._replace(query=urlencode(query)))
-        return urlunparse(parsed)
-    if source and "view.html" in lower_source:
-        parsed = urlparse(source)
-        path = re.sub(r"view\.html$", "documents.html", parsed.path, flags=re.I)
-        return urlunparse(parsed._replace(path=path))
+
+    lower_source = source.lower()
+    is_223 = (
+        "notice223" in lower_source
+        or "/223/" in lower_source
+        or bool(re.fullmatch(r"3\d{10}", reg_number))
+    )
+
+    query = dict(parse_qsl(urlparse(source).query, keep_blank_values=True)) if source else {}
     if is_223:
-        query = dict(parse_qsl(urlparse(source).query, keep_blank_values=True)) if source else {}
-        query.setdefault("purchaseNoticeNumber", reg_number)
+        query.pop("regNumber", None)
+        query["purchaseNoticeNumber"] = reg_number
         return (
             "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?"
             + urlencode(query)
         )
+
+    notice_type = _web_notice_type(source) or str(
+        getattr(config, "EIS_DEFAULT_NOTICE_TYPE", "ea20") or "ea20"
+    ).strip()
+    query["regNumber"] = reg_number
     return (
-        "https://zakupki.gov.ru/epz/order/notice/zk20/view/documents.html"
-        f"?regNumber={reg_number}"
+        f"https://zakupki.gov.ru/epz/order/notice/{notice_type}/view/documents.html?"
+        + urlencode(query)
     )
 
 for name, fn in [("fmt_price",fmt_price),("fmt_date",fmt_date),

@@ -1,0 +1,621 @@
+--- a/config.py
++++ b/config.py
+@@ -149,6 +149,13 @@
+ MAX_DOCUMENT_TEXT_CHARS   = int(os.getenv("MAX_DOCUMENT_TEXT_CHARS",   "30000"))
+ LLM_TEXT_CHARS            = int(os.getenv("LLM_TEXT_CHARS",            "12000"))
+ 
++# --- TLS/SSL для ЕИС ---
++# По умолчанию используется certifi. На macOS это устраняет типичную ошибку
++# CERTIFICATE_VERIFY_FAILED у Python, который не видит системную цепочку CA.
++# Для корпоративного прокси можно передать путь к собственному PEM-файлу.
++EIS_CA_BUNDLE = os.getenv("EIS_CA_BUNDLE", "").strip()
++EIS_VERIFY_SSL = env_bool("EIS_VERIFY_SSL", True)
++
+ # --- Тендерплан ---
+ SOURCE_TENDERPLAN_ENABLED = env_bool("SOURCE_TENDERPLAN_ENABLED", False)
+ TENDERPLAN_TOKEN          = os.getenv("TENDERPLAN_TOKEN", "").strip()
+--- a/scraper.py
++++ b/scraper.py
+@@ -37,6 +37,24 @@
+ REQUEST_DELAY = config.REQUEST_DELAY
+ 
+ 
++def _request_verify():
++    """Возвращает verify-параметр requests для ЕИС."""
++    if not getattr(config, "EIS_VERIFY_SSL", True):
++        logger.warning("Проверка SSL ЕИС отключена через EIS_VERIFY_SSL=0")
++        return False
++    custom_bundle = str(getattr(config, "EIS_CA_BUNDLE", "") or "").strip()
++    if custom_bundle:
++        return custom_bundle
++    try:
++        import certifi
++        return certifi.where()
++    except ImportError:
++        return True
++
++
++REQUEST_VERIFY = _request_verify()
++
++
+ def _normalize_eis_date(value: str | None) -> str:
+     """Convert YYYY-MM-DD or DD.MM.YYYY to EIS DD.MM.YYYY format."""
+     value = (value or "").strip()
+@@ -61,7 +79,7 @@
+     """GET с повторами при ошибке и лёгким backoff."""
+     for attempt in range(retries):
+         try:
+-            resp = requests.get(url, params=params, headers=HEADERS, timeout=25)
++            resp = requests.get(url, params=params, headers=HEADERS, timeout=25, verify=REQUEST_VERIFY)
+             if resp.status_code == 200:
+                 return resp
+             logger.warning("HTTP %s для %s", resp.status_code, url)
+--- a/document_processor.py
++++ b/document_processor.py
+@@ -17,7 +17,7 @@
+ from bs4 import BeautifulSoup
+ 
+ import config
+-from scraper import HEADERS, BASE_URL
++from scraper import HEADERS, BASE_URL, REQUEST_VERIFY
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -88,7 +88,7 @@
+         lower = link.lower()
+         if _looks_like_document_page(lower) and not _looks_like_document_file(lower):
+             try:
+-                resp = requests.get(link, headers=HEADERS, timeout=30)
++                resp = requests.get(link, headers=HEADERS, timeout=30, verify=REQUEST_VERIFY)
+                 if resp.status_code != 200 or not resp.text:
+                     logger.info("Страница документов не скачана %s: HTTP %s", link, resp.status_code)
+                     continue
+@@ -153,7 +153,7 @@
+         if _looks_like_document_page(link.lower()) and not _looks_like_document_file(link.lower()):
+             continue
+         try:
+-            resp = requests.get(link, headers=HEADERS, timeout=30)
++            resp = requests.get(link, headers=HEADERS, timeout=30, verify=REQUEST_VERIFY)
+             if resp.status_code != 200 or not resp.content:
+                 logger.info("Документ не скачан %s: HTTP %s", link, resp.status_code)
+                 continue
+@@ -414,6 +414,9 @@
+ 
+ 
+ def normalize_text(text: str) -> str:
++    # NUL часто встречается в бинарных хвостах старых DOC/XLS/PDF и затем
++    # вызывает ValueError при сохранении строки в PostgreSQL.
++    text = (text or "").replace("\x00", "")
+     lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
+     return "\n".join(line for line in lines if line)
+ 
+--- a/database.py
++++ b/database.py
+@@ -139,6 +139,24 @@
+     return datetime.now(timezone.utc)
+ 
+ 
++def strip_nul(value: Any) -> Any:
++    """Удаляет NUL-символы из строк и вложенных структур.
++
++    PostgreSQL text/json/jsonb не принимают символ ``\x00``. Он иногда
++    попадает в извлечённый текст старых Office/PDF-файлов. Очистка здесь
++    является последней защитой перед любыми SQL-параметрами.
++    """
++    if isinstance(value, str):
++        return value.replace("\x00", "")
++    if isinstance(value, dict):
++        return {key: strip_nul(item) for key, item in value.items()}
++    if isinstance(value, list):
++        return [strip_nul(item) for item in value]
++    if isinstance(value, tuple):
++        return tuple(strip_nul(item) for item in value)
++    return value
++
++
+ def _to_jsonable(value: Any) -> Any:
+     if isinstance(value, Decimal):
+         return float(value)
+@@ -1390,12 +1408,12 @@
+ 
+ 
+ def _update_stage1_after_triage_once(filter_result: Any) -> None:
+-    pnum = getattr(filter_result, "purchase_number", "")
++    pnum = strip_nul(getattr(filter_result, "purchase_number", ""))
+     if not pnum:
+         return
+     total = getattr(filter_result, "total_score", 0)
+     decision = getattr(filter_result, "decision", None)
+-    stop_factors = getattr(filter_result, "stop_factors", []) or []
++    stop_factors = strip_nul(getattr(filter_result, "stop_factors", []) or [])
+     reasons = " | ".join(filter_result.to_reasons()) if hasattr(filter_result, "to_reasons") else ""
+ 
+     with _conn() as conn:
+@@ -1447,9 +1465,22 @@
+     document_text: str = "",
+     notified: bool = False,
+ ) -> None:
++    # psycopg2 отклоняет любой строковый параметр с NUL, поэтому очищаем
++    # весь набор данных до входа в retry/транзакцию.
++    clean_tender = strip_nul(tender)
++    clean_reasons = strip_nul(detail_reasons)
++    clean_llm = strip_nul(llm_analysis or "")
++    clean_document_text = strip_nul(document_text or "")
+     _with_db_retries(
+         "save_detail",
+-        lambda: _save_detail_once(tender, detail_score, detail_reasons, llm_analysis, document_text, notified),
++        lambda: _save_detail_once(
++            clean_tender,
++            detail_score,
++            clean_reasons,
++            clean_llm,
++            clean_document_text,
++            notified,
++        ),
+     )
+ 
+ 
+@@ -2001,6 +2032,8 @@
+ # Совместимость с черновиком database_pg.py: если позже появится filter_engine.py,
+ # можно будет записывать отдельные 8 фильтров без изменения web_app.
+ def save_filter_result(filter_result: Any, stage: str = "stage1") -> None:
++    # filter_result — объект, поэтому очищаем строковые атрибуты в момент
++    # формирования SQL-параметров внутри _save_filter_result_once.
+     _with_db_retries("save_filter_result", lambda: _save_filter_result_once(filter_result, stage))
+ 
+ 
+@@ -2014,11 +2047,11 @@
+ 
+     stage="stage2" — всегда записывает (Stage2 главнее Stage1).
+     """
+-    pnum = getattr(filter_result, "purchase_number", "")
++    pnum = strip_nul(getattr(filter_result, "purchase_number", ""))
+     if not pnum:
+         return
+ 
+-    stop_factors = getattr(filter_result, "stop_factors", []) or []
++    stop_factors = strip_nul(getattr(filter_result, "stop_factors", []) or [])
+ 
+     with _conn() as conn:
+         cur = conn.cursor()
+@@ -2074,9 +2107,9 @@
+                     (
+                         pnum,
+                         getattr(f, "number", 0),
+-                        getattr(f, "name", ""),
++                        strip_nul(getattr(f, "name", "")),
+                         getattr(f, "score", 0),
+-                        " | ".join(getattr(f, "signals", []) or []),
++                        " | ".join(strip_nul(getattr(f, "signals", []) or [])),
+                         bool(getattr(f, "stop_factor", False)),
+                     ),
+                 )
+@@ -2096,9 +2129,9 @@
+                     (
+                         pnum,
+                         getattr(f, "number", 0),
+-                        getattr(f, "name", ""),
++                        strip_nul(getattr(f, "name", "")),
+                         getattr(f, "score", 0),
+-                        " | ".join(getattr(f, "signals", []) or []),
++                        " | ".join(strip_nul(getattr(f, "signals", []) or [])),
+                         bool(getattr(f, "stop_factor", False)),
+                     ),
+                 )
+--- a/main.py
++++ b/main.py
+@@ -504,7 +504,11 @@
+ 
+ 
+ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
+-    """Детальный анализ ТЗ/документов только по кандидатам этапа 1."""
++    """Детальный анализ ТЗ/документов только по кандидатам этапа 1.
++
++    Ошибка одного тендера не должна останавливать весь проход. Финальная
++    статистика и запись runs выполняются всегда.
++    """
+     started_at = datetime.now().isoformat(timespec="seconds")
+     logger.info("═" * 50)
+     logger.info("Этап 2: детальный анализ документов")
+@@ -515,6 +519,11 @@
+ 
+     processed = 0
+     notified_count = 0
++    failed_count = 0
++    docs_reported = 0
++    docs_saved = 0
++    docs_with_text = 0
++    decision_counts = {"GO": 0, "CAUTION": 0, "NO-GO": 0}
+     errors: list[str] = []
+ 
+     for tender in tenders:
+@@ -526,12 +535,11 @@
+ 
+         try:
+             is_tenderplan = (tender.get("platform") or "") == "Tenderplan"
+-            is_eis = (tender.get("platform") or "ЕИС") == "ЕИС"
++            is_eis = ((tender.get("platform") or "ЕИС") == "ЕИС") or (is_tenderplan and _is_eis_number(pnum))
+ 
+-            # Для ЕИС-тендеров (включая те, что пришли через Tenderplan с ЕИС-номером) —
+-            # тянем страницу zakupki.gov.ru. Для коммерческих Tenderplan — пропускаем.
++            # Для ЕИС-тендеров (включая пришедшие через Tenderplan с ЕИС-номером)
++            # тянем zakupki.gov.ru. Для коммерческих Tenderplan — не тянем.
+             if is_tenderplan and not _is_eis_number(pnum):
+-                page_html, page_text = "", ""
+                 logger.info("%s: коммерческий Tenderplan-тендер, страницу ЕИС не тянем", pnum)
+             else:
+                 page_url = to_common_info_url(tender.get("url", "") or pnum)
+@@ -557,15 +565,27 @@
+                 docs_url = _documents_url_from_page(page_html, page_url) or to_documents_url(tender.get("url", "") or pnum)
+                 docs_html, _ = get_tender_page(docs_url)
+                 docs = download_documents(pnum, docs_html or page_html, docs_url if docs_html else page_url)
+-                files = docs.get("files", [])
++                reported_files = [Path(path) for path in docs.get("files", [])]
++                docs_reported += len(reported_files)
++                files = [path for path in reported_files if path.is_file()]
++                if len(files) != len(reported_files):
++                    logger.warning(
++                        "%s: загрузчик ЕИС сообщил %d файлов, реально сохранено %d",
++                        pnum, len(reported_files), len(files),
++                    )
+                 if not files and docs_html:
+                     logger.info("%s: на вкладке документов файлы не найдены, пробую common-info fallback", pnum)
+                     docs = download_documents(pnum, page_html, page_url)
+-                    files = docs.get("files", [])
+-                logger.info("%s: скачано документов %d", pnum, len(files))
++                    reported_files = [Path(path) for path in docs.get("files", [])]
++                    docs_reported += len(reported_files)
++                    files = [path for path in reported_files if path.is_file()]
++                logger.info("%s: реально скачано документов %d", pnum, len(files))
++                docs_saved += len(files)
+                 document_text = collect_document_text(files, config.MAX_DOCUMENT_TEXT_CHARS)
++                if document_text.strip():
++                    docs_with_text += 1
+                 tender["document_count"] = len(files)
+-                tender["documents_dir"] = docs.get("dir", "")
++                tender["documents_dir"] = docs.get("dir", "") if files else ""
+                 tender["documents_hash"] = hash_files(files)
+                 spec = extract_object_description_items(files)
+                 if spec.get("items") and not db.list_tender_items(pnum):
+@@ -579,41 +599,55 @@
+                 full_text_for_terms += "\n" + document_text
+                 scoring_text = "\n".join([scoring_text, document_text])
+ 
+-            # ── Tenderplan: скачиваем документы через API, если включён канал ──────
+-            is_tenderplan = (tender.get("platform") or "") == "Tenderplan"
++            # Tenderplan API: используем только физически сохранённые файлы.
+             if is_tenderplan and config.DOWNLOAD_DOCUMENTS and not document_text:
+                 tp_token = getattr(config, "TENDERPLAN_TOKEN", "")
+                 if tp_token:
+                     logger.info("%s: пробую скачать документы через Tenderplan API", pnum)
+-                    try:
+-                        tp_docs = _download_tp_docs(
+-                            pnum,
+-                            token=tp_token,
+-                            base_url=getattr(config, "TENDERPLAN_BASE_URL", "https://tenderplan.ru"),
+-                            max_chars=config.MAX_DOCUMENT_TEXT_CHARS,
++                    tp_docs = _download_tp_docs(
++                        pnum,
++                        token=tp_token,
++                        base_url=getattr(config, "TENDERPLAN_BASE_URL", "https://tenderplan.ru"),
++                        max_chars=config.MAX_DOCUMENT_TEXT_CHARS,
++                    )
++                    reported_tp_files = [Path(path) for path in tp_docs.get("files", [])]
++                    docs_reported += len(reported_tp_files)
++                    tp_files = [path for path in reported_tp_files if path.is_file()]
++                    missing_count = len(reported_tp_files) - len(tp_files)
++                    if missing_count:
++                        logger.warning(
++                            "%s: Tenderplan сообщил %d документов, но %d файлов отсутствуют на диске; "
++                            "они не будут считаться скачанными",
++                            pnum, len(reported_tp_files), missing_count,
+                         )
+-                        tp_files = tp_docs.get("files", [])
+-                        if tp_files:
+-                            document_text = tp_docs.get("text", "")
+-                            tender["document_count"] = len(tp_files)
+-                            tender["documents_dir"] = tp_docs.get("dir", "")
+-                            tender["documents_hash"] = hash_files(tp_files)
+-                            spec = extract_object_description_items(tp_files)
+-                            if spec.get("items") and not db.list_tender_items(pnum):
+-                                db.replace_tender_items(pnum, spec["items"])
+-                            work_scope = extract_work_scope_from_files(tp_files)
+-                            if work_scope:
+-                                details = db.get_tender_details(pnum) or {}
+-                                details["work_scope"] = work_scope
+-                                db.save_tender_details(pnum, details)
+-                                tender["details_json"] = details
+-                            full_text_for_terms += "\n" + document_text
+-                            scoring_text = "\n".join([scoring_text, document_text])
+-                            logger.info("%s: Tenderplan скачано документов %d", pnum, len(tp_files))
+-                        else:
+-                            logger.info("%s: Tenderplan не вернул документов", pnum)
+-                    except Exception as exc:
+-                        logger.warning("Ошибка скачивания Tenderplan-документов %s: %s", pnum, exc)
++                    if tp_files:
++                        docs_saved += len(tp_files)
++                        # Не доверяем готовому text без очистки; если он пуст, читаем реальные файлы.
++                        document_text = str(tp_docs.get("text", "") or "").replace("\x00", "")
++                        if not document_text.strip():
++                            document_text = collect_document_text(tp_files, config.MAX_DOCUMENT_TEXT_CHARS)
++                        if document_text.strip():
++                            docs_with_text += 1
++                        tender["document_count"] = len(tp_files)
++                        tender["documents_dir"] = tp_docs.get("dir", "")
++                        tender["documents_hash"] = hash_files(tp_files)
++                        spec = extract_object_description_items(tp_files)
++                        if spec.get("items") and not db.list_tender_items(pnum):
++                            db.replace_tender_items(pnum, spec["items"])
++                        work_scope = extract_work_scope_from_files(tp_files)
++                        if work_scope:
++                            details = db.get_tender_details(pnum) or {}
++                            details["work_scope"] = work_scope
++                            db.save_tender_details(pnum, details)
++                            tender["details_json"] = details
++                        full_text_for_terms += "\n" + document_text
++                        scoring_text = "\n".join([scoring_text, document_text])
++                        logger.info("%s: Tenderplan реально скачано документов %d", pnum, len(tp_files))
++                    else:
++                        tender["document_count"] = 0
++                        tender["documents_dir"] = ""
++                        tender["documents_hash"] = ""
++                        logger.info("%s: Tenderplan не сохранил документов", pnum)
+                 else:
+                     logger.info("%s: Tenderplan-канал без токена — документы не скачиваются", pnum)
+ 
+@@ -621,67 +655,114 @@
+             for key, value in terms.items():
+                 if value not in (None, ""):
+                     tender[key] = value
++
++            filter_result = run_stage2_filters(tender, scoring_text)
++            detail_score = filter_result.total_score
++            detail_reasons = filter_result.to_reasons()
++            tender["filter_decision"] = filter_result.decision
++            tender["filter_scores"] = filter_result.to_filter_scores()
++            tender["filter_stop"] = " | ".join(filter_result.stop_factors)
++            decision_counts[filter_result.decision] = decision_counts.get(filter_result.decision, 0) + 1
++            logger.info(
++                "Stage2 8-фильтровый скор %d/%s: %s (%s)",
++                detail_score,
++                filter_result.decision,
++                str(tender.get("title", "?"))[:90],
++                pnum,
++            )
++
++            llm_analysis = None
++            import llm_provider
++            if detail_score >= config.MIN_SCORE_FOR_LLM and llm_provider.is_configured():
++                try:
++                    llm_analysis = analyze_tender(tender, scoring_text)
++                except Exception as exc:
++                    logger.warning("Ошибка LLM-анализа %s: %s", pnum, exc)
++
++            should_notify = (
++                detail_score >= config.MIN_DETAILED_SCORE_FOR_NOTIFY
++                and filter_result.decision != "NO-GO"
++                and not tender.get("notified_at")
++            )
++            notified = False
++            if should_notify:
++                if dry_run:
++                    print("\n" + "═" * 50)
++                    print(re.sub(r"<[^>]+>", "", format_tender_message(tender, detail_score, detail_reasons, llm_analysis)))
++                    print("═" * 50)
++                else:
++                    notified = send_tender_message(
++                        tender,
++                        detail_score,
++                        detail_reasons,
++                        llm_analysis,
++                        config.TELEGRAM_BOT_TOKEN,
++                        config.TELEGRAM_CHAT_ID,
++                    )
++                    time.sleep(0.5)
++
++            db.save_detail(
++                tender,
++                detail_score,
++                detail_reasons,
++                llm_analysis or "",
++                document_text=scoring_text,
++                notified=notified,
++            )
++            db.save_filter_result(filter_result, stage="stage2")
++            processed += 1
++            if notified:
++                notified_count += 1
++
+         except Exception as exc:
+-            msg = f"Ошибка получения/анализа документов {pnum}: {exc}"
+-            logger.warning(msg)
++            failed_count += 1
++            msg = f"Stage2 {pnum}: {type(exc).__name__}: {exc}"
++            logger.error("Ошибка обработки тендера %s; продолжаю следующий: %s", pnum, exc)
+             errors.append(msg)
++            continue
+ 
+-        filter_result = run_stage2_filters(tender, scoring_text)
+-        detail_score = filter_result.total_score
+-        detail_reasons = filter_result.to_reasons()
+-        tender["filter_decision"] = filter_result.decision
+-        tender["filter_scores"] = filter_result.to_filter_scores()
+-        tender["filter_stop"] = " | ".join(filter_result.stop_factors)
+-        logger.info("Stage2 8-фильтровый скор %d/%s: %s (%s)", detail_score, filter_result.decision, str(tender.get("title", "?"))[:90], pnum)
+-
+-        llm_analysis = None
+-        import llm_provider
+-        if detail_score >= config.MIN_SCORE_FOR_LLM and llm_provider.is_configured():
+-            try:
+-                llm_analysis = analyze_tender(tender, scoring_text)
+-            except Exception as exc:
+-                logger.warning("Ошибка LLM-анализа %s: %s", pnum, exc)
+-
+-        should_notify = (
+-            detail_score >= config.MIN_DETAILED_SCORE_FOR_NOTIFY
+-            and filter_result.decision != "NO-GO"
+-            and not tender.get("notified_at")
+-        )
+-        notified = False
+-        if should_notify:
+-            if dry_run:
+-                print("\n" + "═" * 50)
+-                print(re.sub(r"<[^>]+>", "", format_tender_message(tender, detail_score, detail_reasons, llm_analysis)))
+-                print("═" * 50)
+-                notified = False
+-            else:
+-                notified = send_tender_message(
+-                    tender,
+-                    detail_score,
+-                    detail_reasons,
+-                    llm_analysis,
+-                    config.TELEGRAM_BOT_TOKEN,
+-                    config.TELEGRAM_CHAT_ID,
+-                )
+-                time.sleep(0.5)
+-
+-        db.save_detail(
+-            tender,
+-            detail_score,
+-            detail_reasons,
+-            llm_analysis or "",
+-            document_text=scoring_text,
+-            notified=notified,
+-        )
+-        db.save_filter_result(filter_result, stage="stage2")
+-        processed += 1
+-        if notified:
+-            notified_count += 1
++    logger.info("═" * 50)
++    logger.info(
++        "ИТОГО ЭТАПА 2: кандидатов %d; успешно %d; ошибок %d; "
++        "GO %d; CAUTION %d; NO-GO %d; отправлено %d",
++        len(tenders), processed, failed_count,
++        decision_counts.get("GO", 0),
++        decision_counts.get("CAUTION", 0),
++        decision_counts.get("NO-GO", 0),
++        notified_count,
++    )
++    logger.info(
++        "ИТОГО ПО ДОКУМЕНТАМ: заявлено загрузчиками %d; реально сохранено %d; "
++        "тендеров с извлечённым текстом %d",
++        docs_reported, docs_saved, docs_with_text,
++    )
++    if errors:
++        logger.warning("Ошибки этапа 2 (%d): %s", len(errors), " || ".join(errors[:10]))
+ 
+-    logger.info("Этап 2 завершён: обработано %d, отправлено %d", processed, notified_count)
+     if not dry_run:
+-        send_summary(config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID, processed, notified_count, len(config.SEARCH_KEYWORDS))
+-    db.log_run("stage2", started_at, found=len(tenders), processed=processed, notified=notified_count, errors="; ".join(errors))
++        try:
++            send_summary(
++                config.TELEGRAM_BOT_TOKEN,
++                config.TELEGRAM_CHAT_ID,
++                processed,
++                notified_count,
++                len(config.SEARCH_KEYWORDS),
++            )
++        except Exception as exc:
++            logger.warning("Не удалось отправить итог Stage2 в Telegram: %s", exc)
++
++    try:
++        db.log_run(
++            "stage2",
++            started_at,
++            found=len(tenders),
++            processed=processed,
++            notified=notified_count,
++            errors="; ".join(errors),
++        )
++    except Exception as exc:
++        logger.error("Не удалось сохранить статистику запуска Stage2: %s", exc)
++
+     return processed, notified_count
+ 
+ 
+@@ -883,6 +964,26 @@
+     logger.info("telegram_decisions.py запущен (PID %d)", proc.pid)
+ 
+ 
++
++def _log_global_stats() -> None:
++    """Печатает накопительную статистику даже после частичной ошибки запуска."""
++    try:
++        stats = db.get_stats()
++    except Exception as exc:
++        logger.error("Не удалось получить итоговую статистику БД: %s", exc)
++        return
++    logger.info("═" * 50)
++    logger.info(
++        "ИТОГО В БД: всего %d; primary-кандидатов %d; детально проверено %d; "
++        "отправлено %d; интересно %d; отклонено %d",
++        stats["total"],
++        stats["primary_candidates"],
++        stats["detailed"],
++        stats["sent"],
++        stats.get("interesting", 0),
++        stats.get("rejected", 0),
++    )
++
+ def main() -> None:
+     parser = argparse.ArgumentParser(description="Двухэтапный тендерный монитор ЕИС")
+     parser.add_argument("--analytics", action="store_true", help="Ценовые коридоры + карточки заказчиков + детектор изменений")
+@@ -936,7 +1037,7 @@
+     if args.analytics:
+         run_analytics(dry_run=args.test)
+     elif args.tenderplan_only:
+-        run_stage1(
++        stage1_found, stage1_candidates = run_stage1(
+             dry_run=args.test,
+             skip_completed_today=False,
+             backfill_active=False,
+@@ -946,9 +1047,16 @@
+             tenderplan=True,
+             only_new=args.only_new,
+         )
++        stage2_processed = 0
++        stage2_notified = 0
+         # Сразу запускаем детальный анализ, чтобы скачать ТЗ через Tenderplan API
+         if not _stage_completed_today("stage2", args.skip_completed_today):
+-            run_stage2(dry_run=args.test, limit=args.limit)
++            stage2_processed, stage2_notified = run_stage2(dry_run=args.test, limit=args.limit)
++        logger.info(
++            "ИТОГО ЗАПУСКА TENDERPLAN: найдено новых %d; кандидатов Stage2 %d; "
++            "детально обработано %d; отправлено %d",
++            stage1_found, stage1_candidates, stage2_processed, stage2_notified,
++        )
+     elif args.stage1:
+         run_stage1(
+             dry_run=args.test,
+@@ -989,18 +1097,21 @@
+             schedule.run_pending()
+             time.sleep(60)
+ 
+-    stats = db.get_stats()
+-    logger.info(
+-        "Статистика: всего %d, primary-кандидатов %d, детально проверено %d, отправлено %d",
+-        stats["total"],
+-        stats["primary_candidates"],
+-        stats["detailed"],
+-        stats["sent"],
+-    )
+-
+ 
+ if __name__ == "__main__":
++    exit_code = 0
+     try:
+         main()
++    except KeyboardInterrupt:
++        exit_code = 130
++        logger.warning("Запуск остановлен пользователем")
++    except Exception as exc:
++        exit_code = 1
++        # Не выводим пользователю многополосный traceback для ожидаемых runtime-сбоев.
++        # Полный traceback остаётся доступен при запуске с DEBUG-логированием.
++        logger.error("Критическая ошибка запуска: %s: %s", type(exc).__name__, exc)
++        logger.debug("Traceback критической ошибки", exc_info=True)
+     finally:
++        _log_global_stats()
+         db.close_db()
++    raise SystemExit(exit_code)

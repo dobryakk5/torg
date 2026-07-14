@@ -37,6 +37,24 @@ SEARCH_URL = f"{BASE_URL}/epz/order/extendedsearch/results.html"
 REQUEST_DELAY = config.REQUEST_DELAY
 
 
+def _request_verify():
+    """Возвращает verify-параметр requests для ЕИС."""
+    if not getattr(config, "EIS_VERIFY_SSL", True):
+        logger.warning("Проверка SSL ЕИС отключена через EIS_VERIFY_SSL=0")
+        return False
+    custom_bundle = str(getattr(config, "EIS_CA_BUNDLE", "") or "").strip()
+    if custom_bundle:
+        return custom_bundle
+    try:
+        import certifi
+        return certifi.where()
+    except ImportError:
+        return True
+
+
+REQUEST_VERIFY = _request_verify()
+
+
 def _normalize_eis_date(value: str | None) -> str:
     """Convert YYYY-MM-DD or DD.MM.YYYY to EIS DD.MM.YYYY format."""
     value = (value or "").strip()
@@ -61,7 +79,7 @@ def _get(url: str, params: dict | None = None, retries: int = 3) -> Optional[req
     """GET с повторами при ошибке и лёгким backoff."""
     for attempt in range(retries):
         try:
-            resp = requests.get(url, params=params, headers=HEADERS, timeout=25)
+            resp = requests.get(url, params=params, headers=HEADERS, timeout=25, verify=REQUEST_VERIFY)
             if resp.status_code == 200:
                 return resp
             logger.warning("HTTP %s для %s", resp.status_code, url)
@@ -96,67 +114,92 @@ def _parse_price(text: str) -> Optional[float]:
         return None
 
 
-def to_common_info_url(url_or_number: str) -> str:
-    """Build the public common-info notice URL from any EIS URL or regNumber."""
-    value = str(url_or_number or "")
-    match = re.search(r"\b\d{11,22}\b", value)
-    if not match:
-        return value
-    reg_number = match.group(0)
-    lower_value = value.lower()
-    if "notice223" in lower_value or "/223/" in lower_value or re.fullmatch(r"3\d{10}", reg_number):
-        return (
-            "https://zakupki.gov.ru/epz/order/notice/notice223/common-info.html"
-            f"?regNumber={reg_number}"
-        )
+def _extract_reg_number(value: str) -> str:
+    match = re.search(r"\b\d{11,22}\b", str(value or ""))
+    return match.group(0) if match else ""
+
+
+def _is_223_notice(value: str, reg_number: str) -> bool:
+    lower_value = str(value or "").lower()
     return (
-        "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html"
-        f"?regNumber={reg_number}"
+        "notice223" in lower_value
+        or "/223/" in lower_value
+        or bool(re.fullmatch(r"3\d{10}", reg_number or ""))
     )
+
+
+def _notice_type_from_url(value: str) -> str:
+    """Извлекает тип извещения из URL ЕИС: ea20, zk20, ep44 и т. п."""
+    if "://" not in str(value or ""):
+        return ""
+    parsed = urlparse(value)
+    if "zakupki.gov.ru" not in parsed.netloc.lower():
+        return ""
+    match = re.search(r"/epz/order/notice/([^/]+)/", parsed.path, flags=re.I)
+    if not match:
+        return ""
+    notice_type = match.group(1)
+    return "" if notice_type.lower() == "notice223" else notice_type
+
+
+def _build_44_notice_url(value: str, reg_number: str, page: str) -> str:
+    """Строит URL 44-ФЗ, сохраняя тип извещения из исходной ссылки."""
+    notice_type = _notice_type_from_url(value)
+    if not notice_type:
+        notice_type = str(getattr(config, "EIS_DEFAULT_NOTICE_TYPE", "ea20") or "ea20").strip()
+
+    query: dict[str, str] = {}
+    if "://" in str(value or ""):
+        parsed = urlparse(value)
+        query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query["regNumber"] = reg_number
+
+    return (
+        f"{BASE_URL}/epz/order/notice/{notice_type}/view/{page}.html?"
+        + urlencode(query)
+    )
+
+
+def to_common_info_url(url_or_number: str) -> str:
+    """Возвращает URL страницы common-info, не подменяя ea20 на zk20."""
+    value = str(url_or_number or "").strip()
+    reg_number = _extract_reg_number(value)
+    if not reg_number:
+        return value
+
+    if _is_223_notice(value, reg_number):
+        query: dict[str, str] = {}
+        if "://" in value:
+            query = dict(parse_qsl(urlparse(value).query, keep_blank_values=True))
+        query.pop("purchaseNoticeNumber", None)
+        query["regNumber"] = reg_number
+        return (
+            f"{BASE_URL}/epz/order/notice/notice223/common-info.html?"
+            + urlencode(query)
+        )
+
+    return _build_44_notice_url(value, reg_number, "common-info")
 
 
 def to_documents_url(url_or_number: str) -> str:
-    """Build the public documents notice URL from any EIS URL or regNumber."""
-    value = str(url_or_number or "")
-    match = re.search(r"\b\d{11,22}\b", value)
-    if not match:
-        return value
-    reg_number = match.group(0)
-    lower_value = value.lower()
-    parsed = urlparse(value) if "://" in value else None
-    is_223 = "notice223" in lower_value or "/223/" in lower_value or re.fullmatch(r"3\d{10}", reg_number)
-
-    if parsed and "documents.html" in lower_value:
-        if is_223:
-            query = dict(parse_qsl(parsed.query, keep_blank_values=True))
-            if "purchaseNoticeNumber" not in query:
-                query["purchaseNoticeNumber"] = query.pop("regNumber", reg_number)
-            return urlunparse(parsed._replace(query=urlencode(query)))
+    """Возвращает URL документов, сохраняя тип извещения исходной ссылки."""
+    value = str(url_or_number or "").strip()
+    reg_number = _extract_reg_number(value)
+    if not reg_number:
         return value
 
-    if parsed and "common-info.html" in lower_value:
-        path = re.sub(r"common-info\.html", "documents.html", parsed.path, flags=re.I)
-        query = dict(parse_qsl(parsed.query, keep_blank_values=True))
-        if is_223 and "purchaseNoticeNumber" not in query:
-            query["purchaseNoticeNumber"] = query.pop("regNumber", reg_number)
-        return urlunparse(parsed._replace(path=path, query=urlencode(query)))
-
-    if parsed and "view.html" in lower_value:
-        path = re.sub(r"view\.html$", "documents.html", parsed.path, flags=re.I)
-        return urlunparse(parsed._replace(path=path))
-
-    if is_223:
-        query = dict(parse_qsl(parsed.query, keep_blank_values=True)) if parsed else {}
-        query.setdefault("purchaseNoticeNumber", reg_number)
+    if _is_223_notice(value, reg_number):
+        query: dict[str, str] = {}
+        if "://" in value:
+            query = dict(parse_qsl(urlparse(value).query, keep_blank_values=True))
+        query.pop("regNumber", None)
+        query["purchaseNoticeNumber"] = reg_number
         return (
-            "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?"
+            f"{BASE_URL}/epz/order/notice/notice223/documents.html?"
             + urlencode(query)
         )
-    return (
-        "https://zakupki.gov.ru/epz/order/notice/zk20/view/documents.html"
-        f"?regNumber={reg_number}"
-    )
 
+    return _build_44_notice_url(value, reg_number, "documents")
 
 def search_eis(
     keyword: str,

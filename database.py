@@ -139,6 +139,24 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def strip_nul(value: Any) -> Any:
+    """Удаляет NUL-символы из строк и вложенных структур.
+
+    PostgreSQL text/json/jsonb не принимают символ ``\x00``. Он иногда
+    попадает в извлечённый текст старых Office/PDF-файлов. Очистка здесь
+    является последней защитой перед любыми SQL-параметрами.
+    """
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {key: strip_nul(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [strip_nul(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(strip_nul(item) for item in value)
+    return value
+
+
 def _to_jsonable(value: Any) -> Any:
     if isinstance(value, Decimal):
         return float(value)
@@ -1390,12 +1408,12 @@ def update_stage1_after_triage(filter_result: Any) -> None:
 
 
 def _update_stage1_after_triage_once(filter_result: Any) -> None:
-    pnum = getattr(filter_result, "purchase_number", "")
+    pnum = strip_nul(getattr(filter_result, "purchase_number", ""))
     if not pnum:
         return
     total = getattr(filter_result, "total_score", 0)
     decision = getattr(filter_result, "decision", None)
-    stop_factors = getattr(filter_result, "stop_factors", []) or []
+    stop_factors = strip_nul(getattr(filter_result, "stop_factors", []) or [])
     reasons = " | ".join(filter_result.to_reasons()) if hasattr(filter_result, "to_reasons") else ""
 
     with _conn() as conn:
@@ -1447,9 +1465,22 @@ def save_detail(
     document_text: str = "",
     notified: bool = False,
 ) -> None:
+    # psycopg2 отклоняет любой строковый параметр с NUL, поэтому очищаем
+    # весь набор данных до входа в retry/транзакцию.
+    clean_tender = strip_nul(tender)
+    clean_reasons = strip_nul(detail_reasons)
+    clean_llm = strip_nul(llm_analysis or "")
+    clean_document_text = strip_nul(document_text or "")
     _with_db_retries(
         "save_detail",
-        lambda: _save_detail_once(tender, detail_score, detail_reasons, llm_analysis, document_text, notified),
+        lambda: _save_detail_once(
+            clean_tender,
+            detail_score,
+            clean_reasons,
+            clean_llm,
+            clean_document_text,
+            notified,
+        ),
     )
 
 
@@ -2001,6 +2032,8 @@ def get_tender(purchase_number: str) -> Optional[dict[str, Any]]:
 # Совместимость с черновиком database_pg.py: если позже появится filter_engine.py,
 # можно будет записывать отдельные 8 фильтров без изменения web_app.
 def save_filter_result(filter_result: Any, stage: str = "stage1") -> None:
+    # filter_result — объект, поэтому очищаем строковые атрибуты в момент
+    # формирования SQL-параметров внутри _save_filter_result_once.
     _with_db_retries("save_filter_result", lambda: _save_filter_result_once(filter_result, stage))
 
 
@@ -2014,11 +2047,11 @@ def _save_filter_result_once(filter_result: Any, stage: str = "stage1") -> None:
 
     stage="stage2" — всегда записывает (Stage2 главнее Stage1).
     """
-    pnum = getattr(filter_result, "purchase_number", "")
+    pnum = strip_nul(getattr(filter_result, "purchase_number", ""))
     if not pnum:
         return
 
-    stop_factors = getattr(filter_result, "stop_factors", []) or []
+    stop_factors = strip_nul(getattr(filter_result, "stop_factors", []) or [])
 
     with _conn() as conn:
         cur = conn.cursor()
@@ -2074,9 +2107,9 @@ def _save_filter_result_once(filter_result: Any, stage: str = "stage1") -> None:
                     (
                         pnum,
                         getattr(f, "number", 0),
-                        getattr(f, "name", ""),
+                        strip_nul(getattr(f, "name", "")),
                         getattr(f, "score", 0),
-                        " | ".join(getattr(f, "signals", []) or []),
+                        " | ".join(strip_nul(getattr(f, "signals", []) or [])),
                         bool(getattr(f, "stop_factor", False)),
                     ),
                 )
@@ -2096,9 +2129,9 @@ def _save_filter_result_once(filter_result: Any, stage: str = "stage1") -> None:
                     (
                         pnum,
                         getattr(f, "number", 0),
-                        getattr(f, "name", ""),
+                        strip_nul(getattr(f, "name", "")),
                         getattr(f, "score", 0),
-                        " | ".join(getattr(f, "signals", []) or []),
+                        " | ".join(strip_nul(getattr(f, "signals", []) or [])),
                         bool(getattr(f, "stop_factor", False)),
                     ),
                 )

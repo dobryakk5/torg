@@ -17,7 +17,7 @@ import requests
 from bs4 import BeautifulSoup
 
 import config
-from scraper import HEADERS, BASE_URL
+from scraper import HEADERS, BASE_URL, REQUEST_VERIFY
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ def _expand_document_items(items: list[tuple[str, str]]) -> list[tuple[str, str]
         lower = link.lower()
         if _looks_like_document_page(lower) and not _looks_like_document_file(lower):
             try:
-                resp = requests.get(link, headers=HEADERS, timeout=30)
+                resp = requests.get(link, headers=HEADERS, timeout=30, verify=REQUEST_VERIFY)
                 if resp.status_code != 200 or not resp.text:
                     logger.info("Страница документов не скачана %s: HTTP %s", link, resp.status_code)
                     continue
@@ -153,7 +153,7 @@ def download_documents(purchase_number: str, page_html: str, tender_url: str) ->
         if _looks_like_document_page(link.lower()) and not _looks_like_document_file(link.lower()):
             continue
         try:
-            resp = requests.get(link, headers=HEADERS, timeout=30)
+            resp = requests.get(link, headers=HEADERS, timeout=30, verify=REQUEST_VERIFY)
             if resp.status_code != 200 or not resp.content:
                 logger.info("Документ не скачан %s: HTTP %s", link, resp.status_code)
                 continue
@@ -414,6 +414,9 @@ def collect_document_text(files: Iterable[Path], max_chars: int | None = None) -
 
 
 def normalize_text(text: str) -> str:
+    # NUL часто встречается в бинарных хвостах старых DOC/XLS/PDF и затем
+    # вызывает ValueError при сохранении строки в PostgreSQL.
+    text = (text or "").replace("\x00", "")
     lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
     return "\n".join(line for line in lines if line)
 
