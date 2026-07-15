@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 _RETRY_BACKOFF_SECONDS = (5, 20, 60)
 
+# Модели, ответившие 400 на response_format=json_object — больше не шлём им
+# этот параметр (иначе каждый вызов тратит лишний запрос из дневного лимита).
+_JSON_MODE_UNSUPPORTED: set[str] = set()
+
 
 def provider() -> str:
     return (getattr(config, "LLM_PROVIDER", "openrouter") or "openrouter").strip().lower()
@@ -152,7 +156,8 @@ def _complete_openrouter(
     system: str, user: str, model: str, max_tokens: int, temperature: float, json_mode: bool
 ) -> Optional[str]:
     """Один вызов OpenRouter для конкретной модели: ретраи 429/5xx + фолбэк без json_mode."""
-    use_json_mode = json_mode
+    use_json_mode = json_mode and model not in _JSON_MODE_UNSUPPORTED
+    tokens_boosted = False
     max_attempts = len(_RETRY_BACKOFF_SECONDS) + 1
 
     for attempt in range(1, max_attempts + 1):
@@ -172,13 +177,35 @@ def _complete_openrouter(
             if not choices:
                 logger.error("OpenRouter %s: пустой ответ: %s", model, str(data)[:300])
                 return None
+            message = choices[0].get("message") or {}
             # .get("content", "") НЕ подставляет дефолт, если ключ есть, но равен null
-            # (некоторые модели отдают content:null вместе с reasoning-полем) — отсюда `or ""`.
-            content = ((choices[0].get("message") or {}).get("content") or "").strip()
-            return content or None
+            # (reasoning-модели отдают content:null вместе с reasoning-полем) — отсюда `or ""`.
+            content = (message.get("content") or "").strip()
+            if content:
+                return content
+            # Reasoning-модель (hy3 и т.п.) съела весь max_tokens на размышление и
+            # не дошла до ответа: finish=length + непустой reasoning. Одна повторная
+            # попытка с увеличенным бюджетом (параметр reasoning:{enabled:false}
+            # такие модели игнорируют — проверено на tencent/hy3:free).
+            reasoning = (message.get("reasoning") or "").strip()
+            if (
+                not tokens_boosted
+                and reasoning
+                and choices[0].get("finish_reason") == "length"
+                and attempt < max_attempts
+            ):
+                tokens_boosted = True
+                max_tokens = min(max_tokens * 4, 8000)
+                logger.info(
+                    "OpenRouter %s: reasoning не уложился в лимит токенов, повторяю с max_tokens=%d",
+                    model, max_tokens,
+                )
+                continue
+            return None
 
         if resp.status_code == 400 and use_json_mode:
             logger.info("OpenRouter %s: HTTP 400 с response_format=json_object, повторяю без него", model)
+            _JSON_MODE_UNSUPPORTED.add(model)
             use_json_mode = False
             continue
 

@@ -42,6 +42,7 @@ from document_processor import (
     extract_work_scope_from_files,
     find_document_items,
     hash_files,
+    prioritize_document_files,
 )
 from llm_analyzer import analyze_tender
 from notifier import format_tender_message, send_startup_message, send_summary, send_tender_message
@@ -203,6 +204,8 @@ def run_stage1(
     fz223: bool | None = None,
     okpd2: bool | None = None,
     b2b: bool | None = None,
+    spb: bool | None = None,
+    eat: bool | None = None,
     tenderplan: bool | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -240,6 +243,8 @@ def run_stage1(
     use_223 = fz223 if fz223 is not None else config.SEARCH_223FZ
     use_okpd2 = okpd2 if okpd2 is not None else getattr(config, "OKPD2_SEARCH_ENABLED", True)
     use_b2b = b2b if b2b is not None else getattr(config, "SOURCE_B2B_ENABLED", False)
+    use_spb = spb if spb is not None else getattr(config, "SOURCE_SPB_ENABLED", False)
+    use_eat = eat if eat is not None else getattr(config, "SOURCE_EAT_ENABLED", False)
     use_tenderplan = tenderplan if tenderplan is not None else getattr(config, "SOURCE_TENDERPLAN_ENABLED", False)
     pages = config.BACKFILL_SEARCH_PAGES if (backfill_active or auto_active) else config.SEARCH_PAGES
 
@@ -348,7 +353,67 @@ def run_stage1(
                 errors.append(msg)
                 continue
 
-    # ── Канал 4: Tenderplan ───────────────────────────────────────────────────
+    # ── Канал 4: Электронный магазин СПб (закупки малого объёма) ────────────
+    if use_spb:
+        from sources.spb_estore import search_spb
+        spb_pages = getattr(config, "SPB_SEARCH_PAGES", 2)
+        spb_keywords = getattr(config, "SPB_SEARCH_KEYWORDS", None) or kw_list
+        for keyword in spb_keywords:
+            phase_started_at = datetime.now().isoformat(timespec="seconds")
+            kw_clean = re.sub(r"\s+", " ", keyword).strip()
+            phase_mode = f"stage1:spb:{kw_clean}:pages={spb_pages}"
+            if skip_completed_today and db.was_stage_completed_today(phase_mode):
+                logger.info("ЭМ СПб-поиск '%s' уже готов сегодня — пропускаю", keyword)
+                continue
+            try:
+                spb_tenders = search_spb(keyword, price_from=p_min, price_to=p_max, pages=spb_pages)
+                db.reconnect_db()
+                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
+                    spb_tenders, f"spb:{keyword}", dry_run, seen_this_run,
+                )
+                saved += phase_saved
+                unique_saved += phase_unique
+                primary_candidates += phase_candidates
+                db.log_run(phase_mode, phase_started_at, found=len(spb_tenders), processed=phase_saved, notified=0, errors="")
+            except Exception as exc:
+                msg = f"Ошибка ЭМ СПб-поиска по '{keyword}': {exc}"
+                logger.error(msg)
+                errors.append(msg)
+                continue
+
+    # ── Канал 5: ЕАТ «Берёзка» (федеральные закупки малого объёма) ──────────
+    if use_eat:
+        from sources.eat import search_eat
+        eat_pages = getattr(config, "EAT_SEARCH_PAGES", 1)
+        eat_keywords = (
+            getattr(config, "EAT_SEARCH_KEYWORDS", None)
+            or getattr(config, "SPB_SEARCH_KEYWORDS", None)
+            or kw_list
+        )
+        for keyword in eat_keywords:
+            phase_started_at = datetime.now().isoformat(timespec="seconds")
+            kw_clean = re.sub(r"\s+", " ", keyword).strip()
+            phase_mode = f"stage1:eat:{kw_clean}:pages={eat_pages}"
+            if skip_completed_today and db.was_stage_completed_today(phase_mode):
+                logger.info("ЕАТ-поиск '%s' уже готов сегодня — пропускаю", keyword)
+                continue
+            try:
+                eat_tenders = search_eat(keyword, price_from=p_min, price_to=p_max, pages=eat_pages)
+                db.reconnect_db()
+                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
+                    eat_tenders, f"eat:{keyword}", dry_run, seen_this_run,
+                )
+                saved += phase_saved
+                unique_saved += phase_unique
+                primary_candidates += phase_candidates
+                db.log_run(phase_mode, phase_started_at, found=len(eat_tenders), processed=phase_saved, notified=0, errors="")
+            except Exception as exc:
+                msg = f"Ошибка ЕАТ-поиска по '{keyword}': {exc}"
+                logger.error(msg)
+                errors.append(msg)
+                continue
+
+    # ── Канал 6: Tenderplan ───────────────────────────────────────────────────
     if use_tenderplan:
         phase_started_at = datetime.now().isoformat(timespec="seconds")
         phase_mode = "stage1:tenderplan"
@@ -532,7 +597,7 @@ def run_redocs(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
         pnum = tender.get("purchase_number", "")
         try:
             docs_dir = Path(str(tender.get("documents_dir") or ""))
-            files = sorted(
+            files = prioritize_document_files(
                 p for p in docs_dir.iterdir()
                 if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
             ) if docs_dir.is_dir() else []
@@ -693,6 +758,7 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
                     files = [path for path in reported_files if path.is_file()]
                 logger.info("%s: реально скачано документов %d", pnum, len(files))
                 docs_saved += len(files)
+                files = prioritize_document_files(files)
                 document_text = collect_document_text(files, config.MAX_DOCUMENT_TEXT_CHARS)
                 if document_text.strip():
                     docs_with_text += 1
@@ -738,6 +804,7 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
                         )
                     if tp_files:
                         docs_saved += len(tp_files)
+                        tp_files = prioritize_document_files(tp_files)
                         # Не доверяем готовому text без очистки; если он пуст, читаем реальные файлы.
                         document_text = str(tp_docs.get("text", "") or "").replace("\x00", "")
                         if not document_text.strip():
@@ -1144,6 +1211,12 @@ def main() -> None:
     config.BACKFILL_SEARCH_PAGES        = config.get_runtime("BACKFILL_SEARCH_PAGES",        config.BACKFILL_SEARCH_PAGES)
     config.SOURCE_B2B_ENABLED           = config.get_runtime("SOURCE_B2B_ENABLED",           config.SOURCE_B2B_ENABLED)
     config.B2B_SEARCH_PAGES             = config.get_runtime("B2B_SEARCH_PAGES",             config.B2B_SEARCH_PAGES)
+    config.SOURCE_SPB_ENABLED           = config.get_runtime("SOURCE_SPB_ENABLED",           config.SOURCE_SPB_ENABLED)
+    config.SPB_SEARCH_PAGES             = config.get_runtime("SPB_SEARCH_PAGES",             config.SPB_SEARCH_PAGES)
+    config.SPB_SEARCH_KEYWORDS          = config.get_runtime("SPB_SEARCH_KEYWORDS",          config.SPB_SEARCH_KEYWORDS)
+    config.SOURCE_EAT_ENABLED           = config.get_runtime("SOURCE_EAT_ENABLED",           config.SOURCE_EAT_ENABLED)
+    config.EAT_SEARCH_PAGES             = config.get_runtime("EAT_SEARCH_PAGES",             config.EAT_SEARCH_PAGES)
+    config.EAT_SEARCH_KEYWORDS          = config.get_runtime("EAT_SEARCH_KEYWORDS",          config.EAT_SEARCH_KEYWORDS)
     config.SOURCE_TENDERPLAN_ENABLED    = config.get_runtime("SOURCE_TENDERPLAN_ENABLED",    config.SOURCE_TENDERPLAN_ENABLED)
     config.TENDERPLAN_LIST_PARAMS       = config.get_runtime("TENDERPLAN_LIST_PARAMS",       config.TENDERPLAN_LIST_PARAMS)
     # LLM-настройки (провайдер/модели/триаж) — тоже из БД с откатом на env.

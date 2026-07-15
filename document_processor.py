@@ -422,6 +422,22 @@ def _extract_zip(path: Path) -> str:
     return "\n".join(parts)
 
 
+def prioritize_document_files(files: Iterable[Path | str]) -> list[Path]:
+    """Сортирует файлы закупки: ТЗ/описание объекта — вперёд, контракт/НМЦК — в конец.
+
+    Порядок склейки критичен: collect_document_text и все дальнейшие обрезки
+    (excerpt 4000 симв. в save_detail, LLM_TEXT_CHARS в analyze_tender) режут
+    текст с хвоста, поэтому при алфавитном порядке «Обоснование НМЦК.docx»
+    вытесняло собственно техзадание.
+    """
+    paths = [Path(p) for p in files or []]
+    return sorted(
+        paths,
+        key=lambda p: (_work_scope_doc_score(p), p.stat().st_size if p.is_file() else 0),
+        reverse=True,
+    )
+
+
 def collect_document_text(files: Iterable[Path], max_chars: int | None = None) -> str:
     limit = max_chars or config.MAX_DOCUMENT_TEXT_CHARS
     chunks = []

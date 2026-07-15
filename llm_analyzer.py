@@ -220,7 +220,9 @@ def triage_tender(tender: dict) -> Optional[dict]:
             text=text or "(текст не получен)",
         ),
         model=llm_provider.triage_model(),
-        max_tokens=300,
+        # Запас под reasoning-модели (tencent/hy3 и т.п.): они тратят ~1000+ токенов
+        # на размышление ДО ответа; сам JSON-вердикт занимает <150 токенов.
+        max_tokens=2000,
         temperature=0.0,
         json_mode=True,
     )

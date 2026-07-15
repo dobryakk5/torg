@@ -319,6 +319,26 @@ OKPD2_SEARCH_ENABLED = os.getenv("OKPD2_SEARCH_ENABLED", "0") != "0"
 SOURCE_B2B_ENABLED = os.getenv("SOURCE_B2B_ENABLED", "0") != "0"
 B2B_SEARCH_PAGES   = int(os.getenv("B2B_SEARCH_PAGES", "1"))
 
+# Электронный магазин СПб (estore.gz-spb.ru) — закупки малого объёма.
+# Ключевые слова: SPB_SEARCH_KEYWORDS (JSON-массив или через запятую в env),
+# пусто → используются общие SEARCH_KEYWORDS. У витрины полнотекстовый поиск
+# по точной фразе, поэтому сюда лучше короткие слова («сайт», «1С», «сервер»).
+SOURCE_SPB_ENABLED = os.getenv("SOURCE_SPB_ENABLED", "0") != "0"
+SPB_SEARCH_PAGES   = int(os.getenv("SPB_SEARCH_PAGES", "2"))
+SPB_SEARCH_KEYWORDS = [
+    x.strip() for x in os.getenv("SPB_SEARCH_KEYWORDS", "").split(",") if x.strip()
+]
+
+# ЕАТ «Берёзка» (agregatoreat.ru) — федеральные закупки малого объёма.
+# API анти-бот пропускает российские IP; при капче задай EAT_COOKIE (см. sources/eat.py).
+# Ключевые слова: EAT_SEARCH_KEYWORDS, пусто → SPB_SEARCH_KEYWORDS → SEARCH_KEYWORDS.
+SOURCE_EAT_ENABLED = os.getenv("SOURCE_EAT_ENABLED", "0") != "0"
+EAT_SEARCH_PAGES   = int(os.getenv("EAT_SEARCH_PAGES", "1"))
+EAT_SEARCH_KEYWORDS = [
+    x.strip() for x in os.getenv("EAT_SEARCH_KEYWORDS", "").split(",") if x.strip()
+]
+EAT_COOKIE = os.getenv("EAT_COOKIE", "")
+
 OKPD2_CODES = [
     "62.01",    # разработка ПО
     "62.02",    # консультирование в ИТ
