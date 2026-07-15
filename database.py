@@ -1313,13 +1313,63 @@ def get_detail_candidates(limit: int, min_primary_score: int) -> list[dict[str, 
                        END
                    ) >= NOW()
                )
-             ORDER BY needs_detail_refresh DESC, primary_score DESC, price DESC NULLS LAST
+             ORDER BY needs_detail_refresh DESC,
+                      -- ближайший дедлайн первым: короткие закупки (ЗМО, котировки)
+                      -- должны успевать получить разбор до конца подачи заявок
+                      CASE
+                          WHEN deadline ~ '^\\d{2}\\.\\d{2}\\.\\d{4}\\s+\\d{2}:\\d{2}'
+                          THEN to_timestamp(substring(deadline from 1 for 16), 'DD.MM.YYYY HH24:MI')
+                          WHEN deadline ~ '^\\d{2}\\.\\d{2}\\.\\d{4}'
+                          THEN to_timestamp(substring(deadline from 1 for 10), 'DD.MM.YYYY')
+                          ELSE NULL
+                      END ASC NULLS LAST,
+                      primary_score DESC, price DESC NULLS LAST
              LIMIT %s
             """,
             (min_primary_score, limit),
         )
         rows = cur.fetchall()
     return _rows_to_dicts(rows)
+
+
+def get_redocs_candidates(limit: int | None = None) -> list[dict[str, Any]]:
+    """Лоты с уже скачанными документами (documents_dir) для офлайн-переобработки.
+
+    Сортировка: активные (дедлайн впереди) первыми, внутри — ближайший дедлайн,
+    затем более высокий первичный скор. Просроченные идут в конце (их текст
+    всё равно полезен для аналитики и обучения фильтров).
+    """
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        sql = """
+            SELECT * FROM (
+                SELECT t.*,
+                       CASE
+                           WHEN t.deadline ~ '^\\d{2}\\.\\d{2}\\.\\d{4}\\s+\\d{2}:\\d{2}'
+                           THEN to_timestamp(substring(t.deadline from 1 for 16), 'DD.MM.YYYY HH24:MI')
+                           WHEN t.deadline ~ '^\\d{2}\\.\\d{2}\\.\\d{4}'
+                           THEN to_timestamp(substring(t.deadline from 1 for 10), 'DD.MM.YYYY')
+                           ELSE NULL
+                       END AS _deadline_ts
+                  FROM tenders t
+                 WHERE t.documents_dir IS NOT NULL AND t.documents_dir <> ''
+            ) x
+            ORDER BY (_deadline_ts IS NULL) ASC,
+                     (_deadline_ts < NOW()) ASC,
+                     _deadline_ts ASC,
+                     primary_score DESC NULLS LAST
+        """
+        if limit:
+            sql += " LIMIT %s"
+            cur.execute(sql, (limit,))
+        else:
+            cur.execute(sql)
+        rows = cur.fetchall()
+    result = _rows_to_dicts(rows)
+    for row in result:
+        row.pop("_deadline_ts", None)
+    return result
+
 
 def get_triage_candidates(limit: int, only_new: bool = True) -> list[dict[str, Any]]:
     """Карточки для LLM-триажа Stage 1: ещё не размеченные, не явный мусор.
@@ -2469,6 +2519,39 @@ def upsert_settings_bulk(data: dict[str, str]) -> None:
     """Сохраняет несколько настроек за один вызов."""
     for key, value in data.items():
         set_setting(key, value)
+
+
+def increment_llm_daily_requests(date_key: str) -> int:
+    """Атомарно увеличивает счётчик LLM-запросов к OpenRouter за день и возвращает новое значение.
+
+    Хранится в settings под ключом LLM_REQUESTS_<YYYY-MM-DD> — так дневной
+    лимит (config.LLM_DAILY_REQUEST_LIMIT) переживает рестарты и общий для
+    всех процессов (main.py, telegram_decisions, analytics), бьющих в одну БД.
+    """
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO settings (key, value, description)
+            VALUES (%s, '1', 'Счётчик LLM-запросов OpenRouter за день (авто)')
+            ON CONFLICT (key) DO UPDATE SET
+                value      = (COALESCE(NULLIF(settings.value, '')::int, 0) + 1)::text,
+                updated_at = NOW()
+            RETURNING value
+            """,
+            (f"LLM_REQUESTS_{date_key}",),
+        )
+        row = cur.fetchone()
+    return int(row[0]) if row else 1
+
+
+def get_llm_daily_requests(date_key: str) -> int:
+    """Текущее значение счётчика LLM-запросов за день (без инкремента)."""
+    val = get_setting(f"LLM_REQUESTS_{date_key}")
+    try:
+        return int(val) if val else 0
+    except (TypeError, ValueError):
+        return 0
 
 
 # ══════════════════════════════════════════════════════════════════════════════

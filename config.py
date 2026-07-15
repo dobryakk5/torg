@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -94,6 +95,16 @@ LLM_TRIAGE_ENABLED    = os.getenv("LLM_TRIAGE_ENABLED", "1") != "0"
 LLM_TRIAGE_MAX_CARDS  = int(os.getenv("LLM_TRIAGE_MAX_CARDS", "300"))
 LLM_TRIAGE_TEXT_CHARS = int(os.getenv("LLM_TRIAGE_TEXT_CHARS", "2500"))
 LLM_HTTP_TIMEOUT      = int(os.getenv("LLM_HTTP_TIMEOUT", "60"))
+# Резервные модели OpenRouter — пробуются по очереди, если основная (triage/deep)
+# отдала 429/5xx/пустой ответ после ретраев. Особенно важно для бесплатных
+# (:free) моделей — у них плавающие лимиты и они периодически недоступны.
+OPENROUTER_FALLBACK_MODELS = [
+    m.strip() for m in os.getenv("OPENROUTER_FALLBACK_MODELS", "").split(",") if m.strip()
+]
+# Дневной лимит запросов к OpenRouter (общий на триаж+анализ). Бесплатные модели:
+# ~50/день без пополнения баланса, 1000/день при балансе от $10. Защита от того,
+# чтобы фоновый цикл впустую сжигал квоту, когда она уже исчерпана.
+LLM_DAILY_REQUEST_LIMIT = int(os.getenv("LLM_DAILY_REQUEST_LIMIT", "900"))
 
 # --- Диапазон цен (₽) ---
 # PRICE_MIN/PRICE_MAX — границы ПОИСКА в ЕИС (что вообще скачиваем).
@@ -150,6 +161,13 @@ MAX_DOCUMENT_TEXT_CHARS   = int(os.getenv("MAX_DOCUMENT_TEXT_CHARS",   "30000"))
 LLM_TEXT_CHARS            = int(os.getenv("LLM_TEXT_CHARS",            "12000"))
 
 # --- TLS/SSL для ЕИС ---
+# На macOS по умолчанию используем Keychain через пакет truststore.
+EIS_USE_SYSTEM_TRUSTSTORE = env_bool(
+    "EIS_USE_SYSTEM_TRUSTSTORE",
+    sys.platform == "darwin",
+)
+EIS_NATIVE_TRUSTSTORE_ACTIVE = env_bool("EIS_NATIVE_TRUSTSTORE_ACTIVE", False)
+
 def _default_eis_ca_bundle() -> str:
     """Возвращает системный CA bundle, если он доступен.
 

@@ -14,10 +14,11 @@ from datetime import datetime
 from typing import Any, Optional
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
+import config
+from tls_bootstrap import NATIVE_TRUSTSTORE_ACTIVE
+
 import requests
 from bs4 import BeautifulSoup
-
-import config
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,10 @@ def _request_verify():
     if not getattr(config, "EIS_VERIFY_SSL", True):
         logger.warning("Проверка SSL ЕИС отключена через EIS_VERIFY_SSL=0")
         return False
+    if NATIVE_TRUSTSTORE_ACTIVE:
+        # truststore уже заменил ssl.SSLContext на системный. Передаём True,
+        # чтобы Requests не подменял native store отдельным PEM-файлом.
+        return True
     custom_bundle = str(getattr(config, "EIS_CA_BUNDLE", "") or "").strip()
     if custom_bundle:
         return custom_bundle

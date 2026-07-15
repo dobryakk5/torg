@@ -24,6 +24,9 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Должно выполняться до импорта requests/urllib3 из модулей проекта.
+from tls_bootstrap import NATIVE_TRUSTSTORE_ACTIVE
+
 try:
     import schedule
 except ImportError:  # schedule нужен только для daemon-режима
@@ -503,6 +506,115 @@ def run_rescore(dry_run: bool = False, limit: int | None = None) -> tuple[int, i
     return rescored, changed
 
 
+def run_redocs(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
+    """Офлайн-переобработка уже скачанных документов с диска (без сети и LLM).
+
+    Перечитывает файлы из documents_dir, пересобирает текст для скоринга
+    (документы — В НАЧАЛО, чтобы обрезки excerpt/LLM-промпта не съедали ТЗ),
+    переизвлекает финусловия/спецификации и пересчитывает Stage 2-фильтры.
+    Нужен после фикса порядка scoring_text: у ранее обработанных лотов
+    document_text_excerpt был забит шаблонной шапкой страницы ЕИС вместо ТЗ.
+    """
+    started_at = datetime.now().isoformat(timespec="seconds")
+    logger.info("═" * 50)
+    logger.info("Переобработка скачанных документов с диска (без сети/LLM)")
+
+    from document_processor import SUPPORTED_EXTENSIONS
+
+    tenders = db.get_redocs_candidates(limit=limit)
+    logger.info("Лотов с документами на диске: %d", len(tenders))
+
+    processed = 0
+    with_text = 0
+    errors: list[str] = []
+
+    for tender in tenders:
+        pnum = tender.get("purchase_number", "")
+        try:
+            docs_dir = Path(str(tender.get("documents_dir") or ""))
+            files = sorted(
+                p for p in docs_dir.iterdir()
+                if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
+            ) if docs_dir.is_dir() else []
+            if not files:
+                continue
+
+            # Сохраняем влияние ранее полученного LLM-триажа на Ф1 (как в rescore).
+            if tender.get("llm_triage_verdict"):
+                tender["llm_triage"] = {
+                    "verdict":  tender.get("llm_triage_verdict"),
+                    "fit":      tender.get("llm_triage_fit"),
+                    "resale":   tender.get("llm_triage_resale"),
+                    "category": tender.get("llm_triage_category"),
+                    "reason":   tender.get("llm_triage_reason"),
+                }
+
+            document_text = collect_document_text(files, config.MAX_DOCUMENT_TEXT_CHARS)
+            if document_text.strip():
+                with_text += 1
+
+            # Старый excerpt содержит текст страницы ЕИС (полезен для финусловий),
+            # но при повторном прогоне он уже начинается с текста документов —
+            # тогда не дублируем.
+            old_excerpt = str(tender.get("document_text_excerpt") or "")
+            if old_excerpt and document_text and old_excerpt[:200] == document_text[:200]:
+                old_excerpt = ""
+            scoring_text = "\n".join(filter(None, [
+                document_text,
+                tender.get("primary_text") or "",
+                old_excerpt,
+            ]))
+
+            terms = extract_financial_terms(scoring_text)
+            for key, value in terms.items():
+                if value not in (None, ""):
+                    tender[key] = value
+
+            tender["document_count"] = len(files)
+            tender["documents_hash"] = hash_files(files)
+
+            if not dry_run:
+                spec = extract_object_description_items(files)
+                if spec.get("items") and not db.list_tender_items(pnum):
+                    db.replace_tender_items(pnum, spec["items"])
+                work_scope = extract_work_scope_from_files(files)
+                if work_scope:
+                    details = db.get_tender_details(pnum) or {}
+                    details["work_scope"] = work_scope
+                    db.save_tender_details(pnum, details)
+                    tender["details_json"] = details
+
+            filter_result = run_stage2_filters(tender, scoring_text)
+            tender["filter_decision"] = filter_result.decision
+            tender["filter_stop"] = " | ".join(filter_result.stop_factors)
+
+            if dry_run:
+                print(
+                    f"{pnum}: {filter_result.total_score}/{filter_result.decision} "
+                    f"docs={len(files)} text={len(document_text)} "
+                    f"{str(tender.get('title', ''))[:60]}"
+                )
+            else:
+                db.save_detail(
+                    tender,
+                    filter_result.total_score,
+                    filter_result.to_reasons(),
+                    llm_analysis=tender.get("llm_analysis") or "",
+                    document_text=scoring_text,
+                )
+                db.save_filter_result(filter_result, stage="stage2")
+            processed += 1
+        except Exception as exc:
+            msg = f"Redocs {pnum}: {type(exc).__name__}: {exc}"
+            logger.warning(msg)
+            errors.append(msg)
+
+    logger.info("Переобработка завершена: обработано %d, с текстом ТЗ %d", processed, with_text)
+    if not dry_run:
+        db.log_run("redocs", started_at, found=len(tenders), processed=processed, notified=0, errors="; ".join(errors))
+    return processed, with_text
+
+
 def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
     """Детальный анализ ТЗ/документов только по кандидатам этапа 1.
 
@@ -597,7 +709,11 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
                     db.save_tender_details(pnum, details)
                     tender["details_json"] = details
                 full_text_for_terms += "\n" + document_text
-                scoring_text = "\n".join([scoring_text, document_text])
+                # document_text (реальное ТЗ) — в начало: и document_text_excerpt (обрезка на
+                # 4000 симв. в db.save_detail), и промпт LLM (обрезка на LLM_TEXT_CHARS в
+                # analyze_tender) режут текст ХВОСТОМ, а без этого самое ценное содержимое
+                # документов вытеснялось шаблонной шапкой карточки ЕИС.
+                scoring_text = "\n".join([document_text, scoring_text])
 
             # Tenderplan API: используем только физически сохранённые файлы.
             if is_tenderplan and config.DOWNLOAD_DOCUMENTS and not document_text:
@@ -641,7 +757,7 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
                             db.save_tender_details(pnum, details)
                             tender["details_json"] = details
                         full_text_for_terms += "\n" + document_text
-                        scoring_text = "\n".join([scoring_text, document_text])
+                        scoring_text = "\n".join([document_text, scoring_text])
                         logger.info("%s: Tenderplan реально скачано документов %d", pnum, len(tp_files))
                     else:
                         tender["document_count"] = 0
@@ -990,6 +1106,7 @@ def main() -> None:
     parser.add_argument("--stage1", action="store_true", help="Только поиск карточек и первичный скоринг")
     parser.add_argument("--triage", action="store_true", help="Только LLM-триаж карточек (Stage 1.5)")
     parser.add_argument("--rescore", action="store_true", help="Разовый пересчёт скоринга всех лотов (без сети/LLM)")
+    parser.add_argument("--redocs", action="store_true", help="Переобработка уже скачанных документов с диска (без сети/LLM)")
     parser.add_argument("--stage2", action="store_true", help="Только детальный анализ кандидатов")
     parser.add_argument("--stage3", action="store_true", help="После дедлайна подтянуть результаты/победителей")
     parser.add_argument("--results", action="store_true", help="Алиас для --stage3")
@@ -1020,6 +1137,7 @@ def main() -> None:
     config.MIN_PRIMARY_SCORE_FOR_DETAIL = config.get_runtime("MIN_PRIMARY_SCORE_FOR_DETAIL", config.MIN_PRIMARY_SCORE_FOR_DETAIL)
     config.MIN_DETAILED_SCORE_FOR_NOTIFY= config.get_runtime("MIN_DETAILED_SCORE_FOR_NOTIFY",config.MIN_DETAILED_SCORE_FOR_NOTIFY)
     config.DOCUMENT_DOWNLOAD_MIN_SCORE  = config.get_runtime("DOCUMENT_DOWNLOAD_MIN_SCORE",  config.DOCUMENT_DOWNLOAD_MIN_SCORE)
+    config.STAGE2_LIMIT                 = config.get_runtime("STAGE2_LIMIT",                 config.STAGE2_LIMIT)
     config.SEARCH_KEYWORDS              = config.get_runtime("SEARCH_KEYWORDS",              config.SEARCH_KEYWORDS)
     config.OKPD2_SEARCH_ENABLED         = config.get_runtime("OKPD2_SEARCH_ENABLED",         config.OKPD2_SEARCH_ENABLED)
     config.OKPD2_CODES                  = config.get_runtime("OKPD2_CODES",                  config.OKPD2_CODES)
@@ -1068,6 +1186,8 @@ def main() -> None:
         run_triage(dry_run=args.test, limit=args.limit)
     elif args.rescore:
         run_rescore(dry_run=args.test, limit=args.limit)
+    elif args.redocs:
+        run_redocs(dry_run=args.test, limit=args.limit)
     elif args.stage2:
         if not _stage_completed_today("stage2", args.skip_completed_today):
             run_stage2(dry_run=args.test, limit=args.limit)

@@ -33,6 +33,9 @@ from typing import Any, Optional
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 import zipfile
 
+# Включаем системное TLS-хранилище до сетевых библиотек фоновых задач.
+from tls_bootstrap import NATIVE_TRUSTSTORE_ACTIVE
+
 from fastapi import FastAPI, Request, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
@@ -922,6 +925,8 @@ async def api_save_settings(request: Request):
         "BACKFILL_SEARCH_PAGES",
         "LLM_PROVIDER", "OPENROUTER_TRIAGE_MODEL", "OPENROUTER_DEEP_MODEL",
         "LLM_TRIAGE_ENABLED",
+        "OPENROUTER_FALLBACK_MODELS", "LLM_DAILY_REQUEST_LIMIT",
+        "STAGE2_LIMIT",
     }
     saved = {}
     for key, value in body.items():

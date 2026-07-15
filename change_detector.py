@@ -23,6 +23,8 @@ import time
 from datetime import datetime
 from typing import Optional
 
+from tls_bootstrap import NATIVE_TRUSTSTORE_ACTIVE
+
 import requests
 from bs4 import BeautifulSoup
 

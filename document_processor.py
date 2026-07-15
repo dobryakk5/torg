@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import urljoin, urlparse
 
+from tls_bootstrap import NATIVE_TRUSTSTORE_ACTIVE
+
 import requests
 from bs4 import BeautifulSoup
 
@@ -114,16 +116,40 @@ def _filename_from_label(label: str) -> str:
     return ""
 
 
+def _repair_mojibake(text: str) -> str:
+    """Чинит UTF-8 текст, ошибочно раздекодированный как Latin-1.
+
+    HTTP-заголовки формально Latin-1 (RFC 7230), но ЕИС часто шлёт filename="..."
+    сырыми UTF-8-байтами без RFC 5987-кодирования; requests декодирует их как
+    Latin-1, и кириллица превращается в "ÐÐÐ...". Сначала пробуем строгую
+    перекодировку (полный результат, когда все байты валидны), при неудаче —
+    мягкую (errors="ignore": теряем один-два "битых" байта, но получаем
+    читаемое имя вместо мойибаке целиком). Если и это не помогло — исходная строка.
+    """
+    try:
+        return text.encode("latin-1").decode("utf-8")
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        pass
+    try:
+        repaired = text.encode("latin-1", errors="ignore").decode("utf-8", errors="ignore")
+        return repaired if repaired.strip() else text
+    except Exception:
+        return text
+
+
 def _guess_filename(response: requests.Response, url: str, index: int) -> str:
     cd = response.headers.get("content-disposition", "")
     match = re.search(r"filename\*=UTF-8''([^;]+)|filename=\"?([^\";]+)", cd, re.I)
     if match:
-        raw = match.group(1) or match.group(2)
-        try:
-            from urllib.parse import unquote
-            return safe_filename(unquote(raw))
-        except Exception:
-            return safe_filename(raw)
+        star, plain = match.group(1), match.group(2)
+        if star:
+            try:
+                from urllib.parse import unquote
+                return safe_filename(unquote(star))
+            except Exception:
+                pass
+        if plain:
+            return safe_filename(_repair_mojibake(plain))
     path_name = Path(urlparse(url).path).name
     if path_name and "." in path_name:
         return safe_filename(path_name)
@@ -969,11 +995,7 @@ def _norm_unit(raw: str) -> str:
 
 def _display_filename(path: Path) -> str:
     """Возвращает читаемое имя, если ЕИС-скачивание сохранило mojibake."""
-    name = path.name
-    try:
-        return name.encode("latin1").decode("utf-8")
-    except Exception:
-        return name
+    return _repair_mojibake(path.name)
 
 
 def _looks_like_object_description(path: Path) -> bool:

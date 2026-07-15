@@ -12,6 +12,8 @@ from __future__ import annotations
 import logging
 import time
 
+from tls_bootstrap import NATIVE_TRUSTSTORE_ACTIVE
+
 import requests
 
 import config

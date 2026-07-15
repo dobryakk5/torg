@@ -4,12 +4,24 @@
 ходят к модели через одну функцию `complete()`, а провайдер/модель выбираются
 настройками (config.LLM_PROVIDER + слаги моделей). OpenRouter — OpenAI-совместимый
 HTTP API, поэтому ходим обычным requests, без лишних SDK.
+
+Для OpenRouter `complete()` дополнительно:
+  - ретраит 429/5xx с backoff (уважая Retry-After);
+  - при отказе основной модели пробует по очереди резервные
+    (config.OPENROUTER_FALLBACK_MODELS) — актуально для бесплатных (:free)
+    моделей с плавающими лимитами;
+  - если модель не поддерживает response_format=json_object (HTTP 400),
+    повторяет запрос без него;
+  - уважает суточный лимит запросов (config.LLM_DAILY_REQUEST_LIMIT), общий
+    для всех процессов через таблицу settings (database.increment_llm_daily_requests).
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import time
+from datetime import date
 from typing import Optional
 
 import requests
@@ -17,6 +29,9 @@ import requests
 import config
 
 logger = logging.getLogger(__name__)
+
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+_RETRY_BACKOFF_SECONDS = (5, 20, 60)
 
 
 def provider() -> str:
@@ -42,6 +57,49 @@ def deep_model() -> str:
     return getattr(config, "OPENROUTER_DEEP_MODEL", "openai/gpt-4o")
 
 
+def _fallback_models() -> list[str]:
+    """Резервные модели OpenRouter из настроек (runtime → env → default)."""
+    if provider() == "anthropic":
+        return []
+    try:
+        models = config.get_runtime("OPENROUTER_FALLBACK_MODELS", config.OPENROUTER_FALLBACK_MODELS)
+    except Exception:
+        models = config.OPENROUTER_FALLBACK_MODELS
+    return [str(m).strip() for m in (models or []) if str(m).strip()]
+
+
+def _daily_limit() -> int:
+    try:
+        return int(config.get_runtime("LLM_DAILY_REQUEST_LIMIT", config.LLM_DAILY_REQUEST_LIMIT))
+    except Exception:
+        return config.LLM_DAILY_REQUEST_LIMIT
+
+
+def _daily_key() -> str:
+    return date.today().isoformat()
+
+
+def daily_limit_reached() -> bool:
+    """True, если суточный лимит запросов к LLM уже исчерпан (0/отрицательный = без лимита)."""
+    limit = _daily_limit()
+    if limit <= 0:
+        return False
+    try:
+        from database import get_llm_daily_requests
+        return get_llm_daily_requests(_daily_key()) >= limit
+    except Exception:
+        # БД недоступна — не блокируем LLM-шаги из-за отказа самого лимитера.
+        return False
+
+
+def _bump_daily_count() -> int:
+    try:
+        from database import increment_llm_daily_requests
+        return increment_llm_daily_requests(_daily_key())
+    except Exception:
+        return 0
+
+
 def complete(
     system: str,
     user: str,
@@ -50,22 +108,104 @@ def complete(
     temperature: float = 0.2,
     json_mode: bool = False,
 ) -> Optional[str]:
-    """Один запрос к LLM. Возвращает текст ответа или None при ошибке/без ключа."""
+    """Запрос к LLM. Возвращает текст ответа или None при ошибке/без ключа/лимите.
+
+    Для OpenRouter при отказе `model` (после внутренних ретраев на 429/5xx)
+    пробует по очереди модели из OPENROUTER_FALLBACK_MODELS.
+    """
     if not is_configured():
         logger.info("LLM не сконфигурирован (нет ключа для провайдера %s) — шаг пропущен", provider())
         return None
-    try:
-        if provider() == "anthropic":
-            return _complete_anthropic(system, user, model, max_tokens, temperature)
-        return _complete_openrouter(system, user, model, max_tokens, temperature, json_mode)
-    except Exception as exc:
-        logger.error("Ошибка LLM (%s, %s): %s", provider(), model, exc)
+
+    if daily_limit_reached():
+        logger.warning(
+            "LLM: суточный лимит запросов (%d) уже исчерпан — пропускаю до завтра", _daily_limit(),
+        )
         return None
+
+    models_to_try = [model] + (
+        [m for m in _fallback_models() if m != model] if provider() != "anthropic" else []
+    )
+
+    for idx, candidate_model in enumerate(models_to_try):
+        if idx > 0 and daily_limit_reached():
+            logger.warning("LLM: суточный лимит исчерпан во время фолбэка на %s — прекращаю", candidate_model)
+            return None
+        try:
+            if provider() == "anthropic":
+                text = _complete_anthropic(system, user, candidate_model, max_tokens, temperature)
+            else:
+                text = _complete_openrouter(system, user, candidate_model, max_tokens, temperature, json_mode)
+        except Exception as exc:
+            logger.error("Ошибка LLM (%s, %s): %s", provider(), candidate_model, exc)
+            text = None
+        if text:
+            if idx > 0:
+                logger.info("LLM: ответила резервная модель %s (после %d неудачных)", candidate_model, idx)
+            return text
+        if idx < len(models_to_try) - 1:
+            logger.warning("LLM: модель %s не дала результата, переключаюсь на резервную", candidate_model)
+    return None
 
 
 def _complete_openrouter(
     system: str, user: str, model: str, max_tokens: int, temperature: float, json_mode: bool
 ) -> Optional[str]:
+    """Один вызов OpenRouter для конкретной модели: ретраи 429/5xx + фолбэк без json_mode."""
+    use_json_mode = json_mode
+    max_attempts = len(_RETRY_BACKOFF_SECONDS) + 1
+
+    for attempt in range(1, max_attempts + 1):
+        _bump_daily_count()
+        try:
+            resp = _openrouter_post(system, user, model, max_tokens, temperature, use_json_mode)
+        except requests.RequestException as exc:
+            logger.warning("OpenRouter %s: сетевая ошибка (%s), попытка %d/%d", model, exc, attempt, max_attempts)
+            if attempt < max_attempts:
+                time.sleep(_RETRY_BACKOFF_SECONDS[attempt - 1])
+                continue
+            return None
+
+        if resp.status_code == 200:
+            data = resp.json()
+            choices = data.get("choices") or []
+            if not choices:
+                logger.error("OpenRouter %s: пустой ответ: %s", model, str(data)[:300])
+                return None
+            # .get("content", "") НЕ подставляет дефолт, если ключ есть, но равен null
+            # (некоторые модели отдают content:null вместе с reasoning-полем) — отсюда `or ""`.
+            content = ((choices[0].get("message") or {}).get("content") or "").strip()
+            return content or None
+
+        if resp.status_code == 400 and use_json_mode:
+            logger.info("OpenRouter %s: HTTP 400 с response_format=json_object, повторяю без него", model)
+            use_json_mode = False
+            continue
+
+        if resp.status_code in _RETRYABLE_STATUS and attempt < max_attempts:
+            wait = _RETRY_BACKOFF_SECONDS[attempt - 1]
+            retry_after = resp.headers.get("Retry-After")
+            if retry_after:
+                try:
+                    wait = max(wait, float(retry_after))
+                except ValueError:
+                    pass
+            logger.warning(
+                "OpenRouter %s: HTTP %s, повтор через %.0fс (попытка %d/%d)",
+                model, resp.status_code, wait, attempt, max_attempts,
+            )
+            time.sleep(wait)
+            continue
+
+        logger.error("OpenRouter %s: HTTP %s: %s", model, resp.status_code, resp.text[:300])
+        return None
+
+    return None
+
+
+def _openrouter_post(
+    system: str, user: str, model: str, max_tokens: int, temperature: float, json_mode: bool
+) -> requests.Response:
     base = getattr(config, "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
     payload: dict = {
         "model": model,
@@ -78,7 +218,7 @@ def _complete_openrouter(
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
-    resp = requests.post(
+    return requests.post(
         f"{base}/chat/completions",
         headers={
             "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
@@ -89,15 +229,6 @@ def _complete_openrouter(
         data=json.dumps(payload),
         timeout=getattr(config, "LLM_HTTP_TIMEOUT", 60),
     )
-    if resp.status_code != 200:
-        logger.error("OpenRouter %s: %s", resp.status_code, resp.text[:300])
-        return None
-    data = resp.json()
-    choices = data.get("choices") or []
-    if not choices:
-        logger.error("OpenRouter: пустой ответ: %s", str(data)[:300])
-        return None
-    return (choices[0].get("message") or {}).get("content", "").strip() or None
 
 
 def _complete_anthropic(
