@@ -345,6 +345,11 @@ def run_filters(tender: dict[str, Any], text: str = "", stage: str = "stage2") -
     except Exception:
         pass
 
+    # Мягкая интеграция поисковых профилей (search_profiles.py, Stage 1): скор
+    # профиля с лучшим совпадением корректирует Ф1 на ±1 (см. docs/tz-search-profiles.md, §7.3).
+    if tender.get("matched_profiles"):
+        filters[0] = _apply_profile_signal(filters[0], tender)
+
     # Мягкая интеграция LLM-триажа (Stage 1): вердикт корректирует ТОЛЬКО Ф1
     # (профиль) на ±1–2 балла. Итоговое решение по-прежнему считается по фильтрам.
     triage = tender.get("llm_triage")
@@ -948,6 +953,48 @@ def detect_flags(text: str) -> dict:
         "remote_possible": remote,
         "onsite_required": onsite,
     }
+
+
+def _apply_profile_signal(profile_filter: "FilterScore", tender: dict[str, Any]) -> "FilterScore":
+    """Мягкая корректировка Ф1 по скору поисковых профилей (search_profiles.py).
+
+    Профиль явно перекрыл порог (скор ≥ min_score+4) → +1. Тендер прошёл
+    только за счёт того, что сработали минус-фразы со штрафом (был хотя бы
+    один отрицательный хит) → -1. Иначе — без изменений.
+    """
+    matches = tender.get("matched_profiles") or []
+    if not isinstance(matches, list) or not matches:
+        return profile_filter
+    try:
+        best = max((m for m in matches if isinstance(m, dict)), key=lambda m: m.get("score", 0))
+    except ValueError:
+        return profile_filter
+
+    score = best.get("score")
+    min_score = best.get("min_score")
+    if not isinstance(score, (int, float)) or not isinstance(min_score, (int, float)):
+        return profile_filter
+
+    hits = best.get("phrases") or []
+    had_penalty = any(isinstance(h, dict) and (h.get("weight") or 0) < 0 for h in hits)
+
+    delta = 0
+    if score >= min_score + 4:
+        delta = 1
+    elif had_penalty:
+        delta = -1
+    if delta == 0:
+        return profile_filter
+
+    tag = f"🔎 профиль «{best.get('profile_name', '')}»: скор {score}" + (" (со штрафом)" if had_penalty and delta < 0 else "")
+    new_score = max(1, min(5, profile_filter.score + delta))
+    return FilterScore(
+        profile_filter.number,
+        profile_filter.name,
+        new_score,
+        profile_filter.signals + [tag],
+        stop_factor=profile_filter.stop_factor,
+    )
 
 
 def _apply_triage(profile: "FilterScore", triage: dict) -> "FilterScore":

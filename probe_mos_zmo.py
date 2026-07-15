@@ -146,24 +146,33 @@ def probe_mos() -> None:
     for p in interesting[:25]:
         print(f"    · {p}")
 
-    # Известные кандидаты (публичный список котировочных сессий).
-    # 19000002 — статус «Активна» (проверить по факту), фильтр по названию — nameLike.
-    print("\n  Пробую известные эндпоинты:")
-    try_endpoint(
-        base + "/newapi/api/Auction/GetAuctionListForPublic",
-        bodies=[
-            {"filter": {}, "take": 5, "skip": 0},
-            {
-                "filter": {"nameLike": "сайт", "auctionSpecificFilter": {"stateIdIn": [19000002]}},
-                "take": 5, "skip": 0,
-                "order": [{"field": "relevance", "desc": True}],
-            },
-        ],
-    )
-    try_endpoint(
-        base + "/newapi/api/Need/GetNeedListForPublic",
-        bodies=[{"filter": {}, "take": 5, "skip": 0}],
-    )
+    # v2: в бандле найден /api/Cssp/Purchase/Query — публичный реестр закупок.
+    # Пробуем его на трёх хостах, и как POST-JSON, и как GET с queryDto (известный
+    # формат этого API: queryDto = URL-encoded JSON {"filter":...,"take":...}).
+    print("\n  Пробую известные эндпоинты (v2):")
+    query_dto = {
+        "filter": {"nameLike": "сайт"},
+        "take": 5, "skip": 0, "withCount": True,
+        "order": [{"field": "relevance", "desc": True}],
+    }
+    for host in ("https://api.zakupki.mos.ru", "https://zakupki.mos.ru", "https://old.zakupki.mos.ru"):
+        url = host + "/api/Cssp/Purchase/Query"
+        try_endpoint(
+            url + "?queryDto=" + requests.utils.quote(json.dumps(query_dto, ensure_ascii=False)),
+        )
+        try_endpoint(url, bodies=[query_dto, {"queryDto": query_dto}])
+
+    # Ленивые чанки страницы публичного поиска могут содержать другие Query-пути.
+    print("\n  Ленивые чанки страницы /purchases:")
+    resp2 = _get(base + "/purchases?q=%D1%81%D0%B0%D0%B9%D1%82")
+    if resp2 is not None and resp2.status_code == 200:
+        _save("mos_purchases.html", resp2.text)
+        paths2 = discover_api_paths(base, resp2.text)
+        new = paths2 - paths
+        _save("mos_api_paths_purchases.txt", "\n".join(sorted(paths2)))
+        print(f"  Новых api-путей со страницы поиска: {len(new)}")
+        for p in sorted(new)[:20]:
+            print(f"    · {p}")
 
 
 def probe_mosreg() -> None:
@@ -187,14 +196,36 @@ def probe_mosreg() -> None:
     for p in interesting[:25]:
         print(f"    · {p}")
 
-    # Известные кандидаты (реестр закупок — точный путь уточняется по бандлам выше).
-    print("\n  Пробую известные эндпоинты:")
+    # v2: настоящий API живёт на api.market.mosreg.ru (найден в бандлах).
+    # Проверяем словарь фильтров (работает без авторизации → хост открыт) и
+    # кандидатов на публичный список торгов.
+    api = "https://api.market.mosreg.ru"
+    print("\n  Пробую известные эндпоинты (v2, хост api.market.mosreg.ru):")
+    try_endpoint(api + "/api/Common/TradesFilterContent")
     try_endpoint(
-        base + "/api/Trade/GetTradesForPublicList",
-        bodies=[{"page": 1, "itemsPerPage": 5}, {"take": 5, "skip": 0, "filter": {}}],
+        api + "/api/Trade",
+        bodies=[{"page": 1, "itemsPerPage": 5}],
     )
-    # Реестр закупок часто отдаётся и обычным HTML:
-    try_endpoint(base + "/purchases")
+    for cand in ("/api/Trade/GetTrades", "/api/Trade/Query", "/api/trade/GetTradeListForParticipantOffer"):
+        try_endpoint(
+            api + cand,
+            bodies=[
+                {"page": 1, "itemsPerPage": 5},
+                {"take": 5, "skip": 0, "filter": {}},
+            ],
+        )
+
+    # Ленивые чанки страницы реестра торгов (маршруты бывают /trades или /purchases).
+    for route in ("/trades", "/purchases"):
+        resp2 = _get(base + route)
+        if resp2 is not None and resp2.status_code == 200 and "text/html" in resp2.headers.get("content-type", ""):
+            paths2 = discover_api_paths(base, resp2.text)
+            new = paths2 - paths
+            if new:
+                _save(f"mosreg_api_paths_{route.strip('/')}.txt", "\n".join(sorted(paths2)))
+                print(f"  Новых api-путей со страницы {route}: {len(new)}")
+                for p in sorted(new)[:20]:
+                    print(f"    · {p}")
 
 
 def main() -> None:

@@ -1,13 +1,10 @@
 # Тест Tenderplan API
 
 curl --location --request GET 'https://tenderplan.ru/api/info/firm' \
---header 'Authorization: Bearer 9efc77d4551f2dc030bac6ba95676d989ac8d5ac2b0e0811542ed47922b5cd8ff1e1f3e591992d512a3b4b0c3b380c894c72b3a9aa4e662737419f730356c1db'
-
-
-TOKEN='9efc77d4551f2dc030bac6ba95676d989ac8d5ac2b0e0811542ed47922b5cd8ff1e1f3e591992d512a3b4b0c3b380c894c72b3a9aa4e662737419f730356c1db'
+--header 'Authorization: Bearer '
 
 curl -sS -i \
-  -H "Authorization: Bearer 9efc77d4551f2dc030bac6ba95676d989ac8d5ac2b0e0811542ed47922b5cd8ff1e1f3e591992d512a3b4b0c3b380c894c72b3a9aa4e662737419f730356c1db" \
+  -H "Authorization: Bearer " \
   -H "Accept: application/json" \
   'https://tenderplan.ru/api/info/user'
 

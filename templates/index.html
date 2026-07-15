@@ -581,6 +581,9 @@ tr:hover .fbar-label { color: var(--dim); }
     <a href="/control" class="tab" style="text-decoration:none;opacity:.65;font-size:.65rem">
       ⚙ Управление
     </a>
+    <a href="/profiles" class="tab" style="text-decoration:none;opacity:.65;font-size:.65rem">
+      🔎 Профили
+    </a>
     <a href="/rules" class="tab" style="text-decoration:none;opacity:.65;font-size:.65rem">
       🧮 Правила
     </a>
@@ -645,6 +648,16 @@ tr:hover .fbar-label { color: var(--dim); }
         </select>
         {% if active_kw %}
         <a href="#" onclick="clearKwFacet();return false" style="font-size:.65rem;color:var(--dim)">сбросить ✕</a>
+        {% endif %}
+        <span class="filter-label">Профиль</span>
+        <select id="profileFacet" class="filter-select" onchange="applyProfileFacet()">
+          <option value="">— все профили —</option>
+          {% for p in search_profiles %}
+          <option value="{{ p.id }}" {% if active_profile_id | string == p.id | string %}selected{% endif %}>{{ p.name }}{% if not p.enabled %} (выкл){% endif %}</option>
+          {% endfor %}
+        </select>
+        {% if active_profile_id %}
+        <a href="#" onclick="clearProfileFacet();return false" style="font-size:.65rem;color:var(--dim)">сбросить ✕</a>
         {% endif %}
       </div>
     </div>
@@ -737,6 +750,12 @@ tr:hover .fbar-label { color: var(--dim); }
             {% if not row_phrase and t.matched_keywords %}{% set row_phrase = t.matched_keywords.split(';')[0] %}{% endif %}
             <td class="phrase-cell" title="{{ (t.matched_keywords or '') | replace(';', ', ') }}">
               {{ row_phrase or '—' }}
+              {% if t.matched_profiles %}
+              {% set best_profile = t.matched_profiles | sort(attribute='score', reverse=true) | first %}
+              <div style="font-size:.58rem;color:var(--dim);margin-top:2px" title="{{ (best_profile.phrases or []) | map(attribute='phrase') | join(', ') }}">
+                🔎 {{ best_profile.profile_name }} ({{ best_profile.score }})
+              </div>
+              {% endif %}
             </td>
             <td class="exclude-cell">
               {% if tab_id != 'REJECTED' %}<button class="exclude-btn" data-pnum="{{ t.purchase_number }}" onclick="rejectLotFromList(this);event.stopPropagation()" title="Отказаться от лота">X</button>{% endif %}
@@ -854,6 +873,12 @@ tr:hover .fbar-label { color: var(--dim); }
             {% if not row_phrase and t.matched_keywords %}{% set row_phrase = t.matched_keywords.split(';')[0] %}{% endif %}
             <td class="phrase-cell" title="{{ (t.matched_keywords or '') | replace(';', ', ') }}">
               {{ row_phrase or '—' }}
+              {% if t.matched_profiles %}
+              {% set best_profile = t.matched_profiles | sort(attribute='score', reverse=true) | first %}
+              <div style="font-size:.58rem;color:var(--dim);margin-top:2px" title="{{ (best_profile.phrases or []) | map(attribute='phrase') | join(', ') }}">
+                🔎 {{ best_profile.profile_name }} ({{ best_profile.score }})
+              </div>
+              {% endif %}
             </td>
             <td class="exclude-cell">
               <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" onclick="rejectLotFromList(this);event.stopPropagation()" title="Отказаться от лота">X</button>
@@ -929,6 +954,12 @@ tr:hover .fbar-label { color: var(--dim); }
             {% if not row_phrase and t.matched_keywords %}{% set row_phrase = t.matched_keywords.split(';')[0] %}{% endif %}
             <td class="phrase-cell" title="{{ (t.matched_keywords or '') | replace(';', ', ') }}">
               {{ row_phrase or '—' }}
+              {% if t.matched_profiles %}
+              {% set best_profile = t.matched_profiles | sort(attribute='score', reverse=true) | first %}
+              <div style="font-size:.58rem;color:var(--dim);margin-top:2px" title="{{ (best_profile.phrases or []) | map(attribute='phrase') | join(', ') }}">
+                🔎 {{ best_profile.profile_name }} ({{ best_profile.score }})
+              </div>
+              {% endif %}
             </td>
             <td class="exclude-cell">
               <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" onclick="rejectLotFromList(this);event.stopPropagation()" title="Отказаться от лота">X</button>
@@ -997,6 +1028,12 @@ tr:hover .fbar-label { color: var(--dim); }
             {% if not row_phrase and t.matched_keywords %}{% set row_phrase = t.matched_keywords.split(';')[0] %}{% endif %}
             <td class="phrase-cell" title="{{ (t.matched_keywords or '') | replace(';', ', ') }}">
               {{ row_phrase or '—' }}
+              {% if t.matched_profiles %}
+              {% set best_profile = t.matched_profiles | sort(attribute='score', reverse=true) | first %}
+              <div style="font-size:.58rem;color:var(--dim);margin-top:2px" title="{{ (best_profile.phrases or []) | map(attribute='phrase') | join(', ') }}">
+                🔎 {{ best_profile.profile_name }} ({{ best_profile.score }})
+              </div>
+              {% endif %}
             </td>
             <td class="exclude-cell">
               <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" onclick="rejectLotFromList(this);event.stopPropagation()" title="Отказаться от лота">X</button>
@@ -1065,6 +1102,12 @@ tr:hover .fbar-label { color: var(--dim); }
             {% if not row_phrase and t.matched_keywords %}{% set row_phrase = t.matched_keywords.split(';')[0] %}{% endif %}
             <td class="phrase-cell" title="{{ (t.matched_keywords or '') | replace(';', ', ') }}">
               {{ row_phrase or '—' }}
+              {% if t.matched_profiles %}
+              {% set best_profile = t.matched_profiles | sort(attribute='score', reverse=true) | first %}
+              <div style="font-size:.58rem;color:var(--dim);margin-top:2px" title="{{ (best_profile.phrases or []) | map(attribute='phrase') | join(', ') }}">
+                🔎 {{ best_profile.profile_name }} ({{ best_profile.score }})
+              </div>
+              {% endif %}
             </td>
             <td class="exclude-cell">
               <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" onclick="rejectLotFromList(this);event.stopPropagation()" title="Отказаться от лота">X</button>
@@ -1198,6 +1241,22 @@ function applyKwFacet() {
 function clearKwFacet() {
   const params = _facetBaseUrl();
   params.delete('kw');
+  const qs = params.toString();
+  location.href = qs ? '/?' + qs : '/';
+}
+
+// ── Фасет по поисковому профилю ─────────────────────────────────────────
+function applyProfileFacet() {
+  const pid = document.getElementById('profileFacet').value;
+  const params = _facetBaseUrl();
+  params.delete('profile_id');
+  if (pid) params.set('profile_id', pid);
+  const qs = params.toString();
+  location.href = qs ? '/?' + qs : '/';
+}
+function clearProfileFacet() {
+  const params = _facetBaseUrl();
+  params.delete('profile_id');
   const qs = params.toString();
   location.href = qs ? '/?' + qs : '/';
 }

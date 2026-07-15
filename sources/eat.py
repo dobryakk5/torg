@@ -26,6 +26,7 @@ lotStates=2 — «Подача предложений». purchase_number = "EAT-
 
 from __future__ import annotations
 
+import json
 import logging
 import random
 import re
@@ -39,20 +40,40 @@ import config
 logger = logging.getLogger(__name__)
 
 API_URL = "https://tender-cache-api.agregatoreat.ru/api/TradeLot/list-published-trade-lots"
+# Детальная карточка лота: полная спецификация + условия поставки (как на сайте
+# в блоках «Спецификация» / «Условия поставки»). GUID = поле id из списка.
+API_DETAIL_URL = "https://tender-cache-api.agregatoreat.ru/api/TradeLot/{id}"
 CARD_URL = "https://agregatoreat.ru/purchases/announcement/{id}"
-PAGE_SIZE = 50
+PAGE_SIZE = 50          # у API есть нижний предел size (size=1 даёт 400 "Size is invalid")
 LOT_STATE_ACCEPTING = 2
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept": "application/json",
-    "Content-Type": "application/json",
-    "Origin": "https://agregatoreat.ru",
-    "Referer": "https://agregatoreat.ru/",
-}
+# Анти-бот сверяет отпечаток запроса с браузером, которому выдал куки
+# (__rhash_/__hash_/__lhash_), поэтому заголовки копируют реальный Chrome на macOS.
+# Если куки взяты из другого браузера — задай его User-Agent в EAT_USER_AGENT.
+_DEFAULT_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+)
+
+def _headers() -> dict[str, str]:
+    ua = str(getattr(config, "EAT_USER_AGENT", "") or "").strip() or _DEFAULT_UA
+    chrome_m = re.search(r"Chrome/(\d+)", ua)
+    major = chrome_m.group(1) if chrome_m else "149"
+    platform = '"macOS"' if "Mac" in ua else '"Windows"'
+    return {
+        "User-Agent": ua,
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Content-Type": "application/json; charset=UTF-8",
+        "Origin": "https://agregatoreat.ru",
+        "Referer": "https://agregatoreat.ru/",
+        "sec-ch-ua": f'"Google Chrome";v="{major}", "Chromium";v="{major}", "Not)A;Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": platform,
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-site",
+    }
 
 _ISO_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})")
 
@@ -94,22 +115,72 @@ def _request_body(keyword: str, price_from: int | None, price_to: int | None,
     }
 
 
-def _post(body: dict[str, Any], retries: int = 3) -> Optional[dict[str, Any]]:
+def _via_curl(url: str, headers: dict[str, str], body: dict[str, Any] | None = None) -> Optional[Any]:
+    """Фолбэк через системный curl: у него другой TLS-отпечаток, чем у python-requests,
+    и анти-бот, сверяющий TLS-fingerprint, его обычно пропускает (как браузерный cURL).
+    body=None → GET, иначе POST."""
+    import shutil
+    import subprocess
+
+    curl_bin = shutil.which("curl")
+    if not curl_bin:
+        return None
+
+    cmd = [curl_bin, "-s", "--max-time", "30", url]
+    for key, value in headers.items():
+        if key.lower() == "cookie":
+            cmd += ["-b", value]
+        else:
+            cmd += ["-H", f"{key}: {value}"]
+    if body is not None:
+        cmd += ["--data-raw", json.dumps(body, ensure_ascii=False)]
+
+    try:
+        out = subprocess.run(cmd, capture_output=True, timeout=40).stdout
+        text = out.decode("utf-8", errors="ignore").strip()
+        if text.startswith("{") or text.startswith("["):
+            logger.info("ЕАТ: ответ получен через curl-фолбэк")
+            return json.loads(text)
+        logger.warning("ЕАТ curl-фолбэк: не-JSON ответ (%s...)", text[:80])
+    except Exception as e:
+        logger.warning("ЕАТ curl-фолбэк не сработал: %s", e)
+    return None
+
+
+def _request(url: str, body: dict[str, Any] | None = None, retries: int = 3) -> Optional[Any]:
+    """GET (body=None) или POST к API ЕАТ: куки, браузерные заголовки, ретраи,
+    curl-фолбэк при отказе анти-бота."""
     cookie = str(getattr(config, "EAT_COOKIE", "") or "").strip()
-    headers = dict(HEADERS)
+    headers = _headers()
     if cookie:
         headers["Cookie"] = cookie
 
+    curl_tried = False
     for attempt in range(retries):
         try:
-            resp = requests.post(API_URL, json=body, headers=headers, timeout=25)
-            text_head = (resp.text or "")[:200].lower()
-            if resp.status_code == 200 and "<title>captcha" not in text_head:
+            if body is None:
+                resp = requests.get(url, headers=headers, timeout=25)
+            else:
+                resp = requests.post(url, json=body, headers=headers, timeout=25)
+            ctype = resp.headers.get("content-type", "").lower()
+            text_head = (resp.text or "")[:300].lower()
+            if resp.status_code == 200 and "json" in ctype:
                 return resp.json()
-            if "captcha" in text_head:
+            # Анти-бот отдаёт либо страницу капчи, либо JS-челлендж (HTML вместо
+            # JSON) — значит requests не прошёл. Пробуем тот же запрос системным curl.
+            if "captcha" in text_head or resp.status_code == 200:
+                if not curl_tried:
+                    curl_tried = True
+                    logger.info("ЕАТ: анти-бот отклонил python-requests, пробую системный curl")
+                    data = _via_curl(url, headers, body)
+                    if data is not None:
+                        return data
                 logger.warning(
-                    "ЕАТ: API вернул капчу — IP не прошёл анти-бот. Пройди капчу в браузере "
-                    "на agregatoreat.ru и задай EAT_COOKIE в .env (__hash_/__lhash_)",
+                    "ЕАТ: анти-бот не пропустил запрос (HTTP %s, content-type=%s). "
+                    "Обнови куки: пройди проверку в браузере на agregatoreat.ru и "
+                    "положи свежие __rhash_/__hash_/__lhash_ в EAT_COOKIE (.env). "
+                    "Если куки из другого браузера — задай его UA в EAT_USER_AGENT.",
+                    resp.status_code, ctype or "—",
                 )
                 return None
             logger.warning("ЕАТ HTTP %s: %s", resp.status_code, resp.text[:150])
@@ -117,6 +188,89 @@ def _post(body: dict[str, Any], retries: int = 3) -> Optional[dict[str, Any]]:
             logger.warning("ЕАТ ошибка запроса (попытка %d): %s", attempt + 1, e)
         _sleep(attempt + 1)
     return None
+
+
+def _post(body: dict[str, Any], retries: int = 3) -> Optional[dict[str, Any]]:
+    return _request(API_URL, body=body, retries=retries)
+
+
+def get_lot_details(guid: str) -> Optional[dict[str, Any]]:
+    """Полная карточка лота (GET /api/TradeLot/<guid>) — источник блоков
+    «Спецификация» и «Условия поставки» на сайте. Работает по тем же кукам,
+    что и список; авторизация (Bearer) не требуется для опубликованных лотов."""
+    guid = str(guid or "").strip()
+    if not guid:
+        return None
+    data = _request(API_DETAIL_URL.format(id=guid))
+    return data if isinstance(data, dict) else None
+
+
+def _pick(obj: dict, *names, default=None):
+    """Первое непустое значение из синонимичных полей (регистр не важен)."""
+    if not isinstance(obj, dict):
+        return default
+    lowered = {str(k).lower(): v for k, v in obj.items()}
+    for name in names:
+        v = lowered.get(name.lower())
+        if v not in (None, "", []):
+            return v
+    return default
+
+
+def _format_spec(item: dict[str, Any]) -> list[str]:
+    """Спецификация из lotItems: наименование, ОКПД2/КТРУ, кол-во, ед., цена, страна.
+
+    Тот же контент, что в блоке «Спецификация» карточки на сайте ЕАТ.
+    """
+    lines: list[str] = []
+    for li in (item.get("lotItems") or [])[:20]:
+        if not isinstance(li, dict):
+            continue
+        name = str(_pick(li, "name", "itemName", "productName", default="")).strip()
+        if not name:
+            continue
+        parts = [name]
+        code = _pick(li, "okpd2Code", "ktruCode", "code")
+        if code:
+            parts.append(f"[ОКПД2/КТРУ {code}]")
+        qty = _pick(li, "quantity", "count", "amount")
+        unit = _pick(li, "okeiName", "unitName", "measure", "okeiSymbol")
+        if qty is not None:
+            parts.append(f"кол-во {qty}" + (f" {unit}" if unit else ""))
+        unit_price = _pick(li, "price", "unitPrice", "startPrice", "cost")
+        if unit_price is not None:
+            parts.append(f"цена {unit_price} ₽")
+        country = _pick(li, "countryName", "country", "originCountry", "manufactureCountry")
+        if country:
+            parts.append(f"страна: {country}")
+        lines.append(" · ".join(str(p) for p in parts))
+    return lines
+
+
+def _format_delivery(item: dict[str, Any]) -> list[str]:
+    """Условия поставки из deliveryInfos / полей верхнего уровня: адрес, регион, сроки."""
+    lines: list[str] = []
+    infos = item.get("deliveryInfos") or item.get("deliveryInfo") or []
+    if isinstance(infos, dict):
+        infos = [infos]
+    for di in (infos or [])[:5]:
+        if not isinstance(di, dict):
+            continue
+        addr = _pick(di, "address", "deliveryAddress", "fullAddress")
+        region = _pick(di, "regionName", "region", "deliveryRegion")
+        piece = " · ".join(str(x) for x in (region, addr) if x)
+        if piece:
+            lines.append(piece)
+    # Сроки поставки/оказания услуг (часто на верхнем уровне item).
+    d_start = _iso_to_local_fmt(_pick(item, "deliveryDateStart", "deliveryStartDate"))
+    d_end = _iso_to_local_fmt(_pick(item, "deliveryDate", "deliveryDateEnd", "deliveryEndDate"))
+    period = _pick(item, "deliveryPeriod")
+    if d_start or d_end:
+        lines.append("Срок: " + " – ".join(x for x in (d_start, d_end) if x))
+    elif period:
+        unit = "раб. дн." if item.get("isDeliveryDaysWorking") else "дн."
+        lines.append(f"Срок поставки: {period} {unit}")
+    return lines
 
 
 def _map_item(item: dict[str, Any]) -> Optional[dict[str, Any]]:
@@ -133,23 +287,30 @@ def _map_item(item: dict[str, Any]) -> Optional[dict[str, Any]]:
     if not isinstance(price, (int, float)) or price <= 0:
         price = None
 
-    lot_names = []
-    for li in (item.get("lotItems") or [])[:15]:
-        if isinstance(li, dict) and li.get("name"):
-            code = f" (ОКПД2 {li.get('okpd2Code')})" if li.get("okpd2Code") else ""
-            lot_names.append(f"{li['name']}{code}")
+    spec_lines = _format_spec(item)
+    delivery_lines = _format_delivery(item)
 
-    title = subject or (lot_names[0] if lot_names else "")
+    title = subject or (spec_lines[0].split(" · ")[0] if spec_lines else "")
     if not title:
         return None
 
     guarantee = item.get("applicationGuarantee")
 
+    spec_block = ""
+    if spec_lines:
+        spec_block = "Спецификация:\n" + "\n".join(f"  {i}. {s}" for i, s in enumerate(spec_lines, 1))
+    delivery_block = ""
+    if delivery_lines:
+        delivery_block = "Условия поставки:\n" + "\n".join(f"  {d}" for d in delivery_lines)
+
     primary_text = "\n".join(filter(None, [
         title,
         customer,
         f"Номер ЕАТ: {trade_number}",
-        "Позиции: " + "; ".join(lot_names) if lot_names else "",
+        f"НМЦК: {price} ₽" if price else "",
+        f"Обеспечение заявки: {guarantee} ₽" if guarantee else "",
+        spec_block,
+        delivery_block,
         "Закупка малого объёма (ЕАТ «Берёзка»)",
     ]))[:4000]
 
@@ -197,10 +358,19 @@ def search_eat(
         if not items:
             break
 
+        fetch_details = bool(getattr(config, "EAT_FETCH_DETAILS", True))
         added = 0
         for item in items:
             if not isinstance(item, dict):
                 continue
+            # Детальная карточка даёт полную спецификацию и условия поставки;
+            # совпадений на ключ обычно единицы, поэтому один лишний GET на лот
+            # не напрягает ни нас, ни площадку.
+            if fetch_details and item.get("id"):
+                detail = get_lot_details(item["id"])
+                if detail:
+                    item = {**item, **{k: v for k, v in detail.items() if v not in (None, "", [])}}
+                _sleep(0.3)
             card = _map_item(item)
             if not card or card["purchase_number"] in seen:
                 continue
@@ -219,10 +389,36 @@ def search_eat(
 
 
 if __name__ == "__main__":
-    # Самотест (с сервера в РФ): python -m sources.eat "сайт"
+    # Самотест:        python -m sources.eat "сайт"
+    # Сырой дамп полей: python -m sources.eat "сайт" --raw   (для сверки lotItems/deliveryInfos)
     import sys
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    kw = sys.argv[1] if len(sys.argv) > 1 else "программное обеспечение"
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    kw = args[0] if args else "программное обеспечение"
+
+    if "--raw" in sys.argv:
+        # size=1 API отвергает ("The field Size is invalid") — берём валидный размер
+        data = _post(_request_body(kw, 20000, 590000, 1, 10))
+        items = (data or {}).get("items") or []
+        if not items:
+            print("Пусто/не пропустил антибот; ответ:", str(data)[:300])
+        else:
+            it = items[0]
+            print("── Ключи item (список) ──"); print(", ".join(it.keys()))
+            print("\n── lotItems[0] из списка ──")
+            print(json.dumps((it.get("lotItems") or [{}])[0], ensure_ascii=False, indent=1)[:1500])
+            detail = get_lot_details(it.get("id"))
+            if detail:
+                print("\n── Ключи детальной карточки ──"); print(", ".join(detail.keys()))
+                print("\n── lotItems[0] из деталей ──")
+                print(json.dumps((detail.get("lotItems") or [{}])[0], ensure_ascii=False, indent=1)[:2000])
+                print("\n── deliveryInfos из деталей ──")
+                print(json.dumps(detail.get("deliveryInfos") or detail.get("deliveryInfo"),
+                                 ensure_ascii=False, indent=1)[:1500])
+            else:
+                print("\nДетальная карточка не получена (антибот/авторизация?)")
+        sys.exit(0)
+
     rows = search_eat(kw, price_from=20000, price_to=590000, pages=1)
     print(f"\nНайдено: {len(rows)}")
     for r in rows[:8]:
@@ -232,4 +428,5 @@ if __name__ == "__main__":
         print("заказ. :", r["customer"][:80] or "—")
         print("опубл. :", r["published_at"] or "—", "| до:", r["deadline"] or "—")
         print("НМЦК   :", r["price"] or "—", "| обесп.:", r.get("application_security_amount", "—"))
+        print("primary_text:\n   " + (r["primary_text"].replace("\n", "\n   ")))
         print("url    :", r["url"])

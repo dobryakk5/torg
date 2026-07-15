@@ -133,6 +133,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
       <a href="/">Тендеры</a>
       <a href="/analytics">Аналитика</a>
       <a href="/control" class="active">Управление</a>
+      <a href="/profiles">Профили</a>
       <a href="/rules">Правила</a>
       <a href="/kb">База знаний</a>
     </nav>
@@ -372,8 +373,12 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
       </div>
 
       <div class="field full-row">
-        <label>Поисковые фразы (ЕИС) <span style="font-weight:400">— по одной на строку; пустые строки игнорируются</span></label>
-        <textarea name="SEARCH_KEYWORDS" rows="10" placeholder="разработка сайта&#10;модернизация сайта&#10;интеграция 1С">{{ search_keywords_text }}</textarea>
+        <label>Поисковые фразы</label>
+        <span class="hint">
+          Поиск в Stage 1 идёт только по включённым поисковым профилям — плюс/минус-фразы
+          редактируются на странице <a href="/profiles">Профили</a>. Список ниже — legacy-фоллбэк,
+          используется только если ни один профиль не включён.
+        </span>
       </div>
 
       <button type="submit" class="btn-save">💾 Сохранить настройки</button>
@@ -487,12 +492,6 @@ async function saveSettings(e) {
       continue;
     }
     if (!v) continue;
-    // Поисковые фразы — по одной на строку → массив (поддержка и старого JSON-формата)
-    if (el.name === 'SEARCH_KEYWORDS') {
-      if (v.startsWith('[')) { try { data[el.name] = JSON.parse(v); continue; } catch {} }
-      data[el.name] = v.split('\n').map(s => s.trim()).filter(Boolean);
-      continue;
-    }
     // Попытка парсить JSON для массивов
     if (v.startsWith('[') || v.startsWith('{')) {
       try { data[el.name] = JSON.parse(v); continue; } catch {}

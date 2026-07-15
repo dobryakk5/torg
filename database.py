@@ -483,7 +483,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 );
 """
 
-SCHEMA_VERSION = "v6"   # bump при добавлении новых таблиц
+SCHEMA_VERSION = "v7"   # bump при добавлении новых таблиц
 
 
 DDL_KB = """
@@ -578,6 +578,42 @@ CREATE TABLE IF NOT EXISTS scoring_rules (
 CREATE INDEX IF NOT EXISTS idx_scoring_rules_active ON scoring_rules(active, dim, bucket);
 """
 
+# Поисковые профили: наборы плюс/минус-фраз для Stage 1 (заменяют плоский
+# config.SEARCH_KEYWORDS). Редактируются в /profiles. См. search_profiles.py
+# и docs/tz-search-profiles.md.
+DDL_SEARCH_PROFILES = """
+CREATE TABLE IF NOT EXISTS search_profiles (
+    id          SERIAL PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    description TEXT DEFAULT '',
+    enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+    is_default  BOOLEAN NOT NULL DEFAULT FALSE,
+    priority    INT NOT NULL DEFAULT 100,
+    min_score   INT NOT NULL DEFAULT 3,
+    okpd2_codes TEXT[] NOT NULL DEFAULT '{}',
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_search_profiles_default
+    ON search_profiles (is_default) WHERE is_default;
+
+CREATE TABLE IF NOT EXISTS search_phrases (
+    id          SERIAL PRIMARY KEY,
+    profile_id  INT NOT NULL REFERENCES search_profiles(id) ON DELETE CASCADE,
+    kind        TEXT NOT NULL CHECK (kind IN ('plus','minus_hard','minus_soft')),
+    phrase      TEXT NOT NULL,
+    weight      INT NOT NULL DEFAULT 3,
+    query_only  BOOLEAN NOT NULL DEFAULT FALSE,
+    local_only  BOOLEAN NOT NULL DEFAULT FALSE,
+    query_text  TEXT,
+    enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+    note        TEXT DEFAULT '',
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (profile_id, kind, phrase)
+);
+CREATE INDEX IF NOT EXISTS idx_search_phrases_profile ON search_phrases(profile_id, enabled);
+"""
+
 
 def connect_db() -> None:
     """
@@ -649,7 +685,7 @@ def init_db() -> None:
             DDL_MIGRATIONS, DDL_SETTINGS,
             DDL_TENDERS, DDL_FILTER_SCORES, DDL_RUNS, DDL_DECISIONS,
             DDL_TENDER_CHANGES, DDL_CUSTOMERS, DDL_PRICE_CORRIDORS,
-            DDL_KB, DDL_SCORING_RULES, DDL_INDEXES, DDL_TRIGGER,
+            DDL_KB, DDL_SCORING_RULES, DDL_SEARCH_PROFILES, DDL_INDEXES, DDL_TRIGGER,
         ):
             cur.execute(ddl)
         cur.execute(
@@ -706,6 +742,10 @@ def ensure_extra_columns() -> None:
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )""",
             "CREATE INDEX IF NOT EXISTS idx_tender_items_purchase_number ON tender_items(purchase_number)",
+            # Поисковые профили (Stage 1): причина попадания тендера в выборку.
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS profile_id INTEGER",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS profile_score INTEGER",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS matched_profiles JSONB",
         ):
             cur.execute(ddl)
 
@@ -988,6 +1028,7 @@ def reset_db() -> None:
         for tbl in [
             "kb_templates", "kb_risk_rules", "kb_equipment",
             "kb_competencies", "kb_contracts", "scoring_rules",
+            "search_phrases", "search_profiles",
             "filter_scores", "decisions", "tender_changes", "runs",
             "customers", "price_corridors", "settings",
             "schema_migrations", "tenders",
@@ -1211,14 +1252,15 @@ def _upsert_primary_once(
                  customer_inn, published_at, matched_keywords, primary_text, primary_score,
                  primary_reasons, total_score, score, score_reasons, filter_total, filter_decision,
                  status, decision, content_hash, last_changed_at, needs_detail_refresh, first_seen_at,
-                 last_seen_at, primary_checked_at, updated_at)
+                 last_seen_at, primary_checked_at, updated_at, profile_id, profile_score, matched_profiles)
             VALUES
                 (%(pnum)s, %(title)s, %(customer)s, %(price)s, %(law_type)s, %(deadline)s, %(url)s,
                  %(platform)s, %(region)s, %(customer_inn)s, %(published_at)s, %(matched_keywords)s,
                  %(primary_text)s, %(primary_score)s, %(primary_reasons)s, %(total_score)s,
                  %(score)s, %(score_reasons)s, %(filter_total)s, %(filter_decision)s,
                  %(status)s, %(decision)s, %(content_hash)s, %(last_changed_at)s, %(needs_detail_refresh)s,
-                 %(first_seen_at)s, %(last_seen_at)s, %(primary_checked_at)s, %(updated_at)s)
+                 %(first_seen_at)s, %(last_seen_at)s, %(primary_checked_at)s, %(updated_at)s,
+                 %(profile_id)s, %(profile_score)s, %(matched_profiles)s)
             ON CONFLICT (purchase_number) DO UPDATE SET
                 title = EXCLUDED.title,
                 customer = EXCLUDED.customer,
@@ -1251,7 +1293,10 @@ def _upsert_primary_once(
                 needs_detail_refresh = tenders.needs_detail_refresh OR EXCLUDED.needs_detail_refresh,
                 last_seen_at = EXCLUDED.last_seen_at,
                 primary_checked_at = EXCLUDED.primary_checked_at,
-                updated_at = EXCLUDED.updated_at
+                updated_at = EXCLUDED.updated_at,
+                profile_id = EXCLUDED.profile_id,
+                profile_score = EXCLUDED.profile_score,
+                matched_profiles = EXCLUDED.matched_profiles
             """,
             {
                 "pnum": pnum,
@@ -1283,6 +1328,10 @@ def _upsert_primary_once(
                 "last_seen_at": now,
                 "primary_checked_at": now,
                 "updated_at": now,
+                "profile_id": tender.get("profile_id"),
+                "profile_score": tender.get("profile_score"),
+                "matched_profiles": json.dumps(tender.get("matched_profiles"), ensure_ascii=False)
+                    if tender.get("matched_profiles") is not None else None,
             },
         )
     return result
@@ -1799,6 +1848,7 @@ def get_top_tenders(
     price_max: Optional[float] = None,
     law_type:  Optional[str]   = None,
     matched_keyword: Optional[str] = None,   # фасет: фраза, по которой найден тендер
+    profile_id: Optional[int] = None,         # фасет: поисковый профиль (search_profiles)
     q: Optional[str] = None,                  # свободный текст: название/заказчик/номер
     exclude_keywords: Optional[list[str]] = None,
     # Per-filter минимальные оценки (1–5) для Ф1–Ф8
@@ -1850,6 +1900,9 @@ def get_top_tenders(
     if matched_keyword:
         conditions.append("t.matched_keywords ILIKE %s")
         params.append(f"%{matched_keyword}%")
+    if profile_id is not None:
+        conditions.append("t.profile_id = %s")
+        params.append(int(profile_id))
     if q and q.strip():
         # Свободный поиск по уже загруженным лотам (без скрейпинга):
         # название, заказчик, номер закупки, категория триажа.
@@ -1909,6 +1962,7 @@ def get_top_tenders(
             t.status, t.created_at, t.published_at, t.matched_keywords,
             t.llm_triage_verdict, t.llm_triage_fit, t.llm_triage_resale,
             t.llm_triage_category, t.llm_triage_reason,
+            t.profile_id, t.profile_score, t.matched_profiles,
 
             -- Агрегируем 8 фильтров в один JSON-объект — без N+1 запросов
             json_object_agg(
@@ -1930,7 +1984,8 @@ def get_top_tenders(
             t.deadline, t.url, t.score, t.score_reasons, t.primary_score,
             t.detail_score, t.total_score, t.filter_total, t.filter_decision,
             t.filter_stop, t.llm_verdict, t.notified_at, t.decision,
-            t.status, t.created_at, t.published_at, t.matched_keywords
+            t.status, t.created_at, t.published_at, t.matched_keywords,
+            t.profile_id, t.profile_score, t.matched_profiles
         {having}
         ORDER BY {order_by}
         LIMIT %s
@@ -2671,6 +2726,249 @@ def scoring_rules_seed(force: bool = False) -> int:
                 )
                 inserted += 1
     logger.info("scoring_rules: засеяно %d правил из дефолтов", inserted)
+    return inserted
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SEARCH PROFILES — поисковые профили Stage 1 (редактируются в /profiles)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_PHRASE_FIELDS = ("kind", "phrase", "weight", "query_only", "local_only", "query_text", "enabled", "note")
+
+
+def _profiles_with_phrases(where_sql: str, params: tuple = ()) -> list[dict[str, Any]]:
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            f"SELECT * FROM search_profiles {where_sql} ORDER BY priority, id", params,
+        )
+        profiles = [dict(r) for r in cur.fetchall()]
+        if not profiles:
+            return []
+        ids = [p["id"] for p in profiles]
+        cur.execute(
+            "SELECT * FROM search_phrases WHERE profile_id = ANY(%s) ORDER BY id", (ids,),
+        )
+        phrases_by_profile: dict[int, list[dict[str, Any]]] = {}
+        for r in cur.fetchall():
+            phrases_by_profile.setdefault(r["profile_id"], []).append(dict(r))
+    for p in profiles:
+        p["phrases"] = [_to_jsonable(ph) for ph in phrases_by_profile.get(p["id"], [])]
+    return [_to_jsonable(p) for p in profiles]
+
+
+def search_profiles_list() -> list[dict[str, Any]]:
+    """Все профили (вкл./выкл.) с их фразами — для страницы /profiles."""
+    try:
+        return _profiles_with_phrases("")
+    except Exception:
+        return []
+
+
+def search_profiles_active() -> list[dict[str, Any]]:
+    """Только включённые профили с включёнными фразами — для search_profiles.py."""
+    try:
+        profiles = _profiles_with_phrases("WHERE enabled = TRUE")
+    except Exception:
+        return []
+    for p in profiles:
+        p["phrases"] = [ph for ph in p["phrases"] if ph.get("enabled", True)]
+    return profiles
+
+
+def search_profile_get(profile_id: int) -> Optional[dict[str, Any]]:
+    rows = _profiles_with_phrases("WHERE id = %s", (int(profile_id),))
+    return rows[0] if rows else None
+
+
+def search_profile_save(data: dict[str, Any]) -> int:
+    """Создаёт/обновляет карточку профиля (без фраз — см. search_phrases_replace)."""
+    clean = {
+        "name":        str(data.get("name") or "").strip(),
+        "description": str(data.get("description") or "").strip(),
+        "enabled":     bool(data.get("enabled", True)),
+        "priority":    int(data.get("priority") or 100),
+        "min_score":   int(data.get("min_score") or 3),
+        "okpd2_codes": [str(c).strip() for c in (data.get("okpd2_codes") or []) if str(c).strip()],
+    }
+    if not clean["name"]:
+        raise ValueError("search_profile: требуется непустое имя")
+
+    row_id = data.get("id")
+    with _conn() as conn:
+        cur = conn.cursor()
+        if row_id:
+            clean["_id"] = int(row_id)
+            cur.execute(
+                """UPDATE search_profiles SET
+                       name=%(name)s, description=%(description)s, enabled=%(enabled)s,
+                       priority=%(priority)s, min_score=%(min_score)s,
+                       okpd2_codes=%(okpd2_codes)s::text[], updated_at=NOW()
+                   WHERE id=%(_id)s RETURNING id""",
+                clean,
+            )
+        else:
+            cur.execute(
+                """INSERT INTO search_profiles (name, description, enabled, priority, min_score, okpd2_codes)
+                   VALUES (%(name)s, %(description)s, %(enabled)s, %(priority)s, %(min_score)s,
+                           %(okpd2_codes)s::text[])
+                   RETURNING id""",
+                clean,
+            )
+        return int(cur.fetchone()[0])
+
+
+def search_profile_delete(profile_id: int) -> None:
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM search_profiles WHERE enabled = TRUE")
+        enabled_count = cur.fetchone()[0]
+        cur.execute("SELECT enabled, is_default FROM search_profiles WHERE id = %s", (int(profile_id),))
+        row = cur.fetchone()
+        if not row:
+            return
+        is_enabled, is_default = row
+        if is_default:
+            raise ValueError("Нельзя удалить профиль по умолчанию — сначала назначьте другой")
+        if is_enabled and enabled_count <= 1:
+            raise ValueError("Нельзя удалить последний включённый профиль")
+        cur.execute("DELETE FROM search_profiles WHERE id = %s", (int(profile_id),))
+
+
+def search_profile_set_default(profile_id: int) -> None:
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE search_profiles SET is_default = FALSE WHERE is_default = TRUE")
+        cur.execute(
+            "UPDATE search_profiles SET is_default = TRUE, enabled = TRUE, updated_at = NOW() WHERE id = %s",
+            (int(profile_id),),
+        )
+
+
+def search_profile_copy(profile_id: int) -> int:
+    """Копирует профиль со всеми фразами; копия — всегда выключена и не дефолтная."""
+    src = search_profile_get(profile_id)
+    if not src:
+        raise ValueError("Профиль не найден")
+    base_name = f"{src['name']} (копия)"
+    name = base_name
+    with _conn() as conn:
+        cur = conn.cursor()
+        n = 2
+        while True:
+            cur.execute("SELECT 1 FROM search_profiles WHERE name = %s", (name,))
+            if not cur.fetchone():
+                break
+            name = f"{base_name} {n}"
+            n += 1
+        cur.execute(
+            """INSERT INTO search_profiles (name, description, enabled, is_default, priority, min_score, okpd2_codes)
+               VALUES (%s, %s, FALSE, FALSE, %s, %s, %s::text[]) RETURNING id""",
+            (name, src.get("description") or "", src.get("priority") or 100,
+             src.get("min_score") or 3, src.get("okpd2_codes") or []),
+        )
+        new_id = int(cur.fetchone()[0])
+        for ph in src.get("phrases") or []:
+            cur.execute(
+                """INSERT INTO search_phrases
+                       (profile_id, kind, phrase, weight, query_only, local_only, query_text, enabled, note)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (new_id, ph.get("kind"), ph.get("phrase"), ph.get("weight"),
+                 bool(ph.get("query_only")), bool(ph.get("local_only")),
+                 ph.get("query_text"), bool(ph.get("enabled", True)), ph.get("note") or ""),
+            )
+    return new_id
+
+
+def search_phrases_replace(profile_id: int, phrases: list[dict[str, Any]]) -> None:
+    """Полностью заменяет список фраз профиля (delete+insert, транзакция)."""
+    profile_id = int(profile_id)
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM search_phrases WHERE profile_id = %s", (profile_id,))
+        for ph in phrases or []:
+            kind = str(ph.get("kind") or "plus").strip()
+            phrase = str(ph.get("phrase") or "").strip()
+            if kind not in ("plus", "minus_hard", "minus_soft") or not phrase:
+                continue
+            cur.execute(
+                """INSERT INTO search_phrases
+                       (profile_id, kind, phrase, weight, query_only, local_only, query_text, enabled, note)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (profile_id, kind, phrase, int(ph.get("weight") or 3),
+                 bool(ph.get("query_only")), bool(ph.get("local_only")),
+                 (str(ph.get("query_text")).strip() or None) if ph.get("query_text") else None,
+                 bool(ph.get("enabled", True)), str(ph.get("note") or "")),
+            )
+
+
+def get_recent_tenders_for_preview(limit: int = 500) -> list[dict[str, Any]]:
+    """Последние N карточек (title/primary_text/purchase_number) — для кнопки
+    «Прогнать по базе» на странице /profiles. Без похода во внешние источники."""
+    limit = max(1, min(2000, int(limit or 500)))
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            """SELECT purchase_number, title, primary_text
+                 FROM tenders
+                ORDER BY updated_at DESC NULLS LAST
+                LIMIT %s""",
+            (limit,),
+        )
+        return [_to_jsonable(dict(r)) for r in cur.fetchall()]
+
+
+def search_profiles_seed(force: bool = False) -> int:
+    """Засевает search_profiles/search_phrases из search_profiles.DEFAULT_PROFILES.
+
+    Идемпотентно: если таблица непуста и force=False — ничего не делает.
+    Профиль «Импорт: текущий список» дополнительно наполняется текущим
+    config.SEARCH_KEYWORDS (чтобы не терять охват при переходе на профили).
+    Вызывается из init_db.py (load_defaults).
+    """
+    try:
+        with _conn() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM search_profiles")
+            count = cur.fetchone()[0]
+    except Exception as exc:
+        logger.warning("search_profiles_seed: таблица недоступна: %s", exc)
+        return 0
+    if count and not force:
+        logger.info("search_profiles уже содержит %d записей, seed пропущен", count)
+        return 0
+
+    from search_profiles import DEFAULT_PROFILES
+    inserted = 0
+    with _conn() as conn:
+        cur = conn.cursor()
+        for prof in DEFAULT_PROFILES:
+            cur.execute(
+                """INSERT INTO search_profiles (name, description, enabled, is_default, priority, min_score, okpd2_codes)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s::text[]) RETURNING id""",
+                (prof["name"], prof.get("description", ""), bool(prof.get("enabled", True)),
+                 bool(prof.get("is_default", False)), int(prof.get("priority", 100)),
+                 int(prof.get("min_score", 3)), list(prof.get("okpd2_codes", []))),
+            )
+            profile_id = int(cur.fetchone()[0])
+            phrases = list(prof.get("phrases") or [])
+            if not phrases and prof["name"] == "Импорт: текущий список":
+                import config
+                phrases = [
+                    {"kind": "plus", "phrase": kw, "weight": 3, "query_text": kw}
+                    for kw in getattr(config, "SEARCH_KEYWORDS", [])
+                ]
+            for ph in phrases:
+                cur.execute(
+                    """INSERT INTO search_phrases
+                           (profile_id, kind, phrase, weight, query_only, local_only, query_text, note)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (profile_id, ph["kind"], ph["phrase"], int(ph.get("weight", 3)),
+                     bool(ph.get("query_only", False)), bool(ph.get("local_only", False)),
+                     ph.get("query_text"), ph.get("note", "")),
+                )
+                inserted += 1
+    logger.info("search_profiles: засеяно %d профилей из дефолтов (%d фраз)", len(DEFAULT_PROFILES), inserted)
     return inserted
 
 

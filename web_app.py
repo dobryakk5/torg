@@ -196,10 +196,16 @@ class JobRunner:
 
 class SearchRunner:
     """
-    Фоновый поиск по списку поисковых фраз с прогрессом по каждой фразе.
+    Фоновый поиск по выбранным поисковым профилям с прогрессом по каждой фразе.
+
+    Поиск с экрана /control/search идёт ТОЛЬКО по профилям (search_profiles.py) —
+    так же, как автоматический Stage 1 (main.run_stage1). Пользователь выбирает
+    один или несколько профилей; фактические ЕИС-запросы строятся из их
+    плюс-фраз (search_profiles.eis_queries), а найденные карточки прогоняются
+    через тот же локальный пост-фильтр (search_profiles.filter_and_tag) —
+    непринятые ни одним профилем в БД не попадают.
 
     В отличие от JobRunner.stage1, этот раннер:
-      • принимает произвольный список фраз из экрана поиска;
       • отмечает статус каждой фразы (pending → running → done/error) — для галочек в UI;
       • поддерживает остановку (Stop) через threading.Event;
       • для лотов с первичным скором ≥ порога сразу подгружает детальные блоки
@@ -212,11 +218,29 @@ class SearchRunner:
                     "finished_at": None, "found": 0, "saved": 0, "error": None}
 
     @classmethod
-    def start(cls, phrases: list[str], params: dict | None = None) -> tuple[bool, str]:
+    def start(cls, profile_ids: list[int] | None = None, params: dict | None = None) -> tuple[bool, str]:
+        import search_profiles as sp
         params = params or {}
-        phrases = [p.strip() for p in phrases if p and p.strip()]
-        if not phrases:
+        profile_ids = [int(pid) for pid in (profile_ids or [])]
+        if not profile_ids:
+            return False, "no_profiles"
+
+        all_rows = db.search_profiles_list()
+        chosen_rows = [r for r in all_rows if r["id"] in set(profile_ids)]
+        if not chosen_rows:
+            return False, "no_profiles"
+        chosen_profiles = [sp._profile_from_row(r) for r in chosen_rows]
+
+        # (label для UI/лога, реальный запрос к ЕИС) — профиль может дать
+        # несколько плюс-фраз, каждая — своя строка прогресса.
+        query_items: list[tuple[str, str]] = [
+            (f"{profile.name}: {q}", q)
+            for profile in chosen_profiles
+            for q in sp.eis_queries(profile)
+        ]
+        if not query_items:
             return False, "no_phrases"
+
         with cls._lock:
             if cls._state.get("status") == "running":
                 return False, "already_running"
@@ -229,14 +253,15 @@ class SearchRunner:
                 "saved":       0,
                 "error":       None,
                 "params":      params,
+                "profile_ids": profile_ids,
                 "phrases": [
-                    {"phrase": p, "status": "pending", "found": 0,
+                    {"phrase": label, "query": query, "status": "pending", "found": 0,
                      "saved": 0, "candidates": 0, "error": None}
-                    for p in phrases
+                    for label, query in query_items
                 ],
             }
 
-        threading.Thread(target=cls._worker, args=(params,),
+        threading.Thread(target=cls._worker, args=(params, chosen_profiles),
                          daemon=True, name="search-runner").start()
         return True, "started"
 
@@ -258,7 +283,8 @@ class SearchRunner:
                 pass
 
     @classmethod
-    def _worker(cls, params: dict) -> None:
+    def _worker(cls, params: dict, profiles: list) -> None:
+        import search_profiles as sp
         from scraper import search_eis, fetch_tender_details
         from filter_engine import run_stage1_filters
 
@@ -276,21 +302,24 @@ class SearchRunner:
         detail_threshold = config.MIN_PRIMARY_SCORE_FOR_DETAIL
 
         with cls._lock:
-            phrases = [p["phrase"] for p in cls._state["phrases"]]
+            entries = [(p["phrase"], p.get("query") or p["phrase"]) for p in cls._state["phrases"]]
 
         total_found = total_saved = 0
-        for idx, phrase in enumerate(phrases):
+        for idx, (label, query) in enumerate(entries):
             if cls._stop.is_set():
                 cls._set_phrase(idx, status="stopped")
                 continue
             cls._set_phrase(idx, status="running")
             try:
                 tenders = search_eis(
-                    keyword=phrase, price_from=price_min, price_to=price_max,
+                    keyword=query, price_from=price_min, price_to=price_max,
                     fz44=fz44, fz223=fz223, pages=pages, days_back=days_back,
                     date_from=date_from, date_to=date_to,
                 )
                 db.reconnect_db()
+                tenders, dropped = sp.filter_and_tag(tenders, profiles=profiles)
+                if dropped:
+                    logger.info("Профильный фильтр отсеял %d карточек по '%s'", dropped, label)
                 saved = candidates = 0
                 for tender in tenders:
                     if cls._stop.is_set():
@@ -304,7 +333,7 @@ class SearchRunner:
                     tender["filter_decision"] = fr.decision
                     tender["filter_scores"]   = fr.to_filter_scores()
                     tender["filter_stop"]     = " | ".join(fr.stop_factors)
-                    mk = sorted(set(tender.get("matched_keywords") or []) | {phrase})
+                    mk = sorted(set(tender.get("matched_keywords") or []) | {label})
                     db.upsert_primary(tender, score, fr.to_reasons(), mk)
                     db.save_filter_result(fr, stage="stage1")
                     saved += 1
@@ -327,7 +356,7 @@ class SearchRunner:
                     cls._state["found"] = total_found
                     cls._state["saved"] = total_saved
             except Exception as exc:
-                logger.exception("Поиск по '%s' упал", phrase)
+                logger.exception("Поиск по '%s' упал", label)
                 cls._set_phrase(idx, status="error", error=str(exc))
 
         with cls._lock:
@@ -509,6 +538,7 @@ async def index(
     decision: Optional[str]   = None,
     law:      Optional[str]   = None,
     kw:       Optional[str]   = None,
+    profile_id: Optional[int] = None,
     q:        Optional[str]   = None,
     exclude_kw: list[str] = Query(default=[]),
     price_from: Optional[float] = None,
@@ -530,6 +560,7 @@ async def index(
     order = order if order in {"asc", "desc"} else "desc"
     fkw = dict(price_min=price_from, price_max=price_to, law_type=law,
                matched_keyword=kw or None,
+               profile_id=profile_id,
                q=q or None,
                exclude_keywords=exclude_kw,
                f1_min=f1_min, f2_min=f2_min, f3_min=f3_min, f4_min=f4_min,
@@ -558,13 +589,16 @@ async def index(
         "rejected_tenders": rejected_tenders,
         "active": (decision or "ALL").upper(),
         "search_phrases": search_phrases if isinstance(search_phrases, list) else [],
+        "search_profiles": db.search_profiles_list(),
         "active_kw": kw or "",
+        "active_profile_id": profile_id or "",
         "active_q": q or "",
         "excluded_keywords": exclude_kw,
         "sort_by": sort_by,
         "sort_order": order,
         "current_filters": dict(
             decision=(decision or "ALL").upper(), law=law or "", kw=kw or "",
+            profile_id=profile_id or "",
             exclude_kw=exclude_kw,
             price_from=int(price_from) if price_from else "",
             price_to=int(price_to)   if price_to   else "",
@@ -585,11 +619,9 @@ async def analytics_page(request: Request):
 
 @app.get("/search", response_class=HTMLResponse)
 async def search_page(request: Request):
-    keywords = config.get_runtime("SEARCH_KEYWORDS", config.SEARCH_KEYWORDS)
-    okpd2    = config.get_runtime("OKPD2_CODES", config.OKPD2_CODES)
+    profiles = db.search_profiles_list()
     return templates.TemplateResponse(request, "search.html", {
-        "keywords": keywords if isinstance(keywords, list) else [],
-        "okpd2":    okpd2 if isinstance(okpd2, list) else [],
+        "profiles": profiles,
         "defaults": {
             "price_min": config.get_runtime("PRICE_MIN", config.PRICE_MIN),
             "price_max": config.get_runtime("PRICE_MAX", config.PRICE_MAX),
@@ -606,12 +638,6 @@ async def control_page(request: Request):
     stats    = db.get_stats_extended()
     job_status = JobRunner.status()
 
-    # Ключевые слова — для удобного редактирования по одной фразе на строку.
-    kw_list = config.get_runtime("SEARCH_KEYWORDS", config.SEARCH_KEYWORDS)
-    if not isinstance(kw_list, list):
-        kw_list = []
-    search_keywords_text = "\n".join(kw_list)
-
     # Последние 20 запусков из таблицы runs
     try:
         import psycopg2.extras
@@ -626,7 +652,6 @@ async def control_page(request: Request):
 
     return templates.TemplateResponse(request, "control.html", {
         "settings":   settings,
-        "search_keywords_text": search_keywords_text,
         "stats":      stats,
         "jobs":       JobRunner.JOBS,
         "job_status": job_status,
@@ -712,6 +737,15 @@ async def rules_page(request: Request):
     })
 
 
+@app.get("/profiles", response_class=HTMLResponse)
+async def profiles_page(request: Request):
+    import llm_provider
+    return templates.TemplateResponse(request, "profiles.html", {
+        "profiles": db.search_profiles_list(),
+        "llm_available": llm_provider.is_configured(),
+    })
+
+
 @app.get("/kb", response_class=HTMLResponse)
 async def kb_page(request: Request, section: str = "contracts"):
     return templates.TemplateResponse(request, "kb.html", {
@@ -754,7 +788,13 @@ async def api_status():
 @app.get("/api/search/options")
 async def api_search_options():
     """Возвращает актуальные настройки поиска для панели Stage 1."""
+    profiles = db.search_profiles_list()
     return {
+        "profiles": [
+            {"id": p["id"], "name": p["name"], "enabled": p["enabled"],
+             "is_default": p["is_default"], "phrase_count": len(p.get("phrases") or [])}
+            for p in profiles
+        ],
         "keywords": config.get_runtime("SEARCH_KEYWORDS", config.SEARCH_KEYWORDS),
         "okpd2": config.get_runtime("OKPD2_CODES", config.OKPD2_CODES),
         "price_min": config.get_runtime("PRICE_MIN", config.PRICE_MIN),
@@ -771,16 +811,16 @@ async def api_search_options():
 
 @app.post("/api/search/start")
 async def api_search_start(request: Request):
-    """Запускает фоновый поиск по набору фраз с прогрессом по каждой фразе."""
+    """Запускает фоновый поиск по выбранным поисковым профилям (не по произвольным фразам)."""
     try:
         body = await request.json()
     except Exception:
         body = {}
     if not isinstance(body, dict):
         body = {}
-    phrases = body.get("phrases") or []
-    if not isinstance(phrases, list):
-        phrases = []
+    profile_ids = body.get("profile_ids") or []
+    if not isinstance(profile_ids, list):
+        profile_ids = []
     params = {
         "price_min": body.get("price_min"),
         "price_max": body.get("price_max"),
@@ -791,7 +831,7 @@ async def api_search_start(request: Request):
         "fz44":      bool(body.get("fz44", True)),
         "fz223":     bool(body.get("fz223", True)),
     }
-    started, reason = SearchRunner.start(phrases, params)
+    started, reason = SearchRunner.start(profile_ids, params)
     if not started:
         return JSONResponse({"ok": False, "reason": reason}, status_code=409)
     return {"ok": True}
@@ -924,6 +964,8 @@ async def api_save_settings(request: Request):
         "SOURCE_B2B_ENABLED", "B2B_SEARCH_PAGES",
         "SOURCE_SPB_ENABLED", "SPB_SEARCH_PAGES", "SPB_SEARCH_KEYWORDS",
         "SOURCE_EAT_ENABLED", "EAT_SEARCH_PAGES", "EAT_SEARCH_KEYWORDS",
+        "SOURCE_MOS_ENABLED", "MOS_SEARCH_PAGES", "MOS_SEARCH_KEYWORDS", "MOS_REGION_PATHS",
+        "SOURCE_MOSREG_ENABLED", "MOSREG_SEARCH_PAGES", "MOSREG_SEARCH_KEYWORDS",
         "BACKFILL_SEARCH_PAGES",
         "LLM_PROVIDER", "OPENROUTER_TRIAGE_MODEL", "OPENROUTER_DEEP_MODEL",
         "LLM_TRIAGE_ENABLED",
@@ -1215,6 +1257,163 @@ async def api_rules_seed(request: Request):
     import filter_engine as fe
     fe.invalidate_rules_cache()
     return {"ok": True, "inserted": n}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# API — Поисковые профили (/profiles)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/profiles")
+async def api_profiles_list():
+    return JSONResponse(content=db.search_profiles_list())
+
+
+@app.post("/api/profiles")
+async def api_profile_create(request: Request):
+    data = await request.json()
+    if not isinstance(data, dict):
+        data = {}
+    try:
+        new_id = db.search_profile_save(data)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    import search_profiles as sp
+    sp.invalidate_cache()
+    return {"ok": True, "id": new_id}
+
+
+@app.patch("/api/profiles/{profile_id}")
+async def api_profile_update(profile_id: int, request: Request):
+    data = await request.json()
+    if not isinstance(data, dict):
+        data = {}
+    current = db.search_profile_get(profile_id)
+    if not current:
+        raise HTTPException(404, "Профиль не найден")
+    merged = {**current, **data, "id": profile_id}
+    want_default = bool(data.get("is_default"))
+    try:
+        db.search_profile_save(merged)
+        if want_default:
+            db.search_profile_set_default(profile_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    import search_profiles as sp
+    sp.invalidate_cache()
+    return {"ok": True}
+
+
+@app.post("/api/profiles/{profile_id}/copy")
+async def api_profile_copy(profile_id: int):
+    try:
+        new_id = db.search_profile_copy(profile_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    import search_profiles as sp
+    sp.invalidate_cache()
+    return {"ok": True, "id": new_id}
+
+
+@app.delete("/api/profiles/{profile_id}")
+async def api_profile_delete(profile_id: int):
+    try:
+        db.search_profile_delete(profile_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    import search_profiles as sp
+    sp.invalidate_cache()
+    return {"ok": True}
+
+
+@app.put("/api/profiles/{profile_id}/phrases")
+async def api_profile_phrases_replace(profile_id: int, request: Request):
+    data = await request.json()
+    phrases = data.get("phrases") if isinstance(data, dict) else None
+    if not isinstance(phrases, list):
+        raise HTTPException(400, "Ожидается {phrases: [...]}")
+    db.search_phrases_replace(profile_id, phrases)
+    import search_profiles as sp
+    sp.invalidate_cache()
+    return {"ok": True, "count": len(phrases)}
+
+
+@app.post("/api/profiles/{profile_id}/preview")
+async def api_profile_preview(profile_id: int, request: Request):
+    """Прогоняет профиль по последним N тендерам в БД — без похода в ЕИС."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    limit = int((body or {}).get("limit") or 500) if isinstance(body, dict) else 500
+
+    row = db.search_profile_get(profile_id)
+    if not row:
+        raise HTTPException(404, "Профиль не найден")
+
+    import search_profiles as sp
+    profile = sp._profile_from_row(row)
+    tenders = db.get_recent_tenders_for_preview(limit)
+
+    accepted: list[dict] = []
+    rejected_hard: list[dict] = []
+    for t in tenders:
+        tokens = sp.tokenize(sp.build_tender_text(t))
+        result = sp.match_profile(profile, tokens)
+        entry = {
+            "purchase_number": t.get("purchase_number"),
+            "title": t.get("title"),
+            "score": result.score,
+            "phrases": [h[0] for h in result.hits],
+        }
+        if result.accepted:
+            accepted.append(entry)
+        elif result.hard_hit:
+            entry["hard_hit"] = result.hard_hit
+            rejected_hard.append(entry)
+
+    return {
+        "total_checked": len(tenders),
+        "accepted": accepted[:200],
+        "rejected_hard": rejected_hard[:200],
+    }
+
+
+@app.post("/api/profiles/{profile_id}/ai-suggest")
+async def api_profile_ai_suggest(profile_id: int, request: Request):
+    """ИИ-черновик плюс/минус-фраз по описанию услуг. Ничего не сохраняет —
+    UI применяет только отмеченные пользователем строки через PUT /phrases."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    description = str((body or {}).get("description") or "").strip()
+    if not description:
+        raise HTTPException(400, "Опишите услуги для генерации фраз")
+
+    row = db.search_profile_get(profile_id)
+    if not row:
+        raise HTTPException(404, "Профиль не найден")
+    existing = [p.get("phrase") for p in (row.get("phrases") or []) if p.get("phrase")]
+
+    from llm_analyzer import suggest_profile_phrases
+    result = suggest_profile_phrases(description, existing)
+    if result is None:
+        return JSONResponse({"ok": False, "reason": "llm_unavailable"}, status_code=503)
+    return {"ok": True, "phrases": result}
+
+
+@app.post("/api/profiles/{profile_id}/ai-review")
+async def api_profile_ai_review(profile_id: int):
+    """ИИ-проверка текущих фраз профиля на риск ложных срабатываний."""
+    row = db.search_profile_get(profile_id)
+    if not row:
+        raise HTTPException(404, "Профиль не найден")
+
+    from llm_analyzer import review_profile_phrases
+    result = review_profile_phrases(row.get("name", ""), row.get("phrases") or [])
+    if result is None:
+        return JSONResponse({"ok": False, "reason": "llm_unavailable"}, status_code=503)
+    return {"ok": True, "reviews": result}
 
 
 @app.get("/api/decide/{purchase_number}")

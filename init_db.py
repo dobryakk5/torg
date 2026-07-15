@@ -96,6 +96,13 @@ def load_defaults(db) -> None:
     except Exception as e:
         logger.warning("Не удалось засеять scoring_rules: %s", e)
 
+    try:
+        n_profiles = db.search_profiles_seed()
+        if n_profiles:
+            logger.info("search_profiles: засеяно %d фраз из дефолтных профилей", n_profiles)
+    except Exception as e:
+        logger.warning("Не удалось засеять search_profiles: %s", e)
+
     if inserted:
         logger.info("Загружено настроек по умолчанию: %d", inserted)
     else:
@@ -175,6 +182,7 @@ def run_reset() -> None:
         for tbl in [
             "kb_templates", "kb_risk_rules", "kb_equipment",
             "kb_competencies", "kb_contracts", "scoring_rules",
+            "search_phrases", "search_profiles",
             "filter_scores", "decisions", "tender_changes", "runs",
             "customers", "price_corridors", "settings", "schema_migrations",
             "tenders",

@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Поисковые профили — Тендерный монитор</title>
+<style>
+:root{
+  --bg:#0f1117;--surf:#1a1d27;--surf2:#20243a;--surf3:#252940;
+  --border:#2a2d3e;--border2:#333655;--text:#e2e8f0;--dim:#8892a4;--dimmer:#4a5568;
+  --accent:#818cf8;--green:#4ade80;--yellow:#facc15;--red:#f87171;--blue:#60a5fa;
+  --orange:#fb923c;--mono:'JetBrains Mono','Fira Code',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:var(--mono);font-size:.8rem;background:var(--surf2);padding:.1rem .35rem;border-radius:3px;color:var(--blue)}
+.header{background:var(--surf);border-bottom:1px solid var(--border);padding:.75rem 2rem;position:sticky;top:0;z-index:100}
+.header-inner{max-width:1400px;margin:0 auto;display:flex;align-items:center;gap:1.5rem}
+.logo{font-family:var(--mono);font-weight:700;color:var(--accent)}
+.nav{display:flex;gap:.2rem}
+.nav a{font-size:.75rem;color:var(--dim);padding:.3rem .65rem;border-radius:4px;white-space:nowrap}
+.nav a:hover,.nav a.active{color:var(--text);background:var(--surf2);text-decoration:none}
+.main{max-width:1400px;margin:0 auto;padding:1.75rem 2rem}
+h1{font-size:1.1rem;margin-bottom:.3rem}
+.sub{color:var(--dim);font-size:.78rem;margin-bottom:1.25rem;line-height:1.6}
+.top-actions{display:flex;justify-content:flex-end;margin-bottom:1rem}
+.card{background:var(--surf);border:1px solid var(--border);border-radius:10px;padding:1.1rem 1.25rem;margin-bottom:1.1rem}
+.card.disabled{opacity:.55}
+.pf-head{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-bottom:.6rem}
+.pf-head input[type=text]{font-size:.85rem;font-weight:700;background:var(--surf2);border:1px solid var(--border2);
+  color:var(--text);border-radius:5px;padding:.35rem .55rem;font-family:inherit;min-width:220px}
+.pf-head .desc{font-size:.75rem;font-weight:400;min-width:260px;flex:1}
+.pf-meta{display:flex;flex-wrap:wrap;gap:.8rem;align-items:center;font-size:.68rem;color:var(--dim);margin-bottom:.7rem}
+.pf-meta label{display:flex;align-items:center;gap:.3rem}
+.pf-meta input[type=number]{width:60px;background:var(--surf2);border:1px solid var(--border2);color:var(--text);
+  border-radius:4px;padding:.2rem .4rem;font-family:var(--mono);font-size:.7rem}
+.pf-meta textarea{width:220px;height:32px;background:var(--surf2);border:1px solid var(--border2);color:var(--text);
+  border-radius:4px;padding:.2rem .4rem;font-family:var(--mono);font-size:.66rem;resize:vertical}
+.badge{font-family:var(--mono);font-size:.6rem;padding:.15rem .45rem;border-radius:999px;white-space:nowrap}
+.badge-default{background:rgba(74,222,128,.12);color:var(--green);border:1px solid rgba(74,222,128,.3)}
+.badge-off{background:rgba(136,146,164,.12);color:var(--dim);border:1px solid var(--border2)}
+table{width:100%;border-collapse:collapse;margin-bottom:.4rem}
+th{padding:5px 7px;text-align:left;font-size:.56rem;font-weight:600;color:var(--dim);
+  text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border)}
+td{padding:4px 7px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr.pf-row.disabled-row{opacity:.4}
+input[type=text],input[type=number],select{background:var(--surf2);border:1px solid var(--border2);color:var(--text);
+  border-radius:5px;padding:.28rem .45rem;font-family:var(--mono);font-size:.68rem;outline:none;width:100%}
+input[type=text]:focus,select:focus{border-color:var(--accent)}
+.col-w{width:52px}.col-flag{width:44px;text-align:center}.col-del{width:34px}
+.btn{font-family:var(--mono);font-weight:700;border-radius:5px;border:none;cursor:pointer;transition:.12s;font-size:.66rem}
+.btn-accent{background:var(--accent);color:var(--bg);padding:.35rem .8rem}
+.btn-accent:hover{opacity:.85}
+.btn-ghost{background:transparent;color:var(--dim);border:1px solid var(--border2);padding:.28rem .6rem}
+.btn-ghost:hover{color:var(--text);border-color:var(--accent)}
+.btn-save{background:var(--green);color:var(--bg);padding:.35rem .8rem}
+.btn-del{background:transparent;color:var(--red);border:1px solid rgba(248,113,113,.3);padding:.28rem .5rem}
+.btn-del:hover{background:rgba(248,113,113,.12)}
+.btn-sm{padding:.15rem .4rem;font-size:.62rem}
+.toggle{position:relative;width:32px;height:18px;cursor:pointer;display:inline-block;flex:none}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:var(--surf3);border-radius:18px;transition:.2s}
+.toggle-slider:before{content:'';position:absolute;width:12px;height:12px;background:#fff;border-radius:50%;bottom:3px;left:3px;transition:.2s}
+.toggle input:checked+.toggle-slider{background:var(--green)}
+.toggle input:checked+.toggle-slider:before{transform:translateX(14px)}
+.sec-title{font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);margin:.7rem 0 .3rem}
+.addbar{display:flex;gap:.5rem;margin-top:.3rem;flex-wrap:wrap;align-items:center}
+.feedback{font-size:.68rem;color:var(--green);font-family:var(--mono)}
+.lint-box{margin-top:.5rem;font-size:.68rem;border-radius:6px;overflow:hidden}
+.lint-item{padding:.4rem .6rem;border-left:3px solid var(--yellow);background:rgba(250,204,21,.06);margin-bottom:.3rem;border-radius:0 4px 4px 0}
+.lint-item.error{border-color:var(--red);background:rgba(248,113,113,.08)}
+.ai-box{margin-top:.8rem;border-top:1px dashed var(--border2);padding-top:.7rem}
+.ai-row{display:flex;gap:.5rem;align-items:flex-start;flex-wrap:wrap}
+.ai-row textarea{flex:1;min-width:260px;height:56px;background:var(--surf2);border:1px solid var(--border2);color:var(--text);
+  border-radius:5px;padding:.4rem .5rem;font-family:inherit;font-size:.72rem;resize:vertical}
+.ai-suggestion{display:flex;gap:.5rem;align-items:flex-start;padding:.35rem .5rem;background:var(--surf2);border-radius:5px;margin-bottom:.3rem;font-size:.68rem}
+.ai-suggestion .kind{font-family:var(--mono);color:var(--dim);white-space:nowrap}
+.preview-box{margin-top:.7rem;display:grid;grid-template-columns:1fr 1fr;gap:.8rem}
+.preview-col h4{font-size:.64rem;text-transform:uppercase;color:var(--dim);margin-bottom:.4rem}
+.preview-item{font-size:.66rem;padding:.3rem .5rem;background:var(--surf2);border-radius:4px;margin-bottom:.25rem}
+.preview-item .t{color:var(--text)}
+.preview-item .m{color:var(--dim);font-size:.62rem}
+.new-profile-form{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+.new-profile-form input{width:220px}
+@media (max-width:900px){ .preview-box{grid-template-columns:1fr} }
+</style>
+{% include "_theme.html" %}
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <div class="logo">🔍 ТендерМонитор</div>
+    <nav class="nav">
+      <a href="/">Тендеры</a>
+      <a href="/analytics">Аналитика</a>
+      <a href="/control">Управление</a>
+      <a href="/profiles" class="active">Профили</a>
+      <a href="/rules">Правила</a>
+      <a href="/kb">База знаний</a>
+    </nav>
+  </div>
+</div>
+
+<div class="main">
+  <h1>🔎 Поисковые профили</h1>
+  <p class="sub">
+    Поиск в Stage 1 идёт ТОЛЬКО по включённым профилям. Каждый профиль — набор
+    плюс-фраз (запросы в ЕИС + баллы) и минус-фраз (<code>minus_hard</code> — жёсткое
+    исключение, <code>minus_soft</code> — штраф к баллу). Маски: <code>*</code> — усечение
+    слова, <code>|</code> — варианты, <code>(слово слово)~N</code> — окно в N лишних слов.
+    Tenderplan в эту систему не входит — у него свой фильтр на стороне сервиса.
+  </p>
+
+  <div class="top-actions">
+    <div class="new-profile-form">
+      <input type="text" id="new-profile-name" placeholder="Название нового профиля">
+      <button class="btn btn-accent" onclick="createProfile()">+ Создать профиль</button>
+    </div>
+  </div>
+
+  {% for p in profiles %}
+  <div class="card {{ '' if p.enabled else 'disabled' }}" data-profile-id="{{ p.id }}">
+    <div class="pf-head">
+      <input type="text" class="p-name" value="{{ p.name }}">
+      <input type="text" class="p-desc desc" value="{{ p.description or '' }}" placeholder="описание">
+      {% if p.is_default %}<span class="badge badge-default">по умолчанию</span>{% endif %}
+      {% if not p.enabled %}<span class="badge badge-off">выключен</span>{% endif %}
+      <label class="toggle" title="включить/выключить">
+        <input type="checkbox" class="p-enabled" {% if p.enabled %}checked{% endif %}>
+        <span class="toggle-slider"></span>
+      </label>
+      <button class="btn btn-ghost btn-sm" onclick="setDefault({{ p.id }})">Сделать по умолч.</button>
+      <button class="btn btn-ghost btn-sm" onclick="copyProfile({{ p.id }})">⧉ Копировать</button>
+      <button class="btn btn-del btn-sm" onclick="deleteProfile({{ p.id }}, '{{ p.name|replace("'", "") }}')">✕ Удалить</button>
+    </div>
+    <div class="pf-meta">
+      <label>приоритет <input type="number" class="p-priority" value="{{ p.priority }}"></label>
+      <label>порог принятия <input type="number" class="p-min-score" value="{{ p.min_score }}"></label>
+      <label>ОКПД2 (по одному на строку)
+        <textarea class="p-okpd2">{{ (p.okpd2_codes or []) | join('\n') }}</textarea>
+      </label>
+      <button class="btn btn-save btn-sm" onclick="saveProfileMeta({{ p.id }})">✓ Сохранить настройки</button>
+      <span class="feedback" id="fb-meta-{{ p.id }}"></span>
+    </div>
+
+    <div class="sec-title">Плюс-фразы</div>
+    <table>
+      <thead><tr>
+        <th>Фраза</th><th class="col-w">Вес</th><th>Запрос в ЕИС (query_text)</th>
+        <th class="col-flag" title="только запрос, не считать локально">запрос</th>
+        <th class="col-flag" title="только локально, не отправлять в ЕИС">локал.</th>
+        <th class="col-flag">вкл</th><th>Заметка</th><th class="col-del"></th>
+      </tr></thead>
+      <tbody class="p-plus-body">
+        {% for ph in (p.phrases or []) if ph.kind == 'plus' %}
+        <tr class="pf-row {{ '' if ph.enabled else 'disabled-row' }}" data-id="{{ ph.id }}">
+          <td><input type="text" class="f-phrase" value="{{ ph.phrase }}"></td>
+          <td><input type="number" class="f-weight" value="{{ ph.weight }}"></td>
+          <td><input type="text" class="f-query" value="{{ ph.query_text or '' }}"></td>
+          <td class="col-flag"><input type="checkbox" class="f-query-only" {% if ph.query_only %}checked{% endif %}></td>
+          <td class="col-flag"><input type="checkbox" class="f-local-only" {% if ph.local_only %}checked{% endif %}></td>
+          <td class="col-flag"><input type="checkbox" class="f-enabled" {% if ph.enabled %}checked{% endif %}></td>
+          <td><input type="text" class="f-note" value="{{ ph.note or '' }}"></td>
+          <td class="col-del"><button class="btn btn-del btn-sm" onclick="this.closest('tr').remove()">✕</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="addbar">
+      <button class="btn btn-ghost btn-sm" onclick="addPlusRow({{ p.id }})">+ фраза</button>
+    </div>
+
+    <div class="sec-title">Минус-фразы</div>
+    <table>
+      <thead><tr>
+        <th>Фраза</th><th>Режим</th><th class="col-w">Вес</th>
+        <th class="col-flag">вкл</th><th>Заметка</th><th class="col-del"></th>
+      </tr></thead>
+      <tbody class="p-minus-body">
+        {% for ph in (p.phrases or []) if ph.kind in ('minus_hard','minus_soft') %}
+        <tr class="pf-row {{ '' if ph.enabled else 'disabled-row' }}" data-id="{{ ph.id }}">
+          <td><input type="text" class="f-phrase" value="{{ ph.phrase }}"></td>
+          <td>
+            <select class="f-kind">
+              <option value="minus_soft" {% if ph.kind == 'minus_soft' %}selected{% endif %}>мягкий штраф</option>
+              <option value="minus_hard" {% if ph.kind == 'minus_hard' %}selected{% endif %}>жёсткое исключение</option>
+            </select>
+          </td>
+          <td><input type="number" class="f-weight" value="{{ ph.weight }}"></td>
+          <td class="col-flag"><input type="checkbox" class="f-enabled" {% if ph.enabled %}checked{% endif %}></td>
+          <td><input type="text" class="f-note" value="{{ ph.note or '' }}"></td>
+          <td class="col-del"><button class="btn btn-del btn-sm" onclick="this.closest('tr').remove()">✕</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="addbar">
+      <button class="btn btn-ghost btn-sm" onclick="addMinusRow({{ p.id }})">+ фраза</button>
+      <button class="btn btn-accent btn-sm" onclick="savePhrases({{ p.id }})">💾 Сохранить фразы</button>
+      <button class="btn btn-ghost btn-sm" onclick="lintProfile({{ p.id }})">⚠ Проверить (линтер)</button>
+      <button class="btn btn-ghost btn-sm" onclick="previewProfile({{ p.id }})">▶ Прогнать по базе</button>
+      <span class="feedback" id="fb-phrases-{{ p.id }}"></span>
+    </div>
+    <div class="lint-box" id="lint-{{ p.id }}"></div>
+    <div class="preview-box" id="preview-{{ p.id }}" style="display:none"></div>
+
+    <div class="ai-box">
+      <div class="sec-title">🤖 ИИ-помощник {% if not llm_available %}<span style="color:var(--dim);text-transform:none">(LLM не сконфигурирован — задайте OPENROUTER_API_KEY)</span>{% endif %}</div>
+      <div class="ai-row">
+        <textarea id="ai-desc-{{ p.id }}" placeholder="Опишите услуги своими словами — ИИ предложит плюс/минус-фразы"></textarea>
+        <button class="btn btn-accent btn-sm" onclick="aiSuggest({{ p.id }})" {% if not llm_available %}disabled{% endif %}>Сгенерировать фразы</button>
+        <button class="btn btn-ghost btn-sm" onclick="aiReview({{ p.id }})" {% if not llm_available %}disabled{% endif %}>Проверить текущие фразы</button>
+      </div>
+      <div id="ai-suggestions-{{ p.id }}"></div>
+      <div id="ai-review-{{ p.id }}"></div>
+    </div>
+  </div>
+  {% else %}
+  <div class="card">Профили не найдены — запустите <code>python init_db.py</code>.</div>
+  {% endfor %}
+</div>
+
+<script>
+/* ── линтер (эвристика на клиенте, не блокирует сохранение кроме ошибок скобок) ── */
+const LINT_BARE_PLUS = ['программ*','модул*','платформ*','функционал*','ит','it','систем*','баз* данн*'];
+const LINT_DANGEROUS_HARD = ['строител*','ремонт','поставк*','приобретени*','сопровожден*','доступ*'];
+
+function normPhrase(s) { return (s||'').trim().toLowerCase().replace(/ё/g,'е'); }
+
+function lintPhrases(plusRows, minusRows) {
+  const issues = [];
+  const seen = new Set();
+  plusRows.forEach(r => {
+    const norm = normPhrase(r.phrase);
+    const bareWord = norm.replace(/^\(|\)~\d+$/g, '').trim();
+    if (LINT_BARE_PLUS.includes(bareWord)) {
+      issues.push({level:'warn', text:`Плюс-фраза «${r.phrase}» слишком общая — даст много мусора, добавьте уточнение (см. подсказку в шапке страницы).`});
+    }
+    const key = 'plus:' + norm;
+    if (seen.has(key)) issues.push({level:'warn', text:`Дубль плюс-фразы: «${r.phrase}»`});
+    seen.add(key);
+  });
+  minusRows.forEach(r => {
+    const norm = normPhrase(r.phrase);
+    if (r.kind === 'minus_hard' && LINT_DANGEROUS_HARD.includes(norm)) {
+      issues.push({level:'warn', text:`Опасное жёсткое исключение «${r.phrase}» может удалить полезные закупки — используйте мягкий штраф или узкое сочетание с ~N.`});
+    }
+    const key = 'minus:' + norm;
+    if (seen.has(key)) issues.push({level:'warn', text:`Дубль минус-фразы: «${r.phrase}»`});
+    seen.add(key);
+  });
+  [...plusRows, ...minusRows].forEach(r => {
+    const opens = (r.phrase.match(/\(/g)||[]).length, closes = (r.phrase.match(/\)/g)||[]).length;
+    if (opens !== closes) issues.push({level:'error', text:`Непарные скобки во фразе «${r.phrase}»`});
+    const m = r.phrase.match(/~(\S*)$/);
+    if (m && !/^\d+$/.test(m[1])) issues.push({level:'error', text:`"~" без числа во фразе «${r.phrase}»`});
+  });
+  return issues;
+}
+
+/* ── сбор строк таблиц ── */
+function collectRows(card, selector, kindDefault) {
+  return Array.from(card.querySelectorAll(selector + ' tr.pf-row')).map(tr => ({
+    id: tr.dataset.id ? Number(tr.dataset.id) : null,
+    kind: tr.querySelector('.f-kind') ? tr.querySelector('.f-kind').value : kindDefault,
+    phrase: tr.querySelector('.f-phrase').value.trim(),
+    weight: Number(tr.querySelector('.f-weight').value || 3),
+    query_text: tr.querySelector('.f-query') ? (tr.querySelector('.f-query').value.trim() || null) : null,
+    query_only: tr.querySelector('.f-query-only') ? tr.querySelector('.f-query-only').checked : false,
+    local_only: tr.querySelector('.f-local-only') ? tr.querySelector('.f-local-only').checked : false,
+    enabled: tr.querySelector('.f-enabled').checked,
+    note: tr.querySelector('.f-note').value.trim(),
+  })).filter(r => r.phrase);
+}
+
+function cardOf(id) { return document.querySelector(`[data-profile-id="${id}"]`); }
+
+function lintProfile(id) {
+  const card = cardOf(id);
+  const plus = collectRows(card, '.p-plus-body', 'plus');
+  const minus = collectRows(card, '.p-minus-body', 'minus_soft');
+  const issues = lintPhrases(plus, minus);
+  const box = document.getElementById('lint-' + id);
+  if (!issues.length) { box.innerHTML = '<div class="lint-item" style="border-color:var(--green);background:rgba(74,222,128,.08)">Замечаний нет</div>'; return; }
+  box.innerHTML = issues.map(i => `<div class="lint-item ${i.level}">${esc(i.text)}</div>`).join('');
+}
+
+/* ── добавление строк ── */
+function addPlusRow(id) {
+  const card = cardOf(id);
+  const tbody = card.querySelector('.p-plus-body');
+  const tr = document.createElement('tr');
+  tr.className = 'pf-row';
+  tr.innerHTML = `
+    <td><input type="text" class="f-phrase" placeholder="разработк* сайт*"></td>
+    <td><input type="number" class="f-weight" value="3"></td>
+    <td><input type="text" class="f-query" placeholder="разработка сайта"></td>
+    <td class="col-flag"><input type="checkbox" class="f-query-only"></td>
+    <td class="col-flag"><input type="checkbox" class="f-local-only"></td>
+    <td class="col-flag"><input type="checkbox" class="f-enabled" checked></td>
+    <td><input type="text" class="f-note"></td>
+    <td class="col-del"><button class="btn btn-del btn-sm" onclick="this.closest('tr').remove()">✕</button></td>`;
+  tbody.appendChild(tr);
+  tr.querySelector('.f-phrase').focus();
+}
+
+function addMinusRow(id) {
+  const card = cardOf(id);
+  const tbody = card.querySelector('.p-minus-body');
+  const tr = document.createElement('tr');
+  tr.className = 'pf-row';
+  tr.innerHTML = `
+    <td><input type="text" class="f-phrase" placeholder="поставк*"></td>
+    <td><select class="f-kind"><option value="minus_soft">мягкий штраф</option><option value="minus_hard">жёсткое исключение</option></select></td>
+    <td><input type="number" class="f-weight" value="3"></td>
+    <td class="col-flag"><input type="checkbox" class="f-enabled" checked></td>
+    <td><input type="text" class="f-note"></td>
+    <td class="col-del"><button class="btn btn-del btn-sm" onclick="this.closest('tr').remove()">✕</button></td>`;
+  tbody.appendChild(tr);
+  tr.querySelector('.f-phrase').focus();
+}
+
+/* ── сохранение ── */
+async function saveProfileMeta(id) {
+  const card = cardOf(id);
+  const okpd2 = card.querySelector('.p-okpd2').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const payload = {
+    name: card.querySelector('.p-name').value.trim(),
+    description: card.querySelector('.p-desc').value.trim(),
+    enabled: card.querySelector('.p-enabled').checked,
+    priority: Number(card.querySelector('.p-priority').value || 100),
+    min_score: Number(card.querySelector('.p-min-score').value || 3),
+    okpd2_codes: okpd2,
+  };
+  try {
+    const r = await fetch(`/api/profiles/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    const d = await r.json();
+    if (d.ok) { flash('fb-meta-' + id, '✓ сохранено'); card.classList.toggle('disabled', !payload.enabled); }
+    else alert('Ошибка: ' + JSON.stringify(d));
+  } catch(e) { alert('Ошибка запроса: ' + e); }
+}
+
+async function savePhrases(id) {
+  const card = cardOf(id);
+  const plus = collectRows(card, '.p-plus-body', 'plus');
+  const minus = collectRows(card, '.p-minus-body', 'minus_soft');
+  const issues = lintPhrases(plus, minus);
+  const blocking = issues.filter(i => i.level === 'error');
+  if (blocking.length) { alert('Есть ошибки синтаксиса:\n' + blocking.map(i=>i.text).join('\n')); return; }
+  try {
+    const r = await fetch(`/api/profiles/${id}/phrases`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({phrases:[...plus, ...minus]})});
+    const d = await r.json();
+    if (d.ok) { flash('fb-phrases-' + id, `✓ сохранено (${d.count})`); }
+    else alert('Ошибка: ' + JSON.stringify(d));
+  } catch(e) { alert('Ошибка запроса: ' + e); }
+}
+
+/* ── профиль: копия / удаление / по умолчанию / создание ── */
+async function createProfile() {
+  const nameEl = document.getElementById('new-profile-name');
+  const name = nameEl.value.trim();
+  if (!name) { alert('Введите название профиля'); return; }
+  try {
+    const r = await fetch('/api/profiles', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, enabled:false})});
+    const d = await r.json();
+    if (d.ok) location.reload(); else alert('Ошибка: ' + JSON.stringify(d));
+  } catch(e) { alert('Ошибка запроса: ' + e); }
+}
+
+async function copyProfile(id) {
+  try {
+    const r = await fetch(`/api/profiles/${id}/copy`, {method:'POST'});
+    const d = await r.json();
+    if (d.ok) location.reload(); else alert('Ошибка: ' + JSON.stringify(d));
+  } catch(e) { alert('Ошибка запроса: ' + e); }
+}
+
+async function deleteProfile(id, name) {
+  if (!confirm(`Удалить профиль «${name}»? Это необратимо.`)) return;
+  try {
+    const r = await fetch(`/api/profiles/${id}`, {method:'DELETE'});
+    const d = await r.json();
+    if (d.ok) location.reload(); else alert('Ошибка: ' + (d.detail || JSON.stringify(d)));
+  } catch(e) { alert('Ошибка запроса: ' + e); }
+}
+
+async function setDefault(id) {
+  try {
+    const r = await fetch(`/api/profiles/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({is_default:true, enabled:true})});
+    const d = await r.json();
+    if (d.ok) location.reload(); else alert('Ошибка: ' + JSON.stringify(d));
+  } catch(e) { alert('Ошибка запроса: ' + e); }
+}
+
+/* ── предпросмотр по базе ── */
+async function previewProfile(id) {
+  const box = document.getElementById('preview-' + id);
+  box.style.display = 'grid';
+  box.innerHTML = '<div class="preview-col">загрузка…</div>';
+  try {
+    const r = await fetch(`/api/profiles/${id}/preview`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({limit:500})});
+    const d = await r.json();
+    const acc = (d.accepted||[]).map(t => `<div class="preview-item"><div class="t">${esc(t.title||'')}</div><div class="m">скор ${t.score} · ${esc((t.phrases||[]).join(', '))}</div></div>`).join('') || '<div class="m">ничего не принято</div>';
+    const rej = (d.rejected_hard||[]).map(t => `<div class="preview-item"><div class="t">${esc(t.title||'')}</div><div class="m">отброшено: ${esc(t.hard_hit||'')}</div></div>`).join('') || '<div class="m">нет отсеянных hard-минусами</div>';
+    box.innerHTML = `
+      <div class="preview-col"><h4>Принято (из ${d.total_checked} проверенных)</h4>${acc}</div>
+      <div class="preview-col"><h4>Отсеяно hard-минусами</h4>${rej}</div>`;
+  } catch(e) { box.innerHTML = '<div class="preview-col">Ошибка запроса: ' + esc(String(e)) + '</div>'; }
+}
+
+/* ── ИИ-помощник ── */
+async function aiSuggest(id) {
+  const description = document.getElementById('ai-desc-' + id).value.trim();
+  if (!description) { alert('Опишите услуги для генерации фраз'); return; }
+  const out = document.getElementById('ai-suggestions-' + id);
+  out.innerHTML = '<div class="m">генерирую…</div>';
+  try {
+    const r = await fetch(`/api/profiles/${id}/ai-suggest`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({description})});
+    const d = await r.json();
+    if (!d.ok) { out.innerHTML = '<div class="m">ИИ недоступен (' + (d.reason||'') + ')</div>'; return; }
+    if (!d.phrases.length) { out.innerHTML = '<div class="m">ИИ не предложил новых фраз</div>'; return; }
+    out.innerHTML = d.phrases.map((p, i) => `
+      <label class="ai-suggestion">
+        <input type="checkbox" class="ai-pick-${id}" checked
+          data-kind="${p.kind}" data-phrase="${escAttr(p.phrase)}" data-weight="${p.weight}"
+          data-query="${escAttr(p.query_text||'')}" data-note="${escAttr(p.note||'')}">
+        <span class="kind">${p.kind}</span>
+        <span>${esc(p.phrase)}${p.query_text ? ' → <i>' + esc(p.query_text) + '</i>' : ''} — ${esc(p.note||'')}</span>
+      </label>`).join('') + `<button class="btn btn-accent btn-sm" style="margin-top:.4rem" onclick="applySuggestions(${id})">Добавить отмеченные</button>`;
+  } catch(e) { out.innerHTML = '<div class="m">Ошибка запроса: ' + esc(String(e)) + '</div>'; }
+}
+
+function applySuggestions(id) {
+  const card = cardOf(id);
+  document.querySelectorAll(`.ai-pick-${id}:checked`).forEach(cb => {
+    const kind = cb.dataset.kind, phrase = cb.dataset.phrase, weight = cb.dataset.weight;
+    if (kind === 'plus') {
+      addPlusRow(id);
+      const tr = card.querySelector('.p-plus-body tr.pf-row:last-child');
+      tr.querySelector('.f-phrase').value = phrase;
+      tr.querySelector('.f-weight').value = weight;
+      tr.querySelector('.f-query').value = cb.dataset.query || '';
+      tr.querySelector('.f-note').value = cb.dataset.note || '';
+    } else {
+      addMinusRow(id);
+      const tr = card.querySelector('.p-minus-body tr.pf-row:last-child');
+      tr.querySelector('.f-phrase').value = phrase;
+      tr.querySelector('.f-kind').value = kind;
+      tr.querySelector('.f-weight').value = weight;
+      tr.querySelector('.f-note').value = cb.dataset.note || '';
+    }
+  });
+  alert('Фразы добавлены в таблицы — не забудьте нажать «Сохранить фразы».');
+}
+
+async function aiReview(id) {
+  const out = document.getElementById('ai-review-' + id);
+  out.innerHTML = '<div class="m">проверяю…</div>';
+  try {
+    const r = await fetch(`/api/profiles/${id}/ai-review`, {method:'POST'});
+    const d = await r.json();
+    if (!d.ok) { out.innerHTML = '<div class="m">ИИ недоступен (' + (d.reason||'') + ')</div>'; return; }
+    if (!d.reviews.length) { out.innerHTML = '<div class="lint-item" style="border-color:var(--green);background:rgba(74,222,128,.08)">Рискованных фраз не найдено</div>'; return; }
+    out.innerHTML = d.reviews.map(rv => `<div class="lint-item ${rv.risk === 'high' ? 'error' : ''}">
+      <b>${esc(rv.phrase)}</b> [${rv.risk}]: ${esc(rv.example||'')} ${rv.note ? '— ' + esc(rv.note) : ''}
+    </div>`).join('');
+  } catch(e) { out.innerHTML = '<div class="m">Ошибка запроса: ' + esc(String(e)) + '</div>'; }
+}
+
+/* ── утилиты ── */
+function flash(elId, msg) { const el = document.getElementById(elId); if (el) { el.textContent = msg; setTimeout(()=>el.textContent='',2500); } }
+function esc(s) { return (s||'').replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function escAttr(s) { return esc(s).replace(/'/g, "&#39;"); }
+</script>
+</body>
+</html>

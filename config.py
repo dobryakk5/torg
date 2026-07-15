@@ -338,6 +338,30 @@ EAT_SEARCH_KEYWORDS = [
     x.strip() for x in os.getenv("EAT_SEARCH_KEYWORDS", "").split(",") if x.strip()
 ]
 EAT_COOKIE = os.getenv("EAT_COOKIE", "")
+# UA браузера, из которого взяты куки EAT_COOKIE (анти-бот сверяет отпечаток).
+EAT_USER_AGENT = os.getenv("EAT_USER_AGENT", "")
+# Тянуть детальную карточку лота (спецификация + условия поставки) для каждой находки.
+EAT_FETCH_DETAILS = os.getenv("EAT_FETCH_DETAILS", "1") != "0"
+
+# Портал поставщиков (zakupki.mos.ru) — котировочные сессии и потребности (ЗМО).
+# Реестр общероссийский: MOS_REGION_PATHS режет по регионам (Москва ".1.504.",
+# пусто = вся РФ). Ключевые слова: MOS_SEARCH_KEYWORDS → SPB_SEARCH_KEYWORDS → общие.
+SOURCE_MOS_ENABLED = os.getenv("SOURCE_MOS_ENABLED", "0") != "0"
+MOS_SEARCH_PAGES   = int(os.getenv("MOS_SEARCH_PAGES", "1"))
+MOS_SEARCH_KEYWORDS = [
+    x.strip() for x in os.getenv("MOS_SEARCH_KEYWORDS", "").split(",") if x.strip()
+]
+MOS_REGION_PATHS = [
+    x.strip() for x in os.getenv("MOS_REGION_PATHS", "").split(",") if x.strip()
+]
+
+# Электронный магазин Московской области (market.mosreg.ru) — ЗМО.
+# Ключевые слова: MOSREG_SEARCH_KEYWORDS → SPB_SEARCH_KEYWORDS → общие.
+SOURCE_MOSREG_ENABLED = os.getenv("SOURCE_MOSREG_ENABLED", "0") != "0"
+MOSREG_SEARCH_PAGES   = int(os.getenv("MOSREG_SEARCH_PAGES", "1"))
+MOSREG_SEARCH_KEYWORDS = [
+    x.strip() for x in os.getenv("MOSREG_SEARCH_KEYWORDS", "").split(",") if x.strip()
+]
 
 OKPD2_CODES = [
     "62.01",    # разработка ПО

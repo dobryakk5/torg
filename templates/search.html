@@ -38,12 +38,15 @@ a { color:var(--accent); }
 .panel h2 { font-size:.78rem; text-transform:uppercase; letter-spacing:1px; color:var(--accent); margin-bottom:10px; }
 .panel h3 { font-size:.7rem; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; margin:12px 0 6px; }
 
-/* phrase chips */
-.chips { display:flex; flex-wrap:wrap; gap:5px; }
-.chip { background:var(--surf2); border:1px solid var(--border2); color:var(--text);
-  padding:4px 9px; border-radius:14px; font-size:.66rem; cursor:pointer; user-select:none; }
-.chip:hover { border-color:var(--accent); color:var(--accent); }
-.chip.added { background:var(--go-bg); border-color:var(--go-bdr); color:var(--go); }
+/* profile checklist */
+.profiles { display:flex; flex-direction:column; gap:4px; }
+.profile-row { display:flex; align-items:center; gap:8px; background:var(--surf2); border:1px solid var(--border2);
+  border-radius:7px; padding:7px 9px; font-size:.7rem; cursor:pointer; }
+.profile-row:hover { border-color:var(--accent); }
+.profile-row .name { flex:1; }
+.profile-row .cnt { color:var(--dim); font-size:.62rem; }
+.profile-row .off { color:var(--dim); font-size:.6rem; text-transform:uppercase; }
+.profile-row .dflt { color:var(--go); font-size:.6rem; text-transform:uppercase; }
 .btn-link { background:none; border:none; color:var(--accent); font-size:.66rem; cursor:pointer; font-family:var(--mono); padding:0; }
 
 textarea, input[type=text], input[type=number] {
@@ -127,6 +130,7 @@ tr.trow:hover { background:var(--surf2); }
   <a href="/search" class="tab active">Поиск</a>
   <a href="/analytics" class="tab">📊 Аналитика</a>
   <a href="/control" class="tab">⚙ Управление</a>
+  <a href="/profiles" class="tab">🔎 Профили</a>
   <a href="/rules" class="tab">🧮 Правила</a>
   <a href="/kb" class="tab">📚 База знаний</a>
 </nav>
@@ -136,22 +140,22 @@ tr.trow:hover { background:var(--surf2); }
   <!-- ── Левая колонка: конструктор поиска + прогресс ── -->
   <div>
     <div class="panel">
-      <h2>Поисковые фразы</h2>
+      <h2>Поисковые профили</h2>
+      <div class="sub" style="margin-bottom:8px;">Поиск идёт по плюс-фразам выбранных профилей — отредактировать фразы можно на странице <a href="/profiles">/profiles</a>.</div>
 
-      <h3>Ключевые слова <button class="btn-link" onclick="addAll('kw')">+ добавить все</button></h3>
-      <div class="chips" id="chips-kw">
-        {% for k in keywords %}<span class="chip" data-v="{{ k }}" onclick="toggleChip(this)">{{ k }}</span>{% endfor %}
+      <div class="profiles" id="profile-list">
+        {% for p in profiles %}
+        <label class="profile-row">
+          <input type="checkbox" class="profile-cb" value="{{ p.id }}" {% if p.is_default %}checked{% endif %}>
+          <span class="name">{{ p.name }}</span>
+          <span class="cnt">{{ (p.phrases or []) | length }} фраз</span>
+          {% if p.is_default %}<span class="dflt">по умолч.</span>{% endif %}
+          {% if not p.enabled %}<span class="off">выкл</span>{% endif %}
+        </label>
+        {% else %}
+        <div class="empty" style="padding:10px;">Профили не настроены — запустите init_db.py</div>
+        {% endfor %}
       </div>
-
-      {% if okpd2 %}
-      <h3>ОКПД2 <button class="btn-link" onclick="addAll('okpd2')">+ добавить все</button></h3>
-      <div class="chips" id="chips-okpd2">
-        {% for c in okpd2 %}<span class="chip" data-v="{{ c }}" onclick="toggleChip(this)">{{ c }}</span>{% endfor %}
-      </div>
-      {% endif %}
-
-      <label class="fld">Поисковое окно (по фразе на строку)</label>
-      <textarea id="phrasebox" placeholder="Добавьте фразы кликом по чипам выше или впишите вручную…"></textarea>
 
       <label class="fld">Цена, ₽</label>
       <div class="row">
@@ -227,41 +231,17 @@ tr.trow:hover { background:var(--surf2); }
 <script>
 let SORT = "score", ORDER = "desc", pollTimer = null;
 
-/* ── конструктор фраз ── */
-function currentPhrases() {
-  return document.getElementById("phrasebox").value
-    .split("\n").map(s => s.trim()).filter(Boolean);
+/* ── выбор профилей ── */
+function selectedProfileIds() {
+  return Array.from(document.querySelectorAll(".profile-cb:checked")).map(cb => Number(cb.value));
 }
-function setPhrases(list) {
-  document.getElementById("phrasebox").value = list.join("\n");
-  syncChips();
-}
-function toggleChip(el) {
-  const v = el.dataset.v, list = currentPhrases();
-  const i = list.indexOf(v);
-  if (i === -1) list.push(v); else list.splice(i, 1);
-  setPhrases(list);
-}
-function addAll(group) {
-  const list = currentPhrases();
-  document.querySelectorAll("#chips-" + group + " .chip").forEach(c => {
-    if (!list.includes(c.dataset.v)) list.push(c.dataset.v);
-  });
-  setPhrases(list);
-}
-function syncChips() {
-  const set = new Set(currentPhrases());
-  document.querySelectorAll(".chip").forEach(c =>
-    c.classList.toggle("added", set.has(c.dataset.v)));
-}
-document.getElementById("phrasebox").addEventListener("input", syncChips);
 
 /* ── старт / стоп ── */
 async function startSearch() {
-  const phrases = currentPhrases();
-  if (!phrases.length) { alert("Добавьте хотя бы одну поисковую фразу"); return; }
+  const profile_ids = selectedProfileIds();
+  if (!profile_ids.length) { alert("Выберите хотя бы один поисковый профиль"); return; }
   const body = {
-    phrases,
+    profile_ids,
     price_min: numVal("price_min"), price_max: numVal("price_max"),
     days_back: numVal("days_back"), pages: numVal("pages"),
     fz44: document.getElementById("fz44").checked,

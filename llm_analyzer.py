@@ -605,3 +605,187 @@ def extract_verdict(analysis: str) -> str:
         if line.strip().upper().startswith("ВЕРДИКТ"):
             return line.split(":", 1)[-1].strip()
     return "—"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Поисковые профили (search_profiles.py) — ИИ-помощник для /profiles
+# ══════════════════════════════════════════════════════════════════════════════
+
+_PROFILE_PHRASE_RULES = """
+Синтаксис фразы поискового профиля:
+- "*" в конце слова — усечение (стемминг): "разработк*" матчит "разработка/разработку/…".
+- "|" внутри слова — варианты через ИЛИ: "битрикс|bitrix".
+- "(слово слово)~N" — фраза из нескольких слов, допускается N лишних слов между ними
+  (без ~N окно по умолчанию = 1, т.е. одно слово может быть между).
+- kind: "plus" (даёт баллы и уходит в поиск ЕИС), "minus_hard" (жёсткое исключение —
+  тендер отбрасывается), "minus_soft" (мягкий штраф к баллу, тендер не отбрасывается).
+
+КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА ГИГИЕНЫ (нарушение даёт огромный мусор в выдаче):
+1. НИКОГДА не предлагай голые фразы "разработк* программ*" (без уточнения) —
+   ловит "программа газификации", "образовательная программа", "муниципальная программа".
+   Разрешено ТОЛЬКО с уточнением: "разработк* программн* обеспечен*", "разработк* прикладн* программ*".
+2. НИКОГДА не предлагай голые "модул*", "платформ*", "функционал*", "ИТ", "IT" без
+   уточняющего слова рядом (например "программн* модул*", "цифров* платформ*" — можно,
+   голое "модул*" — нельзя, ловит "модульное здание").
+3. Опасные слова типа "строител*", "ремонт", "поставк*", "приобретени*", "сопровожден*"
+   НИКОГДА не делай kind="minus_hard" — только "minus_soft" (мягкий штраф) или узкое
+   сочетание с "~N", например "(капитальн* ремонт*)~1".
+4. Не дублируй фразы, которые уже есть в списке ниже.
+"""
+
+_SUGGEST_SYSTEM = """
+Ты помогаешь настраивать поисковый профиль тендерного монитора для ИТ-подрядчика.
+Профиль — это набор плюс/минус-фраз, по которым система ищет закупки в ЕИС и
+оценивает найденные карточки локально (без похода в интернет).
+""" + _PROFILE_PHRASE_RULES + """
+Пользователь описал, какие услуги он хочет ловить этим профилем. Предложи 8-20
+новых фраз (plus и, если уместно, minus_soft/minus_hard), которых ещё нет в
+существующем списке. Для plus-фраз обязательно укажи query_text — чистую
+словоформу без масок для отправки в поиск ЕИС (например для "разработк* сайт*"
+query_text = "разработка сайта").
+
+Ответ СТРОГО в формате JSON:
+{"phrases": [
+  {"kind": "plus", "phrase": "разработк* сайт*", "query_text": "разработка сайта",
+   "weight": 3, "note": "почему подходит"},
+  {"kind": "minus_soft", "phrase": "поставк*", "weight": 3, "note": "почему может быть шумом"}
+]}
+"""
+
+_SUGGEST_USER = """
+Описание услуг от пользователя:
+{description}
+
+Уже есть в профиле (не дублировать):
+{existing}
+"""
+
+
+def suggest_profile_phrases(description: str, existing_phrases: list[str] | None = None) -> Optional[list[dict]]:
+    """ИИ-черновик плюс/минус-фраз по описанию услуг пользователя.
+
+    Возвращает список dict {kind, phrase, weight, query_text?, note} или None
+    при недоступности LLM. Черновик НИКОГДА не применяется автоматически —
+    только после ручного подтверждения в UI (см. /profiles).
+    """
+    import llm_provider
+
+    if not llm_provider.is_configured() or not str(description or "").strip():
+        return None
+
+    existing = "\n".join(f"- {p}" for p in (existing_phrases or [])[:80]) or "(пока пусто)"
+    raw = llm_provider.complete(
+        system=_SUGGEST_SYSTEM,
+        user=_SUGGEST_USER.format(description=str(description)[:2000], existing=existing),
+        model=llm_provider.triage_model(),
+        max_tokens=2000,
+        temperature=0.3,
+        json_mode=True,
+    )
+    data = llm_provider.parse_json(raw)
+    if not data:
+        return None
+    return _normalize_suggested_phrases(data.get("phrases"))
+
+
+def _normalize_suggested_phrases(raw: object) -> list[dict]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind", "")).strip().lower()
+        if kind not in {"plus", "minus_hard", "minus_soft"}:
+            continue
+        phrase = str(item.get("phrase", "")).strip()
+        if not phrase:
+            continue
+        try:
+            weight = int(item.get("weight", 3))
+        except (TypeError, ValueError):
+            weight = 3
+        out.append({
+            "kind": kind,
+            "phrase": phrase[:200],
+            "weight": max(1, min(10, weight)),
+            "query_text": (str(item.get("query_text", "")).strip()[:200] or None) if item.get("query_text") else None,
+            "note": str(item.get("note", "")).strip()[:300],
+        })
+    return out[:30]
+
+
+_REVIEW_SYSTEM = """
+Ты проверяешь фразы поискового профиля тендерного монитора на риск ложных
+срабатываний (мусора в выдаче) и пропуска полезных закупок.
+""" + _PROFILE_PHRASE_RULES + """
+Для каждой фразы из списка оцени риск: "high" (почти наверняка даст много
+мусора или отбросит полезное — особенно для kind="minus_hard"), "medium"
+(может быть шумной в отдельных случаях), "low" (безопасна). Для high/medium
+обязательно приведи конкретный пример ложного срабатывания.
+
+Ответ СТРОГО в формате JSON:
+{"reviews": [
+  {"phrase": "разработк* программ*", "risk": "high",
+   "example": "программа газификации, образовательная программа", "note": "уточни: программн* обеспечен*"}
+]}
+Фразы с risk="low" можно не включать в ответ вовсе.
+"""
+
+_REVIEW_USER = """
+Фразы профиля "{profile_name}" (kind: фраза):
+{phrases}
+"""
+
+
+def review_profile_phrases(profile_name: str, phrases: list[dict]) -> Optional[list[dict]]:
+    """ИИ-проверка фраз профиля на риск ложных срабатываний.
+
+    Возвращает список dict {phrase, risk, example, note} только для рискованных
+    фраз (low не включаются), или None при недоступности LLM.
+    """
+    import llm_provider
+
+    if not llm_provider.is_configured() or not phrases:
+        return None
+
+    lines = "\n".join(
+        f"- ({p.get('kind', 'plus')}) {p.get('phrase', '')}" for p in phrases[:80] if p.get("phrase")
+    )
+    if not lines:
+        return None
+
+    raw = llm_provider.complete(
+        system=_REVIEW_SYSTEM,
+        user=_REVIEW_USER.format(profile_name=profile_name or "—", phrases=lines),
+        model=llm_provider.triage_model(),
+        max_tokens=2000,
+        temperature=0.0,
+        json_mode=True,
+    )
+    data = llm_provider.parse_json(raw)
+    if not data:
+        return None
+    return _normalize_phrase_reviews(data.get("reviews"))
+
+
+def _normalize_phrase_reviews(raw: object) -> list[dict]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        phrase = str(item.get("phrase", "")).strip()
+        if not phrase:
+            continue
+        risk = str(item.get("risk", "")).strip().lower()
+        if risk not in {"high", "medium", "low"}:
+            risk = "medium"
+        out.append({
+            "phrase": phrase[:200],
+            "risk": risk,
+            "example": str(item.get("example", "")).strip()[:300],
+            "note": str(item.get("note", "")).strip()[:300],
+        })
+    return out[:80]
