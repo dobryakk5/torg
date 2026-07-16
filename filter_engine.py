@@ -350,6 +350,19 @@ def run_filters(tender: dict[str, Any], text: str = "", stage: str = "stage2") -
     if tender.get("matched_profiles"):
         filters[0] = _apply_profile_signal(filters[0], tender)
 
+    # Мягкий режим витрин: карточка, не достигшая порога
+    # поисковых профилей, остаётся в БД, но получает штраф Ф1.
+    if tender.get("profile_filter_rejected"):
+        f0 = filters[0]
+        penalty = max(1, int(getattr(config, "PROFILE_MISS_SCORE_PENALTY", 2)))
+        filters[0] = FilterScore(
+            f0.number,
+            f0.name,
+            max(1, f0.score - penalty),
+            f0.signals + [f"⚠ не прошла порог поискового профиля: штраф −{penalty}"],
+            stop_factor=f0.stop_factor,
+        )
+
     # Мягкая интеграция LLM-триажа (Stage 1): вердикт корректирует ТОЛЬКО Ф1
     # (профиль) на ±1–2 балла. Итоговое решение по-прежнему считается по фильтрам.
     triage = tender.get("llm_triage")

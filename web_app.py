@@ -429,6 +429,11 @@ def fmt_date(v: str) -> str:
     m = re.search(r"(\d{4})-(\d{2})-(\d{2})", str(v))
     return f"{m.group(3)}.{m.group(2)}.{m.group(1)}" if m else str(v)[:10]
 
+def fmt_datetime(v: str) -> str:
+    if not v: return "—"
+    dt = db.parse_deadline(str(v))
+    return dt.strftime("%d.%m.%Y %H:%M") if dt else str(v)
+
 def days_left(v: str) -> Optional[int]:
     """Сколько дней осталось до срока подачи заявок (deadline). None — не распознано/не задано.
 
@@ -553,7 +558,7 @@ def zakupki_documents_url(url: str, purchase_number: str = "") -> str:
         + urlencode(query)
     )
 
-for name, fn in [("fmt_price",fmt_price),("fmt_date",fmt_date),("days_left",days_left),
+for name, fn in [("fmt_price",fmt_price),("fmt_date",fmt_date),("fmt_datetime",fmt_datetime),("days_left",days_left),
                   ("platform_short",platform_short),
                   ("score_color",score_color),("decision_class",decision_class),
                   ("parse_signals",parse_signals),("parse_stop",parse_stop),
@@ -1792,16 +1797,37 @@ async def api_tender_workflow(purchase_number: str, request: Request):
 
 
 @app.post("/api/tender/{purchase_number}/reject")
-async def api_tender_reject(purchase_number: str):
+async def api_tender_reject(purchase_number: str, request: Request):
     """Помечает тендер как отказной и убирает его из обычных списков/доски."""
     tender = db.get_tender(purchase_number)
     if not tender:
         raise HTTPException(404, "Тендер не найден")
 
-    db.set_decision(purchase_number, "rejected", "Отказ через карточку тендера")
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    reason = data.get("reason") or "manual_decline"
+    comments = {
+        "not_my_profile": "Не мой профиль",
+        "manual_decline": "Решил не брать",
+    }
+    if reason not in comments:
+        raise HTTPException(400, "Неизвестная причина отказа")
+
+    db.set_decision(
+        purchase_number,
+        "rejected",
+        comments[reason],
+        rejection_reason=reason,
+    )
     db.set_workflow(purchase_number, {"work_stage": "", "work_due": None})
     updated = db.get_tender(purchase_number) or {}
-    return JSONResponse(content={"ok": True, "decision": updated.get("decision")})
+    return JSONResponse(content={
+        "ok": True,
+        "decision": updated.get("decision"),
+        "rejection_reason": updated.get("rejection_reason"),
+    })
 
 
 @app.get("/board", response_class=HTMLResponse)

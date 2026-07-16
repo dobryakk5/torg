@@ -28,6 +28,29 @@ def test_no_profile_match_leaves_f1_untouched():
     assert not any("профиль «" in s for s in f1.signals)
 
 
+def test_soft_profile_filter_keeps_unmatched_and_penalizes_f1():
+    profile = sp.Profile(
+        id=1, name="IT", min_score=3,
+        phrases=[sp.Phrase(id=None, kind="plus", phrase="разработк* сайт*", weight=3)],
+    )
+    tender = {
+        "title": "Закупка канцелярских товаров",
+        "primary_text": "", "purchase_number": "eat-soft",
+    }
+    kept, unmatched = sp.filter_and_tag(
+        [tender], profiles=[profile], keep_unmatched=True,
+    )
+
+    assert kept == [tender]
+    assert unmatched == 1
+    assert tender["profile_filter_rejected"] is True
+    baseline_tender = {k: v for k, v in tender.items() if k != "profile_filter_rejected"}
+    baseline = fe.run_stage1_filters(baseline_tender, "")
+    penalized = fe.run_stage1_filters(tender, "")
+    assert penalized.total_score < baseline.total_score
+    assert any("не прошла порог" in s for s in penalized.filters[0].signals)
+
+
 def test_penalty_only_acceptance_nudges_f1_down_unless_score_still_high():
     # "поставка" минусует, но 1С-Битрикс поднимает скор выше bonus-порога —
     # тут срабатывает бонус, а не штраф (см. _apply_profile_signal: бонус приоритетнее).

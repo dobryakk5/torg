@@ -463,7 +463,7 @@ body::before {
         <span>📋 <strong>{{ tender.law_type }}</strong></span>
         {% endif %}
         {% if tender.deadline %}
-        <span>📅 Срок подачи: <strong>{{ tender.deadline | fmt_date }}</strong></span>
+        <span>📅 Срок подачи: <strong>{{ tender.deadline | fmt_datetime }}</strong></span>
         {% endif %}
         {% if tender.notified_at %}
         <span>🔔 Отправлено: <strong>{{ tender.notified_at | fmt_date }}</strong></span>
@@ -561,7 +561,7 @@ body::before {
       <button class="explain-btn" id="explainBtn" onclick="loadExplain(this)">💬 Объяснить простыми словами</button>
       <button class="explain-btn" id="clarifyBtn" onclick="loadClarification(this)">✉️ Запрос на разъяснение</button>
       <button class="explain-btn" id="takeBtn" onclick="takeToWork(this)" {% if tender.decision == 'rejected' %}disabled{% endif %}>📋 Взять в работу</button>
-      <button class="explain-btn" id="rejectBtn" onclick="rejectTender(this)" {% if tender.decision == 'rejected' %}disabled{% endif %}>{% if tender.decision == 'rejected' %}✅ Отказано{% else %}✕ Отказаться{% endif %}</button>
+      <button class="explain-btn" id="rejectBtn" onclick="rejectTender(this)" {% if tender.decision == 'rejected' %}disabled{% endif %}>{% if tender.decision == 'rejected' %}✅ Отказано{% else %}− Отказаться{% endif %}</button>
       <div id="explainResult" class="explain-result" hidden></div>
       <div id="clarifyResult" class="explain-result" hidden></div>
     </div>
@@ -743,7 +743,7 @@ body::before {
     </div>
     <div class="info-card">
       <div class="info-label">СРОК ПОДАЧИ</div>
-      <div class="info-val">{{ tender.deadline | fmt_date }}</div>
+      <div class="info-val">{{ tender.deadline | fmt_datetime }}</div>
     </div>
     <div class="info-card">
       <div class="info-label">РЕШЕНИЕ</div>
@@ -1017,7 +1017,11 @@ async function rejectTender(btn) {
   var orig = btn.textContent;
   btn.disabled = true; btn.textContent = '⏳…';
   try {
-    var r = await fetch('/api/tender/' + encodeURIComponent(pnum) + '/reject', {method: 'POST'});
+    var r = await fetch('/api/tender/' + encodeURIComponent(pnum) + '/reject', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({reason: 'manual_decline'})
+    });
     if (!r.ok) {
       var e = await r.json().catch(function(){ return {}; });
       throw new Error(e.detail || ('HTTP ' + r.status));

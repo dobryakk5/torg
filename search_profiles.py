@@ -356,6 +356,7 @@ def best_match(results: list[MatchResult]) -> MatchResult | None:
 def filter_and_tag(
     tenders: list[dict[str, Any]],
     profiles: list[Profile] | None = None,
+    keep_unmatched: bool = False,
 ) -> tuple[list[dict[str, Any]], int]:
     """Прогоняет карточки через профили и помечает принятые.
 
@@ -373,7 +374,15 @@ def filter_and_tag(
         best = best_match(results)
         if best is None:
             dropped += 1
+            if keep_unmatched:
+                tender["profile_filter_rejected"] = True
+                tender["matched_profiles"] = []
+                if results:
+                    closest = max(results, key=lambda r: r.score)
+                    tender["profile_score"] = closest.score
+                kept.append(tender)
             continue
+        tender.pop("profile_filter_rejected", None)
         tender["profile_id"] = best.profile_id
         tender["profile_score"] = best.score
         tender["matched_profiles"] = [r.to_dict() for r in results if r.accepted]

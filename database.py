@@ -274,6 +274,7 @@ CREATE TABLE IF NOT EXISTS tenders (
     url                          TEXT,
     platform                     TEXT,
     project_type                 TEXT,
+    rejection_reason             TEXT,
     region                       TEXT,
     customer_inn                 TEXT,
     published_at                 TEXT,
@@ -733,6 +734,7 @@ def ensure_extra_columns() -> None:
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS work_note TEXT",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS work_updated_at TIMESTAMPTZ",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS project_type TEXT",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS rejection_reason TEXT",
             # MVP4b-1: спецификация позиций тендера (без FK — уникальность pn не гарантирована).
             """CREATE TABLE IF NOT EXISTS tender_items (
                 id SERIAL PRIMARY KEY,
@@ -757,6 +759,13 @@ def ensure_extra_columns() -> None:
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS profile_price_hard_max INTEGER",
         ):
             cur.execute(ddl)
+        # До разделения причин все отказы создавались кнопкой X.
+        cur.execute(
+            """UPDATE tenders
+                  SET rejection_reason = 'not_my_profile'
+                WHERE decision = 'rejected'
+                  AND (rejection_reason IS NULL OR btrim(rejection_reason) = '')"""
+        )
 
 
 # ── MVP4b-1: спецификация позиций ────────────────────────────────────────────
@@ -1740,13 +1749,21 @@ def save_result(purchase_number: str, result: dict[str, Any]) -> None:
         )
 
 
-def set_decision(purchase_number: str, decision: str, comment: str = "") -> None:
+def set_decision(
+    purchase_number: str,
+    decision: str,
+    comment: str = "",
+    rejection_reason: str | None = None,
+) -> None:
     now = _now()
+    stored_reason = (rejection_reason or "not_my_profile") if decision == "rejected" else None
     with _conn() as conn:
         cur = conn.cursor()
         cur.execute(
-            "UPDATE tenders SET decision = %s, status = %s, updated_at = %s WHERE purchase_number = %s",
-            (decision, decision, now, purchase_number),
+            """UPDATE tenders
+                  SET decision = %s, status = %s, rejection_reason = %s, updated_at = %s
+                WHERE purchase_number = %s""",
+            (decision, decision, stored_reason, now, purchase_number),
         )
         cur.execute(
             "INSERT INTO decisions (purchase_number, decision, comment, created_at) VALUES (%s, %s, %s, %s)",
@@ -2004,7 +2021,7 @@ def get_top_tenders(
             t.deadline, t.url, t.score, t.score_reasons, t.primary_score,
             t.detail_score, t.total_score, t.filter_total, t.filter_decision,
             t.filter_stop, t.llm_verdict, t.notified_at, t.decision,
-            t.status, t.created_at, t.published_at, t.matched_keywords,
+            t.rejection_reason, t.status, t.created_at, t.published_at, t.matched_keywords,
             t.llm_triage_verdict, t.llm_triage_fit, t.llm_triage_resale,
             t.llm_triage_category, t.llm_triage_reason,
             t.profile_id, t.profile_score, t.matched_profiles, t.platform,
@@ -2028,7 +2045,7 @@ def get_top_tenders(
             t.id, t.purchase_number, t.title, t.customer, t.price, t.law_type,
             t.deadline, t.url, t.score, t.score_reasons, t.primary_score,
             t.detail_score, t.total_score, t.filter_total, t.filter_decision,
-            t.filter_stop, t.llm_verdict, t.notified_at, t.decision,
+            t.filter_stop, t.llm_verdict, t.notified_at, t.decision, t.rejection_reason,
             t.status, t.created_at, t.published_at, t.matched_keywords,
             t.profile_id, t.profile_score, t.matched_profiles, t.platform
         {having}

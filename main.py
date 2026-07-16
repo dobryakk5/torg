@@ -462,9 +462,14 @@ def run_stage1(
             try:
                 eat_tenders = search_eat(keyword, price_from=p_min, price_to=p_max, pages=eat_pages)
                 db.reconnect_db()
-                eat_tenders, dropped = _apply_profile_filter(eat_tenders, profiles)
+                eat_tenders, dropped = sp.filter_and_tag(
+                    eat_tenders, profiles=profiles, keep_unmatched=True,
+                )
                 if dropped:
-                    logger.info("Профильный фильтр отсеял %d карточек ЕАТ по '%s'", dropped, keyword)
+                    logger.info(
+                        "Профильный фильтр понизил score %d карточек ЕАТ по '%s'",
+                        dropped, keyword,
+                    )
                 phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
                     eat_tenders, f"eat:{keyword}", dry_run, seen_this_run,
                 )

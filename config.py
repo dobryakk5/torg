@@ -147,6 +147,7 @@ PUBLISH_DATE_TO   = os.getenv("PUBLISH_DATE_TO",   "").strip()
 
 # --- Двухэтапная воронка ---
 MIN_PRIMARY_SCORE_FOR_DETAIL    = int(os.getenv("MIN_PRIMARY_SCORE_FOR_DETAIL",    "24"))
+PROFILE_MISS_SCORE_PENALTY      = int(os.getenv("PROFILE_MISS_SCORE_PENALTY",      "2"))
 MIN_DETAILED_SCORE_FOR_NOTIFY   = int(os.getenv("MIN_DETAILED_SCORE_FOR_NOTIFY",   "30"))
 MIN_SCORE_FOR_LLM               = int(os.getenv("MIN_SCORE_FOR_LLM",               "28"))
 STAGE2_LIMIT                    = int(os.getenv("STAGE2_LIMIT",                    "20"))

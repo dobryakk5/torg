@@ -198,7 +198,7 @@ tbody td {
 .col-decision { width: 86px; }
 .col-title { width: 38%; }
 .col-search { width: 150px; }
-.col-exclude { width: 38px; text-align: center; }
+.col-exclude { width: 58px; text-align: center; }
 .col-eis { width: 54px; text-align: center; }
 .col-open { width: 44px; text-align: center; }
 .col-filters { width: 150px; }
@@ -256,8 +256,9 @@ tbody td {
   text-overflow: ellipsis;
 }
 .exclude-cell { text-align: center; }
+.exclude-actions { display: flex; justify-content: center; gap: 3px; }
 .exclude-btn {
-  width: 24px;
+  width: 22px;
   height: 24px;
   border: 1px solid var(--border2);
   border-radius: 5px;
@@ -272,6 +273,7 @@ tbody td {
   border-color: var(--nogo-bdr);
   background: var(--nogo-bg);
 }
+.exclude-mark { color: var(--dim); font-family: var(--mono); font-size: .72rem; }
 .sort-btn {
   border: 0;
   background: transparent;
@@ -724,6 +726,18 @@ tr:hover .fbar-label { color: var(--dim); }
         {% if active_profile_id %}
         <a href="#" onclick="clearProfileFacet();return false" style="font-size:.65rem;color:var(--dim)">сбросить ✕</a>
         {% endif %}
+      </div>
+    </div>
+
+    <div class="filter-line minus-line">
+      <div class="filter-group" style="flex:0 1 auto">
+        <span class="filter-label">Минус фраза</span>
+        <input id="minusPhrase" class="filter-input minus-input" type="text"
+          placeholder="слово или фраза…"
+          onkeydown="if(event.key==='Enter')addMinusPhrase()">
+        <button class="btn btn-ghost" style="padding:.35rem .7rem;font-size:.7rem" onclick="addMinusPhrase()">+</button>
+      </div>
+      <div class="filter-group" style="flex:0 1 auto">
         <span class="filter-label">Источник</span>
         <div class="ms" id="platformMs">
           <button type="button" class="ms-btn" onclick="togglePlatformMenu(event)">
@@ -743,16 +757,6 @@ tr:hover .fbar-label { color: var(--dim); }
             </div>
           </div>
         </div>
-      </div>
-    </div>
-
-    <div class="filter-line minus-line">
-      <div class="filter-group" style="flex:0 1 auto">
-        <span class="filter-label">Минус фраза</span>
-        <input id="minusPhrase" class="filter-input minus-input" type="text"
-          placeholder="слово или фраза…"
-          onkeydown="if(event.key==='Enter')addMinusPhrase()">
-        <button class="btn btn-ghost" style="padding:.35rem .7rem;font-size:.7rem" onclick="addMinusPhrase()">+</button>
       </div>
       <div class="minus-tags">
         {% for phrase in excluded_keywords %}
@@ -784,7 +788,7 @@ tr:hover .fbar-label { color: var(--dim); }
             <th class="col-decision">РЕШЕНИЕ</th>
             <th class="col-title">НАЗВАНИЕ</th>
             <th class="col-search"><button class="sort-btn" onclick="sortBy('phrase');event.stopPropagation()">ПОИСКОВАЯ ФРАЗА{% if sort_by == 'phrase' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th>
-            <th class="col-exclude">X</th>
+            <th class="col-exclude">X&nbsp;&nbsp;−</th>
             <th class="col-eis">ИСТ.</th>
             <th class="col-open">ЛОТ</th>
             <th class="col-filters hide-sm">ФИЛЬТРЫ</th>
@@ -842,7 +846,14 @@ tr:hover .fbar-label { color: var(--dim); }
               {% endif %}
             </td>
             <td class="exclude-cell">
-              {% if tab_id != 'REJECTED' %}<button class="exclude-btn" data-pnum="{{ t.purchase_number }}" onclick="rejectLotFromList(this);event.stopPropagation()" title="Отказаться от лота">X</button>{% endif %}
+              {% if tab_id != 'REJECTED' %}
+              <div class="exclude-actions">
+                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="not_my_profile" onclick="rejectLotFromList(this);event.stopPropagation()" title="Не мой профиль">X</button>
+                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="manual_decline" onclick="rejectLotFromList(this);event.stopPropagation()" title="Решил не брать">−</button>
+              </div>
+              {% else %}
+              <span class="exclude-mark" title="{{ 'Решил не брать' if t.rejection_reason == 'manual_decline' else 'Не мой профиль' }}">{{ '−' if t.rejection_reason == 'manual_decline' else 'X' }}</span>
+              {% endif %}
             </td>
 
             <!-- EIS link -->
@@ -920,7 +931,7 @@ tr:hover .fbar-label { color: var(--dim); }
             <th class="col-decision">РЕШЕНИЕ</th>
             <th class="col-title">НАЗВАНИЕ</th>
             <th class="col-search"><button class="sort-btn" onclick="sortBy('phrase');event.stopPropagation()">ПОИСКОВАЯ ФРАЗА{% if sort_by == 'phrase' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th>
-            <th class="col-exclude">X</th>
+            <th class="col-exclude">X&nbsp;&nbsp;−</th>
             <th class="col-eis">ИСТ.</th>
             <th class="col-open">ЛОТ</th>
             <th class="col-filters hide-sm">ФИЛЬТРЫ</th>
@@ -964,7 +975,10 @@ tr:hover .fbar-label { color: var(--dim); }
               {% endif %}
             </td>
             <td class="exclude-cell">
-              <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" onclick="rejectLotFromList(this);event.stopPropagation()" title="Отказаться от лота">X</button>
+              <div class="exclude-actions">
+                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="not_my_profile" onclick="rejectLotFromList(this);event.stopPropagation()" title="Не мой профиль">X</button>
+                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="manual_decline" onclick="rejectLotFromList(this);event.stopPropagation()" title="Решил не брать">−</button>
+              </div>
             </td>
             <td class="link-cell">
               {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
@@ -1020,7 +1034,7 @@ tr:hover .fbar-label { color: var(--dim); }
       <table>
         <thead><tr>
           <th class="col-num">#</th><th class="col-score">БАЛЛ</th>
-          <th class="col-title">НАЗВАНИЕ</th><th class="col-search"><button class="sort-btn" onclick="sortBy('phrase');event.stopPropagation()">ПОИСКОВАЯ ФРАЗА{% if sort_by == 'phrase' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-exclude">X</th><th class="col-eis">ИСТ.</th><th class="col-open">ЛОТ</th><th class="col-filters hide-sm">ФИЛЬТРЫ</th>
+          <th class="col-title">НАЗВАНИЕ</th><th class="col-search"><button class="sort-btn" onclick="sortBy('phrase');event.stopPropagation()">ПОИСКОВАЯ ФРАЗА{% if sort_by == 'phrase' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-exclude">X&nbsp;&nbsp;−</th><th class="col-eis">ИСТ.</th><th class="col-open">ЛОТ</th><th class="col-filters hide-sm">ФИЛЬТРЫ</th>
           <th class="col-price hide-sm"><button class="sort-btn" onclick="sortBy('price');event.stopPropagation()">НМЦК{% if sort_by == 'price' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-days hide-sm"><button class="sort-btn" onclick="sortBy('deadline');event.stopPropagation()">ДНЕЙ{% if sort_by == 'deadline' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-deadline hide-sm">СРОК</th>
         </tr></thead>
         <tbody>
@@ -1045,7 +1059,10 @@ tr:hover .fbar-label { color: var(--dim); }
               {% endif %}
             </td>
             <td class="exclude-cell">
-              <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" onclick="rejectLotFromList(this);event.stopPropagation()" title="Отказаться от лота">X</button>
+              <div class="exclude-actions">
+                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="not_my_profile" onclick="rejectLotFromList(this);event.stopPropagation()" title="Не мой профиль">X</button>
+                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="manual_decline" onclick="rejectLotFromList(this);event.stopPropagation()" title="Решил не брать">−</button>
+              </div>
             </td>
             <td class="link-cell">
               {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
@@ -1094,7 +1111,7 @@ tr:hover .fbar-label { color: var(--dim); }
       <table>
         <thead><tr>
           <th class="col-num">#</th><th class="col-score">БАЛЛ</th>
-          <th class="col-title">НАЗВАНИЕ</th><th class="col-search"><button class="sort-btn" onclick="sortBy('phrase');event.stopPropagation()">ПОИСКОВАЯ ФРАЗА{% if sort_by == 'phrase' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-exclude">X</th><th class="col-eis">ИСТ.</th><th class="col-open">ЛОТ</th><th class="col-filters hide-sm">ФИЛЬТРЫ</th>
+          <th class="col-title">НАЗВАНИЕ</th><th class="col-search"><button class="sort-btn" onclick="sortBy('phrase');event.stopPropagation()">ПОИСКОВАЯ ФРАЗА{% if sort_by == 'phrase' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-exclude">X&nbsp;&nbsp;−</th><th class="col-eis">ИСТ.</th><th class="col-open">ЛОТ</th><th class="col-filters hide-sm">ФИЛЬТРЫ</th>
           <th class="col-price hide-sm"><button class="sort-btn" onclick="sortBy('price');event.stopPropagation()">НМЦК{% if sort_by == 'price' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-days hide-sm"><button class="sort-btn" onclick="sortBy('deadline');event.stopPropagation()">ДНЕЙ{% if sort_by == 'deadline' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-deadline hide-sm">СРОК</th>
         </tr></thead>
         <tbody>
@@ -1119,7 +1136,10 @@ tr:hover .fbar-label { color: var(--dim); }
               {% endif %}
             </td>
             <td class="exclude-cell">
-              <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" onclick="rejectLotFromList(this);event.stopPropagation()" title="Отказаться от лота">X</button>
+              <div class="exclude-actions">
+                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="not_my_profile" onclick="rejectLotFromList(this);event.stopPropagation()" title="Не мой профиль">X</button>
+                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="manual_decline" onclick="rejectLotFromList(this);event.stopPropagation()" title="Решил не брать">−</button>
+              </div>
             </td>
             <td class="link-cell">
               {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
@@ -1168,7 +1188,7 @@ tr:hover .fbar-label { color: var(--dim); }
       <table>
         <thead><tr>
           <th class="col-num">#</th><th class="col-score">БАЛЛ</th>
-          <th class="col-title">НАЗВАНИЕ</th><th class="col-search"><button class="sort-btn" onclick="sortBy('phrase');event.stopPropagation()">ПОИСКОВАЯ ФРАЗА{% if sort_by == 'phrase' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-exclude">X</th><th class="col-eis">ИСТ.</th><th class="col-open">ЛОТ</th><th class="col-filters hide-sm">СТОП-ФАКТОРЫ</th>
+          <th class="col-title">НАЗВАНИЕ</th><th class="col-search"><button class="sort-btn" onclick="sortBy('phrase');event.stopPropagation()">ПОИСКОВАЯ ФРАЗА{% if sort_by == 'phrase' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-exclude">X&nbsp;&nbsp;−</th><th class="col-eis">ИСТ.</th><th class="col-open">ЛОТ</th><th class="col-filters hide-sm">СТОП-ФАКТОРЫ</th>
           <th class="col-price hide-sm"><button class="sort-btn" onclick="sortBy('price');event.stopPropagation()">НМЦК{% if sort_by == 'price' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-days hide-sm"><button class="sort-btn" onclick="sortBy('deadline');event.stopPropagation()">ДНЕЙ{% if sort_by == 'deadline' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th>
         </tr></thead>
         <tbody>
@@ -1193,7 +1213,10 @@ tr:hover .fbar-label { color: var(--dim); }
               {% endif %}
             </td>
             <td class="exclude-cell">
-              <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" onclick="rejectLotFromList(this);event.stopPropagation()" title="Отказаться от лота">X</button>
+              <div class="exclude-actions">
+                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="not_my_profile" onclick="rejectLotFromList(this);event.stopPropagation()" title="Не мой профиль">X</button>
+                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="manual_decline" onclick="rejectLotFromList(this);event.stopPropagation()" title="Решил не брать">−</button>
+              </div>
             </td>
             <td class="link-cell">
               {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
@@ -1406,12 +1429,17 @@ function removeMinusPhrase(phrase) {
 
 async function rejectLotFromList(btn) {
   const pnum = btn.dataset.pnum;
+  const reason = btn.dataset.reason;
   if (!pnum) return;
   const original = btn.textContent;
   btn.disabled = true;
   btn.textContent = '…';
   try {
-    const r = await fetch('/api/tender/' + encodeURIComponent(pnum) + '/reject', {method: 'POST'});
+    const r = await fetch('/api/tender/' + encodeURIComponent(pnum) + '/reject', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({reason})
+    });
     if (!r.ok) {
       const e = await r.json().catch(() => ({}));
       throw new Error(e.detail || ('HTTP ' + r.status));
