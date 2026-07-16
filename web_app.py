@@ -37,7 +37,7 @@ import zipfile
 from tls_bootstrap import NATIVE_TRUSTSTORE_ACTIVE
 
 from fastapi import FastAPI, Request, HTTPException, Query
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
 import config
@@ -764,10 +764,17 @@ async def tender_detail(request: Request, purchase_number: str):
             rebuilt_work_scope = _build_work_scope(tender)
             if rebuilt_work_scope.get("tables"):
                 work_scope = rebuilt_work_scope
+    docs_files = []
+    docs_dir = tender.get("documents_dir") or ""
+    if docs_dir and Path(docs_dir).is_dir():
+        try:
+            docs_files = [_display_download_name(p) for p in sorted(Path(docs_dir).iterdir()) if p.is_file()]
+        except Exception:
+            logger.exception("Не удалось прочитать documents_dir для %s", purchase_number)
     return templates.TemplateResponse(request, "detail.html",
         {"tender": tender, "card": card, "criteria": criteria,
          "work_stages": WORK_STAGES, "spec": spec, "spec_rollup": spec_rollup,
-         "work_scope": work_scope})
+         "work_scope": work_scope, "docs_files": docs_files})
 
 
 @app.get("/rules", response_class=HTMLResponse)
@@ -933,9 +940,12 @@ def _display_download_name(path: Path) -> str:
 
 
 def _zip_documents(files: list[Path], purchase_number: str) -> Path:
-    downloads = Path.home() / "Downloads"
-    downloads.mkdir(parents=True, exist_ok=True)
-    zip_path = downloads / f"{purchase_number}_documents.zip"
+    """Собирает ZIP из уже скачанных файлов в кеш-каталог (не в per-tender docs_dir,
+    чтобы архив не попадал в списки/парсинг документов)."""
+    import document_processor as dp
+    archive_dir = config.DOCUMENTS_DIR / "_archives"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = archive_dir / f"{dp.safe_filename(purchase_number)}.zip"
     used_names: set[str] = set()
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for i, path in enumerate(files, start=1):
@@ -949,13 +959,14 @@ def _zip_documents(files: list[Path], purchase_number: str) -> Path:
     return zip_path
 
 
-@app.post("/api/tender/{purchase_number}/documents/zip")
-async def api_tender_documents_zip(purchase_number: str):
-    tender = db.get_tender(purchase_number)
-    if not tender:
-        raise HTTPException(404, "Тендер не найден")
+def _fetch_tender_documents(tender: dict) -> dict:
+    """Скачивает документы тендера с ЕИС, извлекает текст и сохраняет его в БД.
 
-    from document_processor import download_documents, hash_files
+    Возвращает {"files": [Path...], "dir": str, "text": str}. Бросает HTTPException(502),
+    если с ЕИС ничего не скачалось.
+    """
+    purchase_number = tender["purchase_number"]
+    from document_processor import download_documents, hash_files, collect_document_text
     from scraper import get_tender_page
 
     docs_url = zakupki_documents_url(tender.get("url") or "", purchase_number)
@@ -971,7 +982,9 @@ async def api_tender_documents_zip(purchase_number: str):
     if not files:
         raise HTTPException(502, "Документы не скачались с ЕИС")
 
-    zip_path = _zip_documents(files, purchase_number)
+    text = collect_document_text(files)
+    excerpt = text[:4000]
+
     with db._conn() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -980,17 +993,47 @@ async def api_tender_documents_zip(purchase_number: str):
                 document_count = %s,
                 documents_dir = %s,
                 documents_hash = %s,
+                document_text_full = %s,
+                document_text_excerpt = %s,
                 updated_at = NOW()
             WHERE purchase_number = %s
             """,
-            (len(files), docs.get("dir", ""), hash_files(files), purchase_number),
+            (len(files), docs.get("dir", ""), hash_files(files), text, excerpt, purchase_number),
         )
+    return {"files": files, "dir": docs.get("dir", ""), "text": text}
+
+
+@app.post("/api/tender/{purchase_number}/documents/fetch")
+async def api_tender_documents_fetch(purchase_number: str):
+    tender = db.get_tender(purchase_number)
+    if not tender:
+        raise HTTPException(404, "Тендер не найден")
+    if (tender.get("platform") or "ЕИС") != "ЕИС":
+        raise HTTPException(400, "Скачивание документов пока поддерживается только для ЕИС")
+
+    result = _fetch_tender_documents(tender)
+    files = result["files"]
     return JSONResponse(content={
         "ok": True,
         "count": len(files),
-        "zip_path": str(zip_path),
-        "documents_url": docs_url,
+        "files": [_display_download_name(p) for p in files],
+        "excerpt": result["text"][:4000],
+        "zip_url": f"/api/tender/{purchase_number}/documents.zip",
     })
+
+
+@app.get("/api/tender/{purchase_number}/documents.zip")
+async def api_tender_documents_zip_download(purchase_number: str):
+    tender = db.get_tender(purchase_number)
+    if not tender:
+        raise HTTPException(404, "Тендер не найден")
+    docs_dir = tender.get("documents_dir") or ""
+    files = [p for p in Path(docs_dir).iterdir() if p.is_file()] if docs_dir and Path(docs_dir).is_dir() else []
+    if not files:
+        raise HTTPException(404, "Документы ещё не скачаны")
+    zip_path = _zip_documents(files, purchase_number)
+    return FileResponse(zip_path, media_type="application/zip",
+                         filename=f"{purchase_number}_documents.zip")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1482,7 +1525,7 @@ async def api_decide(purchase_number: str):
 
 def _decide_text(tender: dict) -> str:
     return (
-        tender.get("document_text")
+        tender.get("document_text_full")
         or tender.get("document_text_excerpt")
         or tender.get("primary_text")
         or tender.get("description")
@@ -1598,6 +1641,20 @@ async def api_decide_explain(purchase_number: str):
     tender = db.get_tender(purchase_number)
     if not tender:
         raise HTTPException(404, "Тендер не найден")
+
+    # Веб-процесс может жить дольше, чем ключ в .env — перечитываем перед проверкой.
+    config.reload_llm_secrets()
+
+    # Для объяснения нужен текст документации, а не только карточка. Если её ещё
+    # не скачивали — тянем с ЕИС на лету (сбой не блокирует, работаем с тем, что есть).
+    if not tender.get("document_text_full") and (tender.get("platform") or "ЕИС") == "ЕИС":
+        try:
+            _fetch_tender_documents(tender)
+            tender = db.get_tender(purchase_number)
+        except HTTPException:
+            logger.info("decide_explain: документы не скачались для %s, работаем без них", purchase_number)
+        except Exception:
+            logger.exception("decide_explain: сбой автоскачивания документов для %s", purchase_number)
 
     text = _decide_text(tender)
     card = decision_aid.build_card(tender, text=text)

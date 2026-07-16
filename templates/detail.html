@@ -480,7 +480,11 @@ body::before {
       {% if dec %}
       <div class="score-badge badge-{{ dc }}">{{ dec }}</div>
       {% endif %}
+      {% if docs_files %}
+      <a class="doc-download-btn" href="/api/tender/{{ tender.purchase_number }}/documents.zip" title="Скачать документы в ZIP" aria-label="Скачать документы в ZIP">↓</a>
+      {% else %}
       <button class="doc-download-btn" type="button" title="Скачать документы в ZIP" aria-label="Скачать документы в ZIP" onclick="downloadTenderDocs(this)">↓</button>
+      {% endif %}
       <div class="doc-download-status" id="docDownloadStatus"></div>
       {% if tender.llm_verdict %}
       <div style="font-size:.65rem;color:var(--dim);margin-top:.4rem">{{ tender.llm_verdict }}</div>
@@ -568,52 +572,6 @@ body::before {
   </div><!-- /.decide -->
   {% endif %}
 
-  <!-- ── Работа по тендеру (lifecycle, MVP4a) ── -->
-  {% if work_stages %}
-  <div class="decide-block" id="workBox" data-pnum="{{ tender.purchase_number }}" style="margin-bottom:1.5rem">
-    <h4>Работа по тендеру · <a href="/board" style="color:var(--accent);text-decoration:none">открыть доску →</a></h4>
-    <div style="display:flex;flex-wrap:wrap;gap:.8rem;align-items:flex-end">
-      <label style="font-size:.72rem;color:var(--dim)">Стадия<br>
-        <select id="workStage" style="font-family:var(--mono);background:var(--surf);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.4rem">
-          <option value="">— Не в работе / снять с доски —</option>
-          {% for s in work_stages %}
-          <option value="{{ s.key }}" {% if tender.work_stage == s.key %}selected{% endif %}>{{ s.label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label style="font-size:.72rem;color:var(--dim)">Мой срок<br>
-        <input type="date" id="workDue" value="{{ tender.work_due or '' }}" style="font-family:var(--mono);background:var(--surf);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.4rem">
-      </label>
-    </div>
-    <label style="font-size:.72rem;color:var(--dim);display:block;margin-top:.6rem">Заметка<br>
-      <textarea id="workNote" maxlength="2000" style="width:100%;min-height:60px;font-family:var(--mono);font-size:.8rem;background:var(--surf);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.5rem">{{ tender.work_note or '' }}</textarea>
-    </label>
-    <div style="margin-top:.5rem">
-      <button class="explain-btn" onclick="saveWorkflow(this)">💾 Сохранить</button>
-      <span id="workMsg" class="explain-meta" style="margin-left:.6rem"></span>
-    </div>
-  </div>
-  {% endif %}
-
-  <!-- ── Как начисляются баллы (критерии оценки, MVP3) ── -->
-  {% if criteria %}
-  <div class="decide-block" id="criteriaBox" data-pnum="{{ tender.purchase_number }}" style="margin-bottom:1.5rem">
-    <h4>Как начисляются баллы
-      {% if criteria.procedure_hint and criteria.procedure_hint != 'unknown' %}<span class="tag">{{ criteria.procedure_hint }}</span>{% endif %}
-    </h4>
-    {% if criteria.criteria %}
-    {% for c in criteria.criteria %}
-    <div class="fin-row"><span>{{ c.label }}</span><span class="muted">{% if c.weight is not none %}значимость {{ c.weight }}%{% else %}вес не указан{% endif %}</span></div>
-    {% endfor %}
-    {% endif %}
-    {% if criteria.note %}<div class="ge" style="margin-top:.5rem;font-size:.78rem">{{ criteria.note }}</div>{% endif %}
-    <div style="margin-top:.7rem">
-      <button class="explain-btn" id="criteriaBtn" onclick="loadCriteria(this)">🔍 Разобрать критерии подробнее (LLM)</button>
-      <div id="criteriaResult" class="explain-result" hidden></div>
-    </div>
-  </div>
-  {% endif %}
-
   <!-- ── Спецификация / описание работ ── -->
   {% if spec %}
   <div class="decide-block" id="specBox" data-pnum="{{ tender.purchase_number }}" style="margin-bottom:1.5rem">
@@ -687,6 +645,53 @@ body::before {
     {% if work_scope and work_scope.get('source') %}
     <div class="work-scope-source">Источник: {{ work_scope.get('source') }}</div>
     {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- ── Документы ── -->
+  <div class="decide-block" id="docsBox" data-pnum="{{ tender.purchase_number }}" style="margin-bottom:1.5rem">
+    <h4>Документы</h4>
+    <div id="docsContent">
+      {% if docs_files %}
+      <ul class="work-scope-list">
+        {% for fname in docs_files %}
+        <li>{{ fname }}</li>
+        {% endfor %}
+      </ul>
+      <div style="margin-top:.5rem">
+        <a class="explain-btn" href="/api/tender/{{ tender.purchase_number }}/documents.zip">⬇ Скачать архив (ZIP)</a>
+      </div>
+      {% if tender.document_text_excerpt %}
+      <details style="margin-top:.6rem">
+        <summary style="cursor:pointer;color:var(--dim);font-size:.78rem">Основное содержимое документов</summary>
+        <div class="work-scope-text" style="margin-top:.5rem;white-space:pre-wrap">{{ tender.document_text_excerpt }}</div>
+      </details>
+      {% endif %}
+      {% elif (tender.platform or 'ЕИС') == 'ЕИС' %}
+      <button class="explain-btn" id="docsBtn" onclick="fetchTenderDocs(this)">📄 Документы</button>
+      <div id="docsMsg" class="explain-meta" style="margin-left:.6rem"></div>
+      {% else %}
+      <div class="fin-na">Скачивание документов поддерживается только для ЕИС.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── Как начисляются баллы (критерии оценки, MVP3) ── -->
+  {% if criteria %}
+  <div class="decide-block" id="criteriaBox" data-pnum="{{ tender.purchase_number }}" style="margin-bottom:1.5rem">
+    <h4>Как начисляются баллы
+      {% if criteria.procedure_hint and criteria.procedure_hint != 'unknown' %}<span class="tag">{{ criteria.procedure_hint }}</span>{% endif %}
+    </h4>
+    {% if criteria.criteria %}
+    {% for c in criteria.criteria %}
+    <div class="fin-row"><span>{{ c.label }}</span><span class="muted">{% if c.weight is not none %}значимость {{ c.weight }}%{% else %}вес не указан{% endif %}</span></div>
+    {% endfor %}
+    {% endif %}
+    {% if criteria.note %}<div class="ge" style="margin-top:.5rem;font-size:.78rem">{{ criteria.note }}</div>{% endif %}
+    <div style="margin-top:.7rem">
+      <button class="explain-btn" id="criteriaBtn" onclick="loadCriteria(this)">🔍 Разобрать критерии подробнее (LLM)</button>
+      <div id="criteriaResult" class="explain-result" hidden></div>
+    </div>
   </div>
   {% endif %}
 
@@ -901,6 +906,33 @@ body::before {
   </div>
   {% endif %}
 
+  <!-- ── Работа по тендеру (lifecycle, MVP4a) ── -->
+  {% if work_stages %}
+  <div class="decide-block" id="workBox" data-pnum="{{ tender.purchase_number }}" style="margin-bottom:1.5rem">
+    <h4>Работа по тендеру · <a href="/board" style="color:var(--accent);text-decoration:none">открыть доску →</a></h4>
+    <div style="display:flex;flex-wrap:wrap;gap:.8rem;align-items:flex-end">
+      <label style="font-size:.72rem;color:var(--dim)">Стадия<br>
+        <select id="workStage" style="font-family:var(--mono);background:var(--surf);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.4rem">
+          <option value="">— Не в работе / снять с доски —</option>
+          {% for s in work_stages %}
+          <option value="{{ s.key }}" {% if tender.work_stage == s.key %}selected{% endif %}>{{ s.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label style="font-size:.72rem;color:var(--dim)">Мой срок<br>
+        <input type="date" id="workDue" value="{{ tender.work_due or '' }}" style="font-family:var(--mono);background:var(--surf);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.4rem">
+      </label>
+    </div>
+    <label style="font-size:.72rem;color:var(--dim);display:block;margin-top:.6rem">Заметка<br>
+      <textarea id="workNote" maxlength="2000" style="width:100%;min-height:60px;font-family:var(--mono);font-size:.8rem;background:var(--surf);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.5rem">{{ tender.work_note or '' }}</textarea>
+    </label>
+    <div style="margin-top:.5rem">
+      <button class="explain-btn" onclick="saveWorkflow(this)">💾 Сохранить</button>
+      <span id="workMsg" class="explain-meta" style="margin-left:.6rem"></span>
+    </div>
+  </div>
+  {% endif %}
+
 </div>
 
 <script>
@@ -928,6 +960,11 @@ async function loadExplain(btn) {
       return;
     }
     var e = data.explain, html = '';
+    if (e.project_type) {
+      html += '<h4>Что по сути делать</h4><p><span class="tag">' + e.project_type.replace(/</g,'&lt;') + '</span>'
+        + (e.project_type_reason ? ' ' + e.project_type_reason.replace(/</g,'&lt;') : '') + '</p>';
+    }
+    if (e.stop_factors && e.stop_factors.length) html += '<h4>Стоп-факторы</h4>' + _ul(e.stop_factors);
     if (e.plain_explanation) html += '<h4>Почему такой вердикт</h4><p>' + e.plain_explanation.replace(/</g,'&lt;') + '</p>';
     if (e.main_risks && e.main_risks.length) html += '<h4>Главные риски</h4>' + _ul(e.main_risks);
     if (e.what_to_check_manually && e.what_to_check_manually.length) html += '<h4>Что проверить вручную</h4>' + _ul(e.what_to_check_manually);
@@ -1076,16 +1113,47 @@ async function downloadTenderDocs(btn) {
   btn.textContent = '...';
   status.textContent = 'Скачиваю документы...';
   try {
-    var resp = await fetch('/api/tender/{{ tender.purchase_number }}/documents/zip', {method: 'POST'});
+    var resp = await fetch('/api/tender/{{ tender.purchase_number }}/documents/fetch', {method: 'POST'});
     var data = await resp.json().catch(function(){ return {}; });
     if (!resp.ok || data.ok === false) {
       status.textContent = data.detail || data.error || 'Не удалось скачать документы';
     } else {
-      status.textContent = 'ZIP: ' + data.zip_path;
+      status.textContent = 'Готово: ' + data.count + ' файлов';
+      window.location = data.zip_url;
     }
   } catch (err) {
     status.textContent = 'Ошибка запроса';
   } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
+async function fetchTenderDocs(btn) {
+  var pnum = document.getElementById('docsBox').dataset.pnum;
+  var msg = document.getElementById('docsMsg');
+  var original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '...';
+  msg.textContent = 'Скачиваю документы...';
+  try {
+    var resp = await fetch('/api/tender/' + pnum + '/documents/fetch', {method: 'POST'});
+    var data = await resp.json().catch(function(){ return {}; });
+    if (!resp.ok || data.ok === false) {
+      msg.textContent = data.detail || data.error || 'Не удалось скачать документы';
+      btn.disabled = false;
+      btn.textContent = original;
+      return;
+    }
+    var html = '<ul class="work-scope-list">' + data.files.map(function(f){ return '<li>' + _esc(f) + '</li>'; }).join('') + '</ul>'
+      + '<div style="margin-top:.5rem"><a class="explain-btn" href="' + data.zip_url + '">⬇ Скачать архив (ZIP)</a></div>';
+    if (data.excerpt) {
+      html += '<details style="margin-top:.6rem"><summary style="cursor:pointer;color:var(--dim);font-size:.78rem">Основное содержимое документов</summary>'
+        + '<div class="work-scope-text" style="margin-top:.5rem;white-space:pre-wrap">' + _esc(data.excerpt) + '</div></details>';
+    }
+    document.getElementById('docsContent').innerHTML = html;
+  } catch (err) {
+    msg.textContent = 'Ошибка запроса';
     btn.disabled = false;
     btn.textContent = original;
   }
