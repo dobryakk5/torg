@@ -425,7 +425,7 @@ async def favicon_ico():
 
 def fmt_price(v) -> str:
     if v is None: return "—"
-    try: return f"{float(v):,.0f} ₽".replace(",", "\u2009")
+    try: return f"{round(float(v) / 1000):,.0f} тыс. ₽".replace(",", "\u2009")
     except: return str(v)
 
 def fmt_date(v: str) -> str:

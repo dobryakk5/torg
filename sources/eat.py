@@ -154,15 +154,53 @@ def _via_curl(url: str, headers: dict[str, str], body: dict[str, Any] | None = N
     return None
 
 
+# Автообновление куков делаем не чаще раза в N секунд на процесс — иначе при
+# массовом отказе анти-бота каждый лот будет заново поднимать браузер.
+_AUTO_REFRESH_COOLDOWN_S = 300
+_last_auto_refresh_at: float = 0.0
+
+
+def _auto_refresh_cookies() -> Optional[str]:
+    """Перевыпускает анти-бот куки через headless-браузер (refresh_eat_cookies).
+
+    Возвращает свежую cookie-строку или None. Ограничено cooldown'ом; выключается
+    флагом EAT_AUTO_REFRESH=0. Интерактивную капчу не решает — только JS-челлендж,
+    который браузер проходит сам.
+    """
+    global _last_auto_refresh_at
+    if not bool(getattr(config, "EAT_AUTO_REFRESH", True)):
+        return None
+    now = time.monotonic()
+    if now - _last_auto_refresh_at < _AUTO_REFRESH_COOLDOWN_S:
+        return None
+    _last_auto_refresh_at = now
+    try:
+        from refresh_eat_cookies import refresh_and_save
+    except ImportError:
+        return None
+    logger.info("ЕАТ: пробую автообновить куки через headless-браузер…")
+    cookie = refresh_and_save(headed=False)
+    if cookie:
+        config.EAT_COOKIE = cookie   # свежие куки — сразу в текущий процесс
+        logger.info("ЕАТ: куки автообновлены")
+    else:
+        logger.warning(
+            "ЕАТ: автообновление куков не удалось (нет playwright или анти-бот требует "
+            "слайдер). Вручную: python3 refresh_eat_cookies.py --headed",
+        )
+    return cookie
+
+
 def _request(url: str, body: dict[str, Any] | None = None, retries: int = 3) -> Optional[Any]:
     """GET (body=None) или POST к API ЕАТ: куки, браузерные заголовки, ретраи,
-    curl-фолбэк при отказе анти-бота."""
+    curl-фолбэк и автообновление куков при отказе анти-бота."""
     cookie = str(getattr(config, "EAT_COOKIE", "") or "").strip()
     headers = _headers()
     if cookie:
         headers["Cookie"] = cookie
 
     curl_tried = False
+    refresh_tried = False
     for attempt in range(retries):
         try:
             if body is None:
@@ -174,7 +212,7 @@ def _request(url: str, body: dict[str, Any] | None = None, retries: int = 3) -> 
             if resp.status_code == 200 and "json" in ctype:
                 return resp.json()
             # Анти-бот отдаёт либо страницу капчи, либо JS-челлендж (HTML вместо
-            # JSON) — значит requests не прошёл. Пробуем тот же запрос системным curl.
+            # JSON) — значит requests не прошёл.
             if "captcha" in text_head or resp.status_code == 200:
                 if not curl_tried:
                     curl_tried = True
@@ -182,11 +220,18 @@ def _request(url: str, body: dict[str, Any] | None = None, retries: int = 3) -> 
                     data = _via_curl(url, headers, body)
                     if data is not None:
                         return data
+                if not refresh_tried:
+                    refresh_tried = True
+                    fresh = _auto_refresh_cookies()
+                    if fresh:
+                        headers = _headers()
+                        headers["Cookie"] = fresh
+                        curl_tried = False   # с новыми куками curl-фолбэк снова уместен
+                        continue
                 logger.warning(
                     "ЕАТ: анти-бот не пропустил запрос (HTTP %s, content-type=%s). "
-                    "Обнови куки: пройди проверку в браузере на agregatoreat.ru и "
-                    "положи свежие __rhash_/__hash_/__lhash_ в EAT_COOKIE (.env). "
-                    "Если куки из другого браузера — задай его UA в EAT_USER_AGENT.",
+                    "Обнови куки: python3 refresh_eat_cookies.py (при слайдере — --headed) "
+                    "или Copy as cURL → python3 update_eat_cookie.py",
                     resp.status_code, ctype or "—",
                 )
                 return None

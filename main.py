@@ -825,7 +825,12 @@ def run_redocs(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
     return processed, with_text
 
 
-def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
+def run_stage2(
+    dry_run: bool = False,
+    limit: int | None = None,
+    platform: str | None = None,
+    force: bool = False,
+) -> tuple[int, int]:
     """Этап 2 — ТОЛЬКО сбор: страницы, документы, условия, скоринг → в БД.
 
     Сеть здесь есть, LLM и Telegram — нет: разбор моделью и отправка вынесены в
@@ -842,7 +847,14 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
     logger.info("Этап 2: сбор документов и деталей (без LLM)")
 
     limit = limit or config.STAGE2_LIMIT
-    tenders = db.get_detail_candidates(limit=limit, min_primary_score=config.MIN_PRIMARY_SCORE_FOR_DETAIL)
+    tenders = db.get_detail_candidates(
+        limit=limit,
+        min_primary_score=config.MIN_PRIMARY_SCORE_FOR_DETAIL,
+        platform=platform,
+        force=force,
+    )
+    if platform:
+        logger.info("Фильтр по площадке: %s%s", platform, " (force: и уже разобранные)" if force else "")
     logger.info("Кандидатов на детальный анализ: %d", len(tenders))
 
     processed = 0
@@ -1468,6 +1480,10 @@ def main() -> None:
     parser.add_argument("--rescore", action="store_true", help="Разовый пересчёт скоринга всех лотов (без сети/LLM)")
     parser.add_argument("--redocs", action="store_true", help="Переобработка уже скачанных документов с диска (без сети/LLM)")
     parser.add_argument("--stage2", action="store_true", help="Только сбор документов и деталей в БД (без LLM/Telegram)")
+    parser.add_argument("--platform", default=None,
+                        help="Stage2: только одна площадка (ЕАТ, ЕИС, 'ПП Москвы', 'ЭМ СПб', 'ЭМ МО', B2B-Center, Tenderplan)")
+    parser.add_argument("--force", action="store_true",
+                        help="Stage2: брать и уже разобранные лоты (для отладки одной площадки)")
     parser.add_argument("--llm", action="store_true", help="Только LLM-разбор и отправка по данным из БД (без обращения к площадкам)")
     parser.add_argument("--stage3", action="store_true", help="После дедлайна подтянуть результаты/победителей")
     parser.add_argument("--results", action="store_true", help="Алиас для --stage3")
@@ -1583,7 +1599,8 @@ def main() -> None:
         run_redocs(dry_run=args.test, limit=args.limit)
     elif args.stage2:
         if not _stage_completed_today("stage2", args.skip_completed_today):
-            run_stage2(dry_run=args.test, limit=args.limit)
+            run_stage2(dry_run=args.test, limit=args.limit,
+                       platform=args.platform, force=args.force)
     elif args.llm:
         run_llm(dry_run=args.test, limit=args.limit)
     elif args.stage3 or args.results:

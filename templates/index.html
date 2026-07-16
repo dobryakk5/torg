@@ -204,7 +204,7 @@ tbody td {
 .col-filters { width: 150px; }
 .col-price { width: 120px; }
 .col-days { width: 64px; text-align: center; }
-.col-deadline { width: 94px; }
+.col-deadline { width: 128px; }
 
 /* ── Score cell ── */
 .score-cell { white-space: nowrap; }
@@ -902,7 +902,7 @@ tr:hover .fbar-label { color: var(--dim); }
             </td>
 
             <!-- Deadline -->
-            <td class="date-cell hide-sm">{{ t.deadline | fmt_date }}</td>
+            <td class="date-cell hide-sm">{{ t.deadline | fmt_datetime }}</td>
 
           </tr>
           {% endfor %}
@@ -1012,7 +1012,7 @@ tr:hover .fbar-label { color: var(--dim); }
               {% if dleft is none %}<span style="color:var(--dimmer)">—</span>
               {% else %}<span style="color:{{ 'var(--nogo)' if dleft <= 2 else ('var(--caution)' if dleft <= 7 else 'var(--go)') }}">{{ dleft }}</span>{% endif %}
             </td>
-            <td class="date-cell hide-sm">{{ t.deadline | fmt_date }}</td>
+            <td class="date-cell hide-sm">{{ t.deadline | fmt_datetime }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -1089,7 +1089,7 @@ tr:hover .fbar-label { color: var(--dim); }
             </td>
             <td class="price-cell hide-sm">{{ t.price | fmt_price }}</td>
             <td class="days-cell hide-sm">{% set dleft = t.deadline | days_left %}{% if dleft is none %}<span style="color:var(--dimmer)">—</span>{% else %}<span style="color:{{ 'var(--nogo)' if dleft <= 2 else ('var(--caution)' if dleft <= 7 else 'var(--go)') }}">{{ dleft }}</span>{% endif %}</td>
-            <td class="date-cell hide-sm">{{ t.deadline | fmt_date }}</td>
+            <td class="date-cell hide-sm">{{ t.deadline | fmt_datetime }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -1166,7 +1166,7 @@ tr:hover .fbar-label { color: var(--dim); }
             </td>
             <td class="price-cell hide-sm">{{ t.price | fmt_price }}</td>
             <td class="days-cell hide-sm">{% set dleft = t.deadline | days_left %}{% if dleft is none %}<span style="color:var(--dimmer)">—</span>{% else %}<span style="color:{{ 'var(--nogo)' if dleft <= 2 else ('var(--caution)' if dleft <= 7 else 'var(--go)') }}">{{ dleft }}</span>{% endif %}</td>
-            <td class="date-cell hide-sm">{{ t.deadline | fmt_date }}</td>
+            <td class="date-cell hide-sm">{{ t.deadline | fmt_datetime }}</td>
           </tr>
           {% endfor %}
         </tbody>

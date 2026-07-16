@@ -365,6 +365,9 @@ EAT_USER_AGENT = os.getenv("EAT_USER_AGENT", "")
 # list-published-trade-lots уже содержит полные lotItems (спецификация) и
 # deliveryInfos (условия поставки), а детальная ручка возвращает иной формат.
 EAT_FETCH_DETAILS = os.getenv("EAT_FETCH_DETAILS", "0") != "0"
+# Автообновление анти-бот куков через headless-браузер (refresh_eat_cookies.py)
+# при отказе анти-бота. Нужен установленный playwright.
+EAT_AUTO_REFRESH = os.getenv("EAT_AUTO_REFRESH", "1") != "0"
 
 # Портал поставщиков (zakupki.mos.ru) — котировочные сессии и потребности (ЗМО).
 # Реестр общероссийский: MOS_REGION_PATHS режет по регионам (Москва ".1.504.",

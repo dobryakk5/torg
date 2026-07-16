@@ -1378,27 +1378,45 @@ def _upsert_primary_once(
         )
     return result
 
-def get_detail_candidates(limit: int, min_primary_score: int) -> list[dict[str, Any]]:
+def get_detail_candidates(
+    limit: int,
+    min_primary_score: int,
+    platform: str | None = None,
+    force: bool = False,
+) -> list[dict[str, Any]]:
     """
     Кандидаты для Stage 2.
 
     Берём новые сильные карточки и уже разобранные карточки, которые изменились на Stage 1
     и помечены needs_detail_refresh=true.
+
+    platform — ограничить одной площадкой ("ЕАТ", "ЕИС", "ПП Москвы", …).
+    force    — включить и уже разобранные лоты (для отладки одного источника,
+               когда detail_checked_at уже проставлен предыдущим прогоном).
     """
+    params: list[Any] = [min_primary_score]
+    where_extra = ""
+    if not force:
+        where_extra += " AND (detail_checked_at IS NULL OR needs_detail_refresh = TRUE)"
+    if platform:
+        where_extra += " AND platform = %s"
+        params.append(platform)
+    params.append(limit)
+
     with _conn() as conn:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
-            """
+            f"""
             SELECT * FROM tenders
              WHERE primary_score >= %s
-               AND (detail_checked_at IS NULL OR needs_detail_refresh = TRUE)
+               {where_extra}
                AND decision NOT IN ('rejected', 'tailored')
                AND (
                    deadline IS NULL OR deadline = ''
-                   OR deadline !~ '^\\d{2}\\.\\d{2}\\.\\d{4}'
+                   OR deadline !~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}'
                    OR (
                        CASE
-                           WHEN deadline ~ '^\\d{2}\\.\\d{2}\\.\\d{4}\\s+\\d{2}:\\d{2}'
+                           WHEN deadline ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}\\s+\\d{{2}}:\\d{{2}}'
                            THEN to_timestamp(substring(deadline from 1 for 16), 'DD.MM.YYYY HH24:MI')
                            ELSE to_timestamp(substring(deadline from 1 for 10), 'DD.MM.YYYY')
                        END
@@ -1408,16 +1426,16 @@ def get_detail_candidates(limit: int, min_primary_score: int) -> list[dict[str, 
                       -- ближайший дедлайн первым: короткие закупки (ЗМО, котировки)
                       -- должны успевать получить разбор до конца подачи заявок
                       CASE
-                          WHEN deadline ~ '^\\d{2}\\.\\d{2}\\.\\d{4}\\s+\\d{2}:\\d{2}'
+                          WHEN deadline ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}\\s+\\d{{2}}:\\d{{2}}'
                           THEN to_timestamp(substring(deadline from 1 for 16), 'DD.MM.YYYY HH24:MI')
-                          WHEN deadline ~ '^\\d{2}\\.\\d{2}\\.\\d{4}'
+                          WHEN deadline ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}'
                           THEN to_timestamp(substring(deadline from 1 for 10), 'DD.MM.YYYY')
                           ELSE NULL
                       END ASC NULLS LAST,
                       primary_score DESC, price DESC NULLS LAST
              LIMIT %s
             """,
-            (min_primary_score, limit),
+            tuple(params),
         )
         rows = cur.fetchall()
     return _rows_to_dicts(rows)
