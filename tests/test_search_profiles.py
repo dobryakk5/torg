@@ -115,6 +115,46 @@ def test_best_match_picks_highest_scoring_accepted_profile():
     assert best.accepted is True
 
 
+def test_license_resale_is_blocked_but_real_development_survives():
+    """Регрессия по реальной выдаче ЕИС (16.07.2026).
+
+    ЕИС не пишет «приобретение лицензий» — пишет «предоставление/передача/продление»,
+    поэтому старые фразы (приобретен* лиценз*)~2 ловили 0 из 32 реальных лотов.
+    При этом в договорах на РАЗРАБОТКУ передача неисключительных прав на результат
+    работ — норма, и она же попадает в primary_text; глушить её нельзя.
+    """
+    resale = [
+        "Оказание услуг по предоставлению неисключительных прав на дополнительные модули ГИС",
+        "Услуги по предоставлению лицензий на право использовать компьютерное программное обеспечение",
+        "Продление лицензии на «Межсетевой экран с системой обнаружения вторжений»",
+        "Оказание услуг по передаче неисключительных прав на расширенный функционал «Байкал»",
+        'Лицензия на программное обеспечение для управления сайтом ("1С-Битрикс: Управление сайтом")',
+    ]
+    for title in resale:
+        profiles = _profiles()
+        results = sp.score_tender({"title": title, "primary_text": ""}, profiles=profiles)
+        assert sp.best_match(results) is None, f"перекуп не заглушён: {title}"
+
+    development = [
+        "Оказание услуг по модернизации государственной информационной системы в сфере здравоохранения",
+        "Оказание услуг по развитию государственной информационной системы в сфере здравоохранения",
+    ]
+    for title in development:
+        profiles = _profiles()
+        results = sp.score_tender({"title": title, "primary_text": ""}, profiles=profiles)
+        assert sp.best_match(results) is not None, f"настоящая разработка заглушена: {title}"
+
+
+def test_dev_contract_mentioning_rights_transfer_is_not_blocked():
+    # Договорная болтовня о передаче прав в тексте страницы не должна убивать разработку.
+    profiles = _profiles()
+    tender = {
+        "title": "Оказание услуг по модернизации информационной системы",
+        "primary_text": "Исполнитель передаёт Заказчику неисключительные права на результаты работ",
+    }
+    assert sp.best_match(sp.score_tender(tender, profiles=profiles)) is not None
+
+
 def test_parse_phrase_window_syntax():
     words, window = sp.parse_phrase("(капитальн* ремонт*)~1")
     assert words == ["капитальн*", "ремонт*"]

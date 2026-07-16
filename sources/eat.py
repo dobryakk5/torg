@@ -43,6 +43,13 @@ API_URL = "https://tender-cache-api.agregatoreat.ru/api/TradeLot/list-published-
 # Детальная карточка лота: полная спецификация + условия поставки (как на сайте
 # в блоках «Спецификация» / «Условия поставки»). GUID = поле id из списка.
 API_DETAIL_URL = "https://tender-cache-api.agregatoreat.ru/api/TradeLot/{id}"
+# Скачивание файла документа лота: {trade_id}=id лота, {doc_type}=trade.lot.documents[].type
+# (2=служебная html-сводка закупки, 3=служебный TradeDto.xml, 4=файл заказчика — ТЗ/контракт/спец.),
+# {doc_id}=trade.lot.documents[].id. Снято из cURL клика по файлу в браузере 16.07.2026.
+# Хост ДРУГОЙ, чем у списка/деталей (tender-api, не tender-cache-api).
+API_FILE_URL = "https://tender-api.agregatoreat.ru/api/FileUpload/{trade_id}/{doc_type}/{doc_id}"
+DOC_TYPE_INFO_PAGE = 2      # служебная html-страница «Информация по закупке» — не нужна
+DOC_TYPE_TRADE_XML = 3      # служебный TradeDto.xml — не нужен
 CARD_URL = "https://agregatoreat.ru/purchases/announcement/{id}"
 PAGE_SIZE = 50          # у API есть нижний предел size (size=1 даёт 400 "Size is invalid")
 LOT_STATE_ACCEPTING = 2
@@ -203,6 +210,85 @@ def get_lot_details(guid: str) -> Optional[dict[str, Any]]:
         return None
     data = _request(API_DETAIL_URL.format(id=guid))
     return data if isinstance(data, dict) else None
+
+
+_KNOWN_BAD_MAGIC = (b"<!doc", b"<html", b"{\"err", b"{\"mes")
+
+
+def _looks_like_real_file(content: bytes, content_type: str) -> bool:
+    if not content or len(content) < 50:
+        return False
+    head = content[:16].lower()
+    if any(head.startswith(bad) for bad in _KNOWN_BAD_MAGIC):
+        return False
+    if "text/html" in content_type or "application/problem+json" in content_type:
+        return False
+    return True
+
+
+def download_document(trade_id: str, doc: dict[str, Any]) -> Optional[tuple[str, bytes, str]]:
+    """Скачивает один файл документа лота (см. API_FILE_URL). Без Authorization —
+    для опубликованных лотов файлы должны быть доступны анонимно; если понадобится
+    Bearer, вернём None и залогируем это отдельно (токен из личного кабинета живёт
+    ~1 час, автоматизировать его — отдельное решение, не делаем неявно).
+
+    Возвращает (имя_файла, содержимое, content-type) или None.
+    """
+    doc_id = str(doc.get("id") or "").strip()
+    doc_type = doc.get("type")
+    name = str(doc.get("name") or f"document_{doc_id}").strip()
+    if not doc_id or doc_type is None:
+        return None
+
+    url = API_FILE_URL.format(trade_id=trade_id, doc_type=doc_type, doc_id=doc_id)
+    cookie = str(getattr(config, "EAT_COOKIE", "") or "").strip()
+    headers = _headers()
+    if cookie:
+        headers["Cookie"] = cookie
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=30)
+    except requests.RequestException as e:
+        logger.warning("ЕАТ: ошибка скачивания %s: %s", name, e)
+        return None
+
+    ctype = resp.headers.get("content-type", "")
+    if resp.status_code == 401 or resp.status_code == 403:
+        logger.warning(
+            "ЕАТ: документ %s требует авторизации (HTTP %s) — анонимно недоступен", name, resp.status_code,
+        )
+        return None
+    if resp.status_code != 200 or not _looks_like_real_file(resp.content, ctype):
+        logger.warning("ЕАТ: документ %s не скачан (HTTP %s, %s, %d байт)",
+                       name, resp.status_code, ctype or "—", len(resp.content or b""))
+        return None
+    return name, resp.content, ctype
+
+
+def download_lot_documents(trade_id: str, documents: list[dict], target_dir) -> list:
+    """Скачивает пользовательские документы лота (ТЗ/контракт/спецификация) в
+    target_dir. Пропускает служебные типы (html-сводка закупки, TradeDto.xml)."""
+    from pathlib import Path
+    from document_processor import safe_filename
+
+    target_dir = Path(target_dir)
+    saved: list[Path] = []
+    for doc in documents or []:
+        if not isinstance(doc, dict):
+            continue
+        if doc.get("type") in (DOC_TYPE_INFO_PAGE, DOC_TYPE_TRADE_XML):
+            continue
+        result = download_document(trade_id, doc)
+        if not result:
+            continue
+        name, content, _ctype = result
+        target_dir.mkdir(parents=True, exist_ok=True)
+        path = target_dir / safe_filename(name)
+        path.write_bytes(content)
+        saved.append(path)
+        logger.info("ЕАТ: скачан документ %s (%d байт)", name, len(content))
+        _sleep(0.3)
+    return saved
 
 
 def _pick(obj: dict, *names, default=None):
@@ -427,13 +513,37 @@ def find_file_refs(obj: Any, path: str = "") -> list[tuple[str, Any]]:
 
 
 if __name__ == "__main__":
-    # Самотест:         python -m sources.eat "сайт"
-    # Сырой дамп полей: python -m sources.eat "сайт" --raw
-    # Поиск документов: python -m sources.eat --docs <guid лота из URL карточки>
+    # Самотест:           python -m sources.eat "сайт"
+    # Сырой дамп полей:   python -m sources.eat "сайт" --raw
+    # Поиск документов:   python -m sources.eat --docs <guid лота из URL карточки>
+    # Скачать все доки:   python -m sources.eat --download <guid лота>
     import sys
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     kw = args[0] if args else "программное обеспечение"
+
+    if "--download" in sys.argv:
+        guid = args[0] if args else ""
+        if not guid:
+            print("Укажи GUID лота: python -m sources.eat --download 2c177788-3374-4094-8ef7-0d0968c256b2")
+            sys.exit(2)
+        detail = get_lot_details(guid)
+        trade = (detail or {}).get("trade") if isinstance(detail, dict) else {}
+        lot = trade.get("lot") if isinstance(trade, dict) else {}
+        docs = (lot or {}).get("documents") or []
+        if not docs:
+            print("Документов не найдено (антибот/куки или у лота их нет)")
+            sys.exit(1)
+        print(f"Найдено документов в лоте: {len(docs)} — качаю (кроме служебных type=2,3)…\n")
+        out_dir = f"/tmp/eat_docs_{guid[:8]}"
+        saved = download_lot_documents(guid, docs, out_dir)
+        if saved:
+            print(f"\n✅ Скачано {len(saved)} файлов в {out_dir}:")
+            for p in saved:
+                print(f"   {p} ({p.stat().st_size} байт)")
+        else:
+            print("\n❌ Ничего не скачалось — смотри WARNING выше (401/403 = нужна авторизация)")
+        sys.exit(0)
 
     if "--docs" in sys.argv:
         guid = args[0] if args else ""

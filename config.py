@@ -29,6 +29,26 @@ def _load_dotenv() -> None:
 _load_dotenv()
 
 
+def reload_llm_secrets() -> None:
+    """Перечитывает LLM-ключи из .env для долгоживущего web-процесса."""
+    global ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENROUTER_BASE_URL
+    env_path = BASE_DIR / ".env"
+    values: dict[str, str] = {}
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip().strip('"').strip("'")
+    ANTHROPIC_API_KEY = values.get("ANTHROPIC_API_KEY", os.getenv("ANTHROPIC_API_KEY", ""))
+    OPENROUTER_API_KEY = values.get("OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY", ""))
+    OPENROUTER_BASE_URL = values.get(
+        "OPENROUTER_BASE_URL",
+        os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+    )
+
+
 def env_bool(key: str, default: bool = False) -> bool:
     """Читает bool из env: 1/true/yes/on — True, 0/false/no/off/пусто — False."""
     raw = os.getenv(key)

@@ -1649,13 +1649,16 @@ async def api_decide_criteria(purchase_number: str):
     text = _decide_text(tender)
     heuristic = dp.extract_evaluation_criteria(text)
 
+    # Web-процесс может жить дольше, чем ключ в .env. Stage 2.5 запускается
+    # отдельным процессом и всегда читает актуальный файл при старте.
+    config.reload_llm_secrets()
     if not llm_provider.is_configured():
         return JSONResponse(content={"heuristic": heuristic, "llm": None,
-                                     "error": "LLM недоступна — добавьте ключ API в /control."})
-    chunks = dp._windows_around(text, dp._CRITERIA_MARKERS)
-    if not chunks:
+                                     "error": "LLM недоступна — проверьте LLM_PROVIDER и API-ключ в .env."})
+    if not text.strip():
         return JSONResponse(content={"heuristic": heuristic, "llm": None,
-                                     "error": "В тексте не найден раздел критериев оценки."})
+                                     "error": "В БД нет текста документации для разбора."})
+    chunks = dp._windows_around(text, dp._CRITERIA_MARKERS) or [text[:config.LLM_TEXT_CHARS]]
     llm = llm_analyzer.extract_criteria_llm(chunks)
     if not llm:
         return JSONResponse(content={"heuristic": heuristic, "llm": None,

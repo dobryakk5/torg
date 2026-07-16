@@ -18926,3 +18926,28 @@ SSL SYSCALL error: Operation timed out
 2026-07-16 17:20:22,927 [INFO] sources.mos_supplier: ПП Москвы ищу 'сайт', страница 1
 2026-07-16 17:20:48,068 [WARNING] sources.mos_supplier: ПП Москвы ошибка запроса (попытка 1): HTTPSConnectionPool(host='old.zakupki.mos.ru', port=443): Max retries exceeded with url: /api/Cssp/Purchase/Query?queryDto=%7B%22filter%22%3A%20%7B%22auctionSpecificFilter%22%3A%20%7B%22stateIdIn%22%3A%20%5B19000002%5D%7D%2C%20%22needSpecificFilter%22%3A%20%7B%22stateIdIn%22%3A%20%5B20000002%5D%7D%2C%20%22tenderSpecificFilter%22%3A%20%7B%22stateIdIn%22%3A%20%5B5%5D%7D%2C%20%22nameLike%22%3A%20%7B%22value%22%3A%20%22%D1%81%D0%B0%D0%B9%D1%82%22%2C%20%22contains%22%3A%20true%7D%2C%20%22startPriceGreatEqual%22%3A%2020000%2C%20%22startPriceLessEqual%22%3A%20590000%2C%20%22regionPaths%22%3A%20%7B%22values%22%3A%20%5B%22.1.504.%22%5D%7D%7D%2C%20%22take%22%3A%2050%2C%20%22skip%22%3A%200%2C%20%22withCount%22%3A%20true%7D (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x103101950>, 'Connection to old.zakupki.mos.ru timed out. (connect timeout=25)'))
 2026-07-16 17:20:51,531 [WARNING] main: Запуск остановлен пользователем
+2026-07-16 18:23:33,617 [INFO] database: PostgreSQL pool создан: 1–5 соединений
+2026-07-16 18:23:36,574 [INFO] main: ══════════════════════════════════════════════════
+2026-07-16 18:23:36,575 [INFO] main: Этап 2: сбор документов и деталей (без LLM)
+2026-07-16 18:23:36,662 [INFO] main: Кандидатов на детальный анализ: 5
+2026-07-16 18:23:38,476 [INFO] main: 0131200001026004149: реально скачано документов 5
+2026-07-16 18:23:39,323 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: 2026-04478 = Оказание услуг по продлению срока действия неисключительных прав использовани (0131200001026004149)
+2026-07-16 18:23:40,223 [INFO] main: Stage2 8-фильтровый скор 27/CAUTION: Оказание услуги по продлению с дозакупкой на 12 месяцев неисключительных прав на программн (0108500000426003937)
+2026-07-16 18:23:41,034 [INFO] main: Stage2 8-фильтровый скор 28/CAUTION: Оказание услуг по передаче неисключительных (пользовательских) лицензионных прав на исполь (0372200277826000061)
+2026-07-16 18:23:41,408 [WARNING] scraper: HTTP 404 для https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=200909422126100242
+2026-07-16 18:23:45,064 [WARNING] scraper: HTTP 404 для https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=200909422126100242
+2026-07-16 18:23:51,744 [WARNING] scraper: HTTP 404 для https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=200909422126100242
+2026-07-16 18:24:01,489 [INFO] main: 200909422126100242: пробую скачать документы через Tenderplan API
+2026-07-16 18:24:01,663 [INFO] sources.tenderplan: Tenderplan: attachments для 200909422126100242 не найдены (endpoint недоступен)
+2026-07-16 18:24:01,663 [INFO] main: 200909422126100242: Tenderplan не сохранил документов
+2026-07-16 18:24:01,757 [INFO] main: Stage2 8-фильтровый скор 30/CAUTION: Лицензия ПО «Отраслевой информационный ресурс» в составе «Электронный сервис «РАМЗЭС 2.0» (200909422126100242)
+2026-07-16 18:24:01,973 [INFO] main: 6a575dd03951804ff38aa21d: коммерческий Tenderplan-тендер, страницу ЕИС не тянем
+2026-07-16 18:24:02,068 [INFO] main: 6a575dd03951804ff38aa21d: пробую скачать документы через Tenderplan API
+2026-07-16 18:24:02,129 [INFO] sources.tenderplan: Tenderplan: найдено 5 документов для 6a575dd03951804ff38aa21d
+2026-07-16 18:24:05,383 [INFO] main: 6a575dd03951804ff38aa21d: Tenderplan реально скачано документов 5
+2026-07-16 18:24:05,489 [INFO] main: Stage2 8-фильтровый скор 27/CAUTION: Выполнение работ по созданию программно-аппаратного комплекса информационной системы «Парк (6a575dd03951804ff38aa21d)
+2026-07-16 18:24:05,715 [INFO] main: ══════════════════════════════════════════════════
+2026-07-16 18:24:05,715 [INFO] main: ИТОГО ЭТАПА 2: кандидатов 5; успешно 5; ошибок 0; GO 0; CAUTION 5; NO-GO 0; ждут LLM 3
+2026-07-16 18:24:05,716 [INFO] main: ИТОГО ПО ДОКУМЕНТАМ: заявлено загрузчиками 10; реально сохранено 10; тендеров с извлечённым текстом 2
+2026-07-16 18:24:05,862 [INFO] main: ══════════════════════════════════════════════════
+2026-07-16 18:24:05,862 [INFO] main: ИТОГО В БД: всего 3356; primary-кандидатов 2469; детально проверено 973; отправлено 0; интересно 0; отклонено 57

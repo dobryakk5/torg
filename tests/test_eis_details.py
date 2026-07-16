@@ -1,4 +1,5 @@
 import decision_aid
+import config
 import database
 import document_processor
 import filter_engine
@@ -91,6 +92,47 @@ def test_date_only_deadline_stays_active_until_end_of_day():
 
     assert database.deadline_is_expired("12.06.2026", now=noon) is False
     assert database.deadline_is_expired("12.06.2026", now=next_day) is True
+
+
+def test_reload_llm_secrets_reads_updated_dotenv(tmp_path, monkeypatch):
+    (tmp_path / ".env").write_text(
+        "OPENROUTER_API_KEY=new-key\nOPENROUTER_BASE_URL=https://llm.example/v1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "")
+
+    config.reload_llm_secrets()
+
+    assert config.OPENROUTER_API_KEY == "new-key"
+    assert config.OPENROUTER_BASE_URL == "https://llm.example/v1"
+
+
+def test_criteria_api_uses_full_text_fallback_and_refreshes_env(monkeypatch):
+    import asyncio
+    import json
+    import llm_analyzer
+    import llm_provider
+    import web_app
+
+    refreshed = []
+    captured = []
+    monkeypatch.setattr(web_app.db, "get_tender", lambda pnum: {"purchase_number": pnum})
+    monkeypatch.setattr(web_app, "_decide_text", lambda tender: "Электронный аукцион. Побеждает цена.")
+    monkeypatch.setattr(web_app.config, "reload_llm_secrets", lambda: refreshed.append(True))
+    monkeypatch.setattr(llm_provider, "is_configured", lambda: bool(refreshed))
+    monkeypatch.setattr(
+        llm_analyzer,
+        "extract_criteria_llm",
+        lambda chunks: captured.extend(chunks) or {"summary": "Разбор", "criteria": []},
+    )
+
+    response = asyncio.run(web_app.api_decide_criteria("lot-1"))
+    body = json.loads(response.body)
+
+    assert refreshed == [True]
+    assert captured == ["Электронный аукцион. Побеждает цена."]
+    assert body["llm"]["summary"] == "Разбор"
 
 
 def test_print_form_is_not_treated_as_document():

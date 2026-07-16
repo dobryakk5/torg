@@ -47,6 +47,7 @@ from document_processor import (
     find_document_items,
     hash_files,
     prioritize_document_files,
+    safe_filename as _safe_fn,
 )
 from llm_analyzer import analyze_tender
 from notifier import format_tender_message, send_startup_message, send_summary, send_tender_message
@@ -862,12 +863,16 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
 
         try:
             is_tenderplan = (tender.get("platform") or "") == "Tenderplan"
+            is_eat = (tender.get("platform") or "") == "ЕАТ"
             is_eis = ((tender.get("platform") or "ЕИС") == "ЕИС") or (is_tenderplan and _is_eis_number(pnum))
 
             # Для ЕИС-тендеров (включая пришедшие через Tenderplan с ЕИС-номером)
-            # тянем zakupki.gov.ru. Для коммерческих Tenderplan — не тянем.
-            if is_tenderplan and not _is_eis_number(pnum):
-                logger.info("%s: коммерческий Tenderplan-тендер, страницу ЕИС не тянем", pnum)
+            # тянем zakupki.gov.ru. Для коммерческих Tenderplan и ЕАТ (Angular SPA
+            # с анти-ботом, common-info-URL для них не строится) — не тянем: их
+            # primary_text из Stage 1 уже содержит спецификацию/условия поставки.
+            if (is_tenderplan and not _is_eis_number(pnum)) or is_eat:
+                logger.info("%s: %s, страницу ЕИС не тянем", pnum,
+                           "коммерческий Tenderplan-тендер" if is_tenderplan else "лот ЕАТ")
             else:
                 page_url = to_common_info_url(tender.get("url", "") or pnum)
                 tender["url"] = page_url
@@ -983,6 +988,48 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
                         logger.info("%s: Tenderplan не сохранил документов", pnum)
                 else:
                     logger.info("%s: Tenderplan-канал без токена — документы не скачиваются", pnum)
+
+            # ЕАТ «Берёзка»: контракт/приложение к контракту (ТЗ) отдаются анонимно
+            # через отдельный файловый эндпоинт (see sources/eat.download_document).
+            if is_eat and config.DOWNLOAD_DOCUMENTS and not document_text:
+                from sources.eat import get_lot_details, download_lot_documents
+                guid_match = re.search(r"/announcement/([0-9a-f-]{36})", tender.get("url", ""))
+                if guid_match:
+                    guid = guid_match.group(1)
+                    detail = get_lot_details(guid)
+                    lot = ((detail or {}).get("trade") or {}).get("lot") or {}
+                    docs_meta = lot.get("documents") or []
+                    if docs_meta:
+                        eat_dir = config.DOCUMENTS_DIR / _safe_fn(pnum)
+                        eat_files = download_lot_documents(guid, docs_meta, eat_dir)
+                        docs_reported += len(docs_meta)
+                        if eat_files:
+                            docs_saved += len(eat_files)
+                            eat_files = prioritize_document_files(eat_files)
+                            document_text = collect_document_text(eat_files, config.MAX_DOCUMENT_TEXT_CHARS)
+                            if document_text.strip():
+                                docs_with_text += 1
+                            tender["document_count"] = len(eat_files)
+                            tender["documents_dir"] = str(eat_dir)
+                            tender["documents_hash"] = hash_files(eat_files)
+                            spec = extract_object_description_items(eat_files)
+                            if spec.get("items") and not db.list_tender_items(pnum):
+                                db.replace_tender_items(pnum, spec["items"])
+                            work_scope = extract_work_scope_from_files(eat_files)
+                            if work_scope:
+                                details = db.get_tender_details(pnum) or {}
+                                details["work_scope"] = work_scope
+                                db.save_tender_details(pnum, details)
+                                tender["details_json"] = details
+                            full_text_for_terms += "\n" + document_text
+                            scoring_text = "\n".join([document_text, scoring_text])
+                            logger.info("%s: ЕАТ реально скачано документов %d", pnum, len(eat_files))
+                        else:
+                            logger.info("%s: ЕАТ — документы лота не скачаны (см. WARNING выше)", pnum)
+                    else:
+                        logger.info("%s: ЕАТ — детали лота не получены (антибот/куки)", pnum)
+                else:
+                    logger.warning("%s: ЕАТ — не удалось извлечь GUID лота из url=%s", pnum, tender.get("url", ""))
 
             terms = extract_financial_terms(full_text_for_terms)
             for key, value in terms.items():
