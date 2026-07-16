@@ -57,7 +57,7 @@ html,body { margin:0; background:var(--bg); color:var(--text); font-family:var(-
         <a class="t" href="/tender/{{ t.purchase_number }}">{{ t.title or t.purchase_number }}</a>
         <div class="meta">
           {% if t.customer %}🏛 {{ t.customer[:60] }}<br>{% endif %}
-          {% if t.price %}💰 {{ "{:,.0f}".format(t.price)|replace(",", " ") }} ₽<br>{% endif %}
+          {% if t.price %}💰 {{ t.price | fmt_price }}<br>{% endif %}
           📅 подача: {% if t.deadline %}{{ t.deadline[:10] }}{% else %}—{% endif %}<br>
           🎯 мой срок:
           {% if t.work_due %}

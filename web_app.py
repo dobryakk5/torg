@@ -29,7 +29,7 @@ import re
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 import zipfile
 
@@ -425,7 +425,7 @@ async def favicon_ico():
 
 def fmt_price(v) -> str:
     if v is None: return "—"
-    try: return f"{round(float(v) / 1000):,.0f} тыс. ₽".replace(",", "\u2009")
+    try: return f"{round(float(v) / 1000):,.0f}".replace(",", "\u2009")
     except: return str(v)
 
 def fmt_date(v: str) -> str:
@@ -959,32 +959,51 @@ def _zip_documents(files: list[Path], purchase_number: str) -> Path:
     return zip_path
 
 
-def _fetch_tender_documents(tender: dict) -> dict:
+def _fetch_tender_documents(tender: dict, progress_cb: Callable[..., None] | None = None) -> dict:
     """Скачивает документы тендера с ЕИС, извлекает текст и сохраняет его в БД.
 
     Возвращает {"files": [Path...], "dir": str, "text": str}. Бросает HTTPException(502),
-    если с ЕИС ничего не скачалось.
+    если с ЕИС ничего не скачалось. progress_cb(stage, **data), если задан, зовётся на
+    каждом переходе (connecting/connected/downloading/extracting/saving) — для UI-прогресса.
     """
+    def _cb(stage: str, **data) -> None:
+        if progress_cb:
+            try:
+                progress_cb(stage, **data)
+            except Exception:
+                pass
+
     purchase_number = tender["purchase_number"]
     from document_processor import download_documents, hash_files, collect_document_text
     from scraper import get_tender_page
 
+    def _fetch_from(url: str) -> dict:
+        _cb("connecting")
+        html, _ = get_tender_page(url)
+        if not html:
+            return {"files": []}
+        _cb("connected")
+        return download_documents(
+            purchase_number, html, url,
+            on_progress=lambda i, total, name: _cb("downloading", current=i, total=total, name=name),
+        )
+
     docs_url = zakupki_documents_url(tender.get("url") or "", purchase_number)
-    html, _ = get_tender_page(docs_url)
-    docs = download_documents(purchase_number, html, docs_url) if html else {"files": []}
+    docs = _fetch_from(docs_url)
 
     if not docs.get("files"):
         common_url = zakupki_common_info_url(tender.get("url") or "", purchase_number)
-        html, _ = get_tender_page(common_url)
-        docs = download_documents(purchase_number, html, common_url) if html else {"files": []}
+        docs = _fetch_from(common_url)
 
     files = [Path(p) for p in docs.get("files", []) if Path(p).is_file()]
     if not files:
         raise HTTPException(502, "Документы не скачались с ЕИС")
 
+    _cb("extracting")
     text = collect_document_text(files)
     excerpt = text[:4000]
 
+    _cb("saving")
     with db._conn() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -1003,6 +1022,18 @@ def _fetch_tender_documents(tender: dict) -> dict:
     return {"files": files, "dir": docs.get("dir", ""), "text": text}
 
 
+# Прогресс скачивания документов по одному тендеру, для поллинга с фронта
+# (тот же паттерн, что SearchRunner._state — фоновый поток + словарь под локом).
+_DOC_PROGRESS: dict[str, dict] = {}
+_DOC_PROGRESS_LOCK = threading.Lock()
+
+
+def _set_doc_progress(purchase_number: str, **kw) -> None:
+    with _DOC_PROGRESS_LOCK:
+        state = _DOC_PROGRESS.setdefault(purchase_number, {})
+        state.update(kw)
+
+
 @app.post("/api/tender/{purchase_number}/documents/fetch")
 async def api_tender_documents_fetch(purchase_number: str):
     tender = db.get_tender(purchase_number)
@@ -1011,15 +1042,39 @@ async def api_tender_documents_fetch(purchase_number: str):
     if (tender.get("platform") or "ЕИС") != "ЕИС":
         raise HTTPException(400, "Скачивание документов пока поддерживается только для ЕИС")
 
-    result = _fetch_tender_documents(tender)
-    files = result["files"]
-    return JSONResponse(content={
-        "ok": True,
-        "count": len(files),
-        "files": [_display_download_name(p) for p in files],
-        "excerpt": result["text"][:4000],
-        "zip_url": f"/api/tender/{purchase_number}/documents.zip",
-    })
+    with _DOC_PROGRESS_LOCK:
+        existing = _DOC_PROGRESS.get(purchase_number)
+        if existing and existing.get("status") == "running":
+            return JSONResponse(content={"ok": True, "started": False})
+        _DOC_PROGRESS[purchase_number] = {"status": "running", "stage": "connecting",
+                                           "current": 0, "total": 0, "name": "", "error": None}
+
+    def worker() -> None:
+        try:
+            result = _fetch_tender_documents(
+                tender, progress_cb=lambda stage, **data: _set_doc_progress(purchase_number, stage=stage, **data))
+            files = result["files"]
+            _set_doc_progress(
+                purchase_number, status="done", stage="done",
+                files=[_display_download_name(p) for p in files],
+                excerpt=result["text"][:4000],
+                zip_url=f"/api/tender/{purchase_number}/documents.zip",
+            )
+        except HTTPException as exc:
+            _set_doc_progress(purchase_number, status="error", error=str(exc.detail))
+        except Exception as exc:
+            logger.exception("Фоновое скачивание документов упало для %s", purchase_number)
+            _set_doc_progress(purchase_number, status="error", error=str(exc))
+
+    threading.Thread(target=worker, daemon=True, name=f"docs-fetch-{purchase_number}").start()
+    return JSONResponse(content={"ok": True, "started": True})
+
+
+@app.get("/api/tender/{purchase_number}/documents/progress")
+async def api_tender_documents_progress(purchase_number: str):
+    with _DOC_PROGRESS_LOCK:
+        state = dict(_DOC_PROGRESS.get(purchase_number) or {"status": "idle"})
+    return JSONResponse(content=state)
 
 
 @app.get("/api/tender/{purchase_number}/documents.zip")

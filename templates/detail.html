@@ -737,7 +737,7 @@ body::before {
   <div class="section-label">ДЕТАЛИ ТЕНДЕРА</div>
   <div class="info-grid">
     <div class="info-card">
-      <div class="info-label">НМЦК</div>
+      <div class="info-label">НМЦК, тыс.р.</div>
       <div class="info-val">{{ tender.price | fmt_price }}</div>
     </div>
     <div class="info-card">
@@ -1106,24 +1106,62 @@ async function loadCriteria(btn) {
   }
 }
 
+function _docsStageText(p) {
+  if (p.stage === 'connecting') return 'Захожу на ЕИС…';
+  if (p.stage === 'connected') return 'Доступ к сайту получен, ищу документы…';
+  if (p.stage === 'downloading' && p.total) return 'Скачан документ ' + p.current + ' из ' + p.total + (p.name ? ': ' + p.name : '');
+  if (p.stage === 'extracting') return 'Извлекаю текст из документов…';
+  if (p.stage === 'saving') return 'Сохраняю…';
+  return 'Скачиваю документы…';
+}
+
+function pollDocsProgress(pnum, onTick, onDone, onError) {
+  var timer = setInterval(async function() {
+    try {
+      var r = await fetch('/api/tender/' + pnum + '/documents/progress');
+      var p = await r.json();
+      if (p.status === 'running') { onTick(p); return; }
+      clearInterval(timer);
+      if (p.status === 'error') { onError(p); return; }
+      onDone(p);
+    } catch (err) {
+      clearInterval(timer);
+      onError({error: 'Ошибка опроса статуса'});
+    }
+  }, 700);
+}
+
 async function downloadTenderDocs(btn) {
   var status = document.getElementById('docDownloadStatus');
+  var pnum = '{{ tender.purchase_number }}';
   var original = btn.textContent;
   btn.disabled = true;
   btn.textContent = '...';
-  status.textContent = 'Скачиваю документы...';
+  status.textContent = 'Захожу на ЕИС…';
   try {
-    var resp = await fetch('/api/tender/{{ tender.purchase_number }}/documents/fetch', {method: 'POST'});
+    var resp = await fetch('/api/tender/' + pnum + '/documents/fetch', {method: 'POST'});
     var data = await resp.json().catch(function(){ return {}; });
     if (!resp.ok || data.ok === false) {
       status.textContent = data.detail || data.error || 'Не удалось скачать документы';
-    } else {
-      status.textContent = 'Готово: ' + data.count + ' файлов';
-      window.location = data.zip_url;
+      btn.disabled = false;
+      btn.textContent = original;
+      return;
     }
+    pollDocsProgress(pnum,
+      function(p) { status.textContent = _docsStageText(p); },
+      function(p) {
+        status.textContent = 'Готово: ' + (p.files || []).length + ' файлов';
+        btn.disabled = false;
+        btn.textContent = original;
+        window.location = p.zip_url;
+      },
+      function(p) {
+        status.textContent = p.error || 'Не удалось скачать документы';
+        btn.disabled = false;
+        btn.textContent = original;
+      });
   } catch (err) {
     status.textContent = 'Ошибка запроса';
-  } finally {
     btn.disabled = false;
     btn.textContent = original;
   }
@@ -1135,7 +1173,7 @@ async function fetchTenderDocs(btn) {
   var original = btn.textContent;
   btn.disabled = true;
   btn.textContent = '...';
-  msg.textContent = 'Скачиваю документы...';
+  msg.textContent = 'Захожу на ЕИС…';
   try {
     var resp = await fetch('/api/tender/' + pnum + '/documents/fetch', {method: 'POST'});
     var data = await resp.json().catch(function(){ return {}; });
@@ -1145,13 +1183,24 @@ async function fetchTenderDocs(btn) {
       btn.textContent = original;
       return;
     }
-    var html = '<ul class="work-scope-list">' + data.files.map(function(f){ return '<li>' + _esc(f) + '</li>'; }).join('') + '</ul>'
-      + '<div style="margin-top:.5rem"><a class="explain-btn" href="' + data.zip_url + '">⬇ Скачать архив (ZIP)</a></div>';
-    if (data.excerpt) {
-      html += '<details style="margin-top:.6rem"><summary style="cursor:pointer;color:var(--dim);font-size:.78rem">Основное содержимое документов</summary>'
-        + '<div class="work-scope-text" style="margin-top:.5rem;white-space:pre-wrap">' + _esc(data.excerpt) + '</div></details>';
-    }
-    document.getElementById('docsContent').innerHTML = html;
+    pollDocsProgress(pnum,
+      function(p) { msg.textContent = _docsStageText(p); },
+      function(p) {
+        btn.disabled = false;
+        btn.textContent = original;
+        var html = '<ul class="work-scope-list">' + (p.files || []).map(function(f){ return '<li>' + _esc(f) + '</li>'; }).join('') + '</ul>'
+          + '<div style="margin-top:.5rem"><a class="explain-btn" href="' + p.zip_url + '">⬇ Скачать архив (ZIP)</a></div>';
+        if (p.excerpt) {
+          html += '<details style="margin-top:.6rem"><summary style="cursor:pointer;color:var(--dim);font-size:.78rem">Основное содержимое документов</summary>'
+            + '<div class="work-scope-text" style="margin-top:.5rem;white-space:pre-wrap">' + _esc(p.excerpt) + '</div></details>';
+        }
+        document.getElementById('docsContent').innerHTML = html;
+      },
+      function(p) {
+        msg.textContent = p.error || 'Не удалось скачать документы';
+        btn.disabled = false;
+        btn.textContent = original;
+      });
   } catch (err) {
     msg.textContent = 'Ошибка запроса';
     btn.disabled = false;

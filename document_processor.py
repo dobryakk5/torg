@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 from urllib.parse import urljoin, urlparse
 
 from tls_bootstrap import NATIVE_TRUSTSTORE_ACTIVE
@@ -171,32 +171,48 @@ def _guess_filename(response: requests.Response, url: str, index: int) -> str:
     return f"document_{index}{ext}"
 
 
-def download_documents(purchase_number: str, page_html: str, tender_url: str) -> dict:
-    """Скачивает документы карточки закупки в data/documents/<purchase_number>."""
+def download_documents(purchase_number: str, page_html: str, tender_url: str,
+                        on_progress: Callable[[int, int, str], None] | None = None) -> dict:
+    """Скачивает документы карточки закупки в data/documents/<purchase_number>.
+
+    on_progress(i, total, name), если задан, вызывается после обработки каждого
+    найденного документа (успех/пропуск/ошибка — счётчик всё равно двигается) —
+    используется для отображения прогресса скачивания в UI.
+    """
     target_dir = config.DOCUMENTS_DIR / safe_filename(purchase_number)
     target_dir.mkdir(parents=True, exist_ok=True)
 
     items = _expand_document_items(find_document_items(page_html, tender_url))
+    total = len(items)
     saved: list[Path] = []
     for i, (link, label) in enumerate(items, start=1):
-        if _looks_like_document_page(link.lower()) and not _looks_like_document_file(link.lower()):
-            continue
+        name = label or Path(urlparse(link).path).name or link
         try:
-            resp = requests.get(link, headers=HEADERS, timeout=30, verify=REQUEST_VERIFY)
-            if resp.status_code != 200 or not resp.content:
-                logger.info("Документ не скачан %s: HTTP %s", link, resp.status_code)
+            if _looks_like_document_page(link.lower()) and not _looks_like_document_file(link.lower()):
                 continue
-            content_type = resp.headers.get("content-type", "").lower()
-            suffix = Path(urlparse(link).path).suffix.lower()
-            if "html" in content_type and suffix not in SUPPORTED_EXTENSIONS:
-                logger.info("HTML-страница не считается документом %s", link)
-                continue
-            filename = _filename_from_label(label) or _guess_filename(resp, link, i)
-            path = target_dir / filename
-            path.write_bytes(resp.content)
-            saved.append(path)
-        except requests.RequestException as exc:
-            logger.warning("Ошибка скачивания документа %s: %s", link, exc)
+            try:
+                resp = requests.get(link, headers=HEADERS, timeout=30, verify=REQUEST_VERIFY)
+                if resp.status_code != 200 or not resp.content:
+                    logger.info("Документ не скачан %s: HTTP %s", link, resp.status_code)
+                    continue
+                content_type = resp.headers.get("content-type", "").lower()
+                suffix = Path(urlparse(link).path).suffix.lower()
+                if "html" in content_type and suffix not in SUPPORTED_EXTENSIONS:
+                    logger.info("HTML-страница не считается документом %s", link)
+                    continue
+                filename = _filename_from_label(label) or _guess_filename(resp, link, i)
+                path = target_dir / filename
+                path.write_bytes(resp.content)
+                saved.append(path)
+                name = filename
+            except requests.RequestException as exc:
+                logger.warning("Ошибка скачивания документа %s: %s", link, exc)
+        finally:
+            if on_progress:
+                try:
+                    on_progress(i, total, name)
+                except Exception:
+                    pass
 
     return {"dir": str(target_dir), "files": saved, "links": [url for url, _ in items]}
 
