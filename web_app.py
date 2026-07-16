@@ -430,15 +430,36 @@ def fmt_date(v: str) -> str:
     return f"{m.group(3)}.{m.group(2)}.{m.group(1)}" if m else str(v)[:10]
 
 def days_left(v: str) -> Optional[int]:
-    """Сколько дней осталось до срока подачи заявок (deadline). None — не распознано/не задано."""
+    """Сколько дней осталось до срока подачи заявок (deadline). None — не распознано/не задано.
+
+    Дедлайн хранится строкой в форматах DD.MM.YYYY [HH:MM] или ISO — разбор
+    через database.parse_deadline (единый парсер проекта). Отрицательное значение
+    (срок уже прошёл) не показываем — истёкшие лоты и так скрыты из активных списков.
+    """
     if not v: return None
-    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", str(v))
-    if not m: return None
-    try:
-        deadline_date = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3))).date()
-    except ValueError:
+    dt = db.parse_deadline(v)
+    if dt is None:
         return None
-    return (deadline_date - datetime.now().date()).days
+    return (dt.date() - datetime.now(dt.tzinfo).date()).days
+
+
+# Платформа-источник → короткий (≤3 символа) уникальный код для столбца ЕИС.
+PLATFORM_SHORT = {
+    "ЕИС": "ЕИС",
+    "ЕАТ": "ЕАТ",
+    "B2B-Center": "B2B",
+    "Tenderplan": "ТПл",
+    "ЭМ СПб": "СПб",
+    "ЭМ МО": "ЭМО",
+    "ПП Москвы": "ППМ",
+}
+
+def platform_short(v: str) -> str:
+    """Короткий код источника для столбца ссылки (ЕИС/ЕАТ/B2B/…). Пусто → ЕИС."""
+    s = str(v or "").strip()
+    if not s:
+        return "ЕИС"
+    return PLATFORM_SHORT.get(s, s[:3])
 
 def score_color(s: int) -> str:
     return {1:"#EF4444",2:"#F97316",3:"#EAB308",4:"#84CC16",5:"#22C55E"}.get(int(s or 0),"#3A3A55")
@@ -533,6 +554,7 @@ def zakupki_documents_url(url: str, purchase_number: str = "") -> str:
     )
 
 for name, fn in [("fmt_price",fmt_price),("fmt_date",fmt_date),("days_left",days_left),
+                  ("platform_short",platform_short),
                   ("score_color",score_color),("decision_class",decision_class),
                   ("parse_signals",parse_signals),("parse_stop",parse_stop),
                   ("zakupki_common_info_url",zakupki_common_info_url)]:
@@ -550,6 +572,7 @@ async def index(
     law:      Optional[str]   = None,
     kw:       Optional[str]   = None,
     profile_id: Optional[int] = None,
+    platform: list[str] = Query(default=[]),
     q:        Optional[str]   = None,
     exclude_kw: list[str] = Query(default=[]),
     price_from: Optional[float] = None,
@@ -572,6 +595,7 @@ async def index(
     fkw = dict(price_min=price_from, price_max=price_to, law_type=law,
                matched_keyword=kw or None,
                profile_id=profile_id,
+               platforms=platform,
                q=q or None,
                exclude_keywords=exclude_kw,
                f1_min=f1_min, f2_min=f2_min, f3_min=f3_min, f4_min=f4_min,
@@ -601,6 +625,8 @@ async def index(
         "active": (decision or "ALL").upper(),
         "search_phrases": search_phrases if isinstance(search_phrases, list) else [],
         "search_profiles": db.search_profiles_list(),
+        "all_platforms": db.get_distinct_platforms(),
+        "active_platforms": platform,
         "active_kw": kw or "",
         "active_profile_id": profile_id or "",
         "active_q": q or "",

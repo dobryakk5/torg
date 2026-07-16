@@ -406,10 +406,11 @@ def run_stage1(
                 errors.append(msg)
                 continue
 
-    # Витрины (каналы 4-7) с точным полнотекстовым поиском: фразы — из активных
-    # профилей (короткие, ≤2 слова). При явном override (keywords передан явно)
-    # сохраняем старое поведение — используем override-список как запасной вариант.
-    storefront_kw_fallback = kw_list if explicit_override else _storefront_keywords(profiles)
+    # Витрины (каналы 4-7) с точным полнотекстовым поиском: фразы — всегда из
+    # активных профилей (короткие, ≤2 слова), НЕЗАВИСИМО от override keywords
+    # для ЕИС/B2B (иначе keywords=[], которым отключают ЕИС+B2B для точечного
+    # запуска одного канала, обнулял бы и витрины — см. --eat-only).
+    storefront_kw_fallback = _storefront_keywords(profiles)
 
     # ── Канал 4: Электронный магазин СПб (закупки малого объёма) ────────────
     if use_spb:
@@ -1312,6 +1313,7 @@ def main() -> None:
     parser.add_argument("--stage3", action="store_true", help="После дедлайна подтянуть результаты/победителей")
     parser.add_argument("--results", action="store_true", help="Алиас для --stage3")
     parser.add_argument("--tenderplan-only", action="store_true", help="Только импорт Tenderplan")
+    parser.add_argument("--eat-only", action="store_true", help="Stage1 только через ЕАТ «Берёзка» (остальные каналы выключены)")
     parser.add_argument("--only-new", action="store_true", help="Stage1/Tenderplan: обрабатывать только новые закупки")
     parser.add_argument("--once", action="store_true", help="Один полный цикл: stage1 + stage2")
     parser.add_argument("--test", action="store_true", help="Тестовый полный цикл без отправки в Telegram")
@@ -1389,6 +1391,22 @@ def main() -> None:
             "детально обработано %d; отправлено %d",
             stage1_found, stage1_candidates, stage2_processed, stage2_notified,
         )
+    elif args.eat_only:
+        found, candidates = run_stage1(
+            dry_run=args.test,
+            skip_completed_today=args.skip_completed_today,
+            backfill_active=args.backfill_active,
+            keywords=[],   # отключает каналы ЕИС и B2B (см. run_stage1: explicit_override)
+            okpd2=False,
+            b2b=False,
+            spb=False,
+            eat=True,
+            mos=False,
+            mosreg=False,
+            tenderplan=False,
+            only_new=args.only_new,
+        )
+        logger.info("ИТОГО ЗАПУСКА ЕАТ: найдено новых %d; кандидатов Stage2 %d", found, candidates)
     elif args.stage1:
         run_stage1(
             dry_run=args.test,

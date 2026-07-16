@@ -234,15 +234,19 @@ def _format_spec(item: dict[str, Any]) -> list[str]:
         if code:
             parts.append(f"[ОКПД2/КТРУ {code}]")
         qty = _pick(li, "quantity", "count", "amount")
-        unit = _pick(li, "okeiName", "unitName", "measure", "okeiSymbol")
+        unit = _pick(li, "okeiTitle", "okeiName", "unitName", "measure", "okeiSymbol")
         if qty is not None:
             parts.append(f"кол-во {qty}" + (f" {unit}" if unit else ""))
-        unit_price = _pick(li, "price", "unitPrice", "startPrice", "cost")
+        unit_price = _pick(li, "unitPrice", "price", "startPrice", "cost")
         if unit_price is not None:
             parts.append(f"цена {unit_price} ₽")
-        country = _pick(li, "countryName", "country", "originCountry", "manufactureCountry")
+        country = _pick(li, "countryOfOrigin", "countryName", "country", "originCountry")
         if country:
             parts.append(f"страна: {country}")
+        # Уточняющее описание позиции (адрес ресурса, детали) — полезно для LLM.
+        desc = str(_pick(li, "description", default="")).strip()
+        if desc and desc.lower() not in name.lower():
+            parts.append(desc)
         lines.append(" · ".join(str(p) for p in parts))
     return lines
 
@@ -256,9 +260,17 @@ def _format_delivery(item: dict[str, Any]) -> list[str]:
     for di in (infos or [])[:5]:
         if not isinstance(di, dict):
             continue
-        addr = _pick(di, "address", "deliveryAddress", "fullAddress")
-        region = _pick(di, "regionName", "region", "deliveryRegion")
-        piece = " · ".join(str(x) for x in (region, addr) if x)
+        # Адрес может быть вложенным объектом (address/deliveryAddress) с готовым
+        # полем formattedFullInfo, либо развёрнут прямо в di.
+        addr_obj = _pick(di, "address", "deliveryAddress", "fullAddress")
+        if isinstance(addr_obj, dict):
+            addr = str(_pick(addr_obj, "formattedFullInfo", "fullAddress", "address", default="")).strip()
+            region = str(_pick(addr_obj, "regionName", "region", default="")).strip()
+        else:
+            addr = str(_pick(di, "formattedFullInfo", "fullAddress", default=addr_obj or "")).strip()
+            region = str(_pick(di, "regionName", "region", "deliveryRegion", default="")).strip()
+        # formattedFullInfo уже включает регион — не дублируем.
+        piece = addr or region
         if piece:
             lines.append(piece)
     # Сроки поставки/оказания услуг (часто на верхнем уровне item).

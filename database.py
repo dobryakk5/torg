@@ -1858,6 +1858,23 @@ def get_filter_scores(purchase_number: str) -> list[dict[str, Any]]:
     return [_to_jsonable(dict(r)) for r in rows]
 
 
+def get_distinct_platforms() -> list[str]:
+    """Список источников (platform), реально присутствующих в активных лотах —
+    для фасета «Источник» на дашборде. Пустой/NULL platform нормализуем в 'ЕИС'."""
+    try:
+        with _conn() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """SELECT DISTINCT COALESCE(NULLIF(btrim(platform), ''), 'ЕИС') AS p
+                     FROM tenders
+                    WHERE decision IS DISTINCT FROM 'rejected'
+                    ORDER BY p"""
+            )
+            return [r[0] for r in cur.fetchall()]
+    except Exception:
+        return []
+
+
 def get_top_tenders(
     decision:  str | None = "GO",
     limit:     int        = 200,
@@ -1866,6 +1883,7 @@ def get_top_tenders(
     law_type:  Optional[str]   = None,
     matched_keyword: Optional[str] = None,   # фасет: фраза, по которой найден тендер
     profile_id: Optional[int] = None,         # фасет: поисковый профиль (search_profiles)
+    platforms: Optional[list[str]] = None,    # фасет: источники (ЕИС/ЕАТ/…); пусто = все
     q: Optional[str] = None,                  # свободный текст: название/заказчик/номер
     exclude_keywords: Optional[list[str]] = None,
     # Per-filter минимальные оценки (1–5) для Ф1–Ф8
@@ -1920,6 +1938,14 @@ def get_top_tenders(
     if profile_id is not None:
         conditions.append("t.profile_id = %s")
         params.append(int(profile_id))
+    plats = [str(p).strip() for p in (platforms or []) if str(p).strip()]
+    if plats:
+        # Пустой platform считаем как ЕИС (исторические лоты без явного источника).
+        if "ЕИС" in plats:
+            conditions.append("(t.platform = ANY(%s) OR t.platform IS NULL OR btrim(t.platform) = '')")
+        else:
+            conditions.append("t.platform = ANY(%s)")
+        params.append(plats)
     if q and q.strip():
         # Свободный поиск по уже загруженным лотам (без скрейпинга):
         # название, заказчик, номер закупки, категория триажа.
@@ -1963,7 +1989,9 @@ def get_top_tenders(
         "price":    "t.price",
         "phrase":   "LOWER(t.matched_keywords)",
         "date":     "t.created_at",
-        "deadline": "t.deadline",
+        # Дедлайн хранится строкой (DD.MM.YYYY [HH:MM]); сортируем по разобранному
+        # таймстампу, иначе алфавитная сортировка мешает дни/месяцы.
+        "deadline": _deadline_timestamp_sql("t.deadline"),
     }.get((sort_by or "score").lower(), "t.filter_total")
     sort_dir = "ASC" if (order or "desc").lower() == "asc" else "DESC"
     order_by = f"{sort_col} {sort_dir} NULLS LAST, t.created_at DESC"
@@ -1979,7 +2007,7 @@ def get_top_tenders(
             t.status, t.created_at, t.published_at, t.matched_keywords,
             t.llm_triage_verdict, t.llm_triage_fit, t.llm_triage_resale,
             t.llm_triage_category, t.llm_triage_reason,
-            t.profile_id, t.profile_score, t.matched_profiles,
+            t.profile_id, t.profile_score, t.matched_profiles, t.platform,
 
             -- Агрегируем 8 фильтров в один JSON-объект — без N+1 запросов
             json_object_agg(
@@ -2002,7 +2030,7 @@ def get_top_tenders(
             t.detail_score, t.total_score, t.filter_total, t.filter_decision,
             t.filter_stop, t.llm_verdict, t.notified_at, t.decision,
             t.status, t.created_at, t.published_at, t.matched_keywords,
-            t.profile_id, t.profile_score, t.matched_profiles
+            t.profile_id, t.profile_score, t.matched_profiles, t.platform
         {having}
         ORDER BY {order_by}
         LIMIT %s

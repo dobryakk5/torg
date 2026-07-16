@@ -340,8 +340,10 @@ EAT_SEARCH_KEYWORDS = [
 EAT_COOKIE = os.getenv("EAT_COOKIE", "")
 # UA браузера, из которого взяты куки EAT_COOKIE (анти-бот сверяет отпечаток).
 EAT_USER_AGENT = os.getenv("EAT_USER_AGENT", "")
-# Тянуть детальную карточку лота (спецификация + условия поставки) для каждой находки.
-EAT_FETCH_DETAILS = os.getenv("EAT_FETCH_DETAILS", "1") != "0"
+# Тянуть детальную карточку лота отдельным запросом. По умолчанию ВЫКЛ: список
+# list-published-trade-lots уже содержит полные lotItems (спецификация) и
+# deliveryInfos (условия поставки), а детальная ручка возвращает иной формат.
+EAT_FETCH_DETAILS = os.getenv("EAT_FETCH_DETAILS", "0") != "0"
 
 # Портал поставщиков (zakupki.mos.ru) — котировочные сессии и потребности (ЗМО).
 # Реестр общероссийский: MOS_REGION_PATHS режет по регионам (Москва ".1.504.",

@@ -366,6 +366,24 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
         <input type="number" name="B2B_SEARCH_PAGES" value="{{ settings.get('B2B_SEARCH_PAGES', '1') }}" min="1" max="10">
         <span class="hint">По 20 торгов на страницу</span>
       </div>
+
+      <div class="field">
+        <label>Источник ЕАТ «Берёзка»</label>
+        <div class="toggle-row">
+          <label class="toggle">
+            <input type="checkbox" name="SOURCE_EAT_ENABLED"
+              {% if settings.get('SOURCE_EAT_ENABLED','0') == '1' %}checked{% endif %}>
+            <span class="toggle-slider"></span>
+          </label>
+          <span style="font-size:.75rem;color:var(--dim)">Федеральные закупки малого объёма (agregatoreat.ru)</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>ЕАТ: страниц на фразу</label>
+        <input type="number" name="EAT_SEARCH_PAGES" value="{{ settings.get('EAT_SEARCH_PAGES', '1') }}" min="1" max="10">
+        <span class="hint">Требует свежих антибот-куки — см. EAT_COOKIE в .env</span>
+      </div>
+
       <div class="field">
         <label>Все активные: страниц ЕИС</label>
         <input type="number" name="BACKFILL_SEARCH_PAGES" value="{{ settings.get('BACKFILL_SEARCH_PAGES', '20') }}" min="1" max="200">
