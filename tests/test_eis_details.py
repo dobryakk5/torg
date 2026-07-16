@@ -106,15 +106,39 @@ def test_print_form_is_not_treated_as_document():
     assert links == ["https://zakupki.gov.ru/filestore/document.docx"]
 
 
-def test_eis_documents_use_notice223_page():
+def test_eis_44_documents_use_notice_view_page():
     url = (
         "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?"
         "regNumber=0842600001626000024"
     )
 
     assert scraper.to_documents_url(url) == (
-        "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?"
+        "https://zakupki.gov.ru/epz/order/notice/ea20/view/documents.html?"
         "regNumber=0842600001626000024"
+    )
+
+
+def test_eis_44_documents_keep_notice_type_from_url():
+    url = (
+        "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?"
+        "regNumber=0318500001226000005"
+    )
+
+    assert scraper.to_documents_url(url) == (
+        "https://zakupki.gov.ru/epz/order/notice/zk20/view/documents.html?"
+        "regNumber=0318500001226000005"
+    )
+
+
+def test_eis_223_documents_use_notice223_page():
+    url = (
+        "https://zakupki.gov.ru/epz/order/notice/notice223/common-info.html?"
+        "noticeInfoId=123&regNumber=32211111111"
+    )
+
+    assert scraper.to_documents_url(url) == (
+        "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?"
+        "noticeInfoId=123&purchaseNoticeNumber=32211111111"
     )
 
 

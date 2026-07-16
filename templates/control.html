@@ -424,6 +424,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
             {% if 'stage1' in stage %}<span class="tag tag-1">Stage1</span>
             {% elif 'stage2' in stage %}<span class="tag tag-2">Stage2</span>
             {% elif 'stage3' in stage %}<span class="tag tag-3">Stage3</span>
+            {% elif stage == 'llm' %}<span class="tag" style="background:rgba(129,140,248,.1);color:var(--accent)">LLM</span>
             {% elif 'analyt' in stage %}<span class="tag" style="background:rgba(129,140,248,.1);color:var(--accent)">Analytics</span>
             {% else %}<span class="tag" style="background:rgba(72,85,104,.3);color:var(--dim)">{{ stage[:8] }}</span>{% endif %}
           </td>

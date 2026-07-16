@@ -144,7 +144,10 @@ def _notice_type_from_url(value: str) -> str:
     if not match:
         return ""
     notice_type = match.group(1)
-    return "" if notice_type.lower() == "notice223" else notice_type
+    # Отсекаем служебные разделы (printForm, notice223) — у них нет /view/
+    if not re.fullmatch(r"[a-z]{2}\d{2}", notice_type, flags=re.I):
+        return ""
+    return notice_type
 
 
 def _build_44_notice_url(value: str, reg_number: str, page: str) -> str:
@@ -157,6 +160,7 @@ def _build_44_notice_url(value: str, reg_number: str, page: str) -> str:
     if "://" in str(value or ""):
         parsed = urlparse(value)
         query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query.pop("purchaseNoticeNumber", None)
     query["regNumber"] = reg_number
 
     return (
@@ -204,15 +208,8 @@ def to_documents_url(url_or_number: str) -> str:
             + urlencode(query)
         )
 
-    query: dict[str, str] = {}
-    if "://" in value:
-        query = dict(parse_qsl(urlparse(value).query, keep_blank_values=True))
-    query.pop("purchaseNoticeNumber", None)
-    query["regNumber"] = reg_number
-    return (
-        f"{BASE_URL}/epz/order/notice/notice223/documents.html?"
-        + urlencode(query)
-    )
+    return _build_44_notice_url(value, reg_number, "documents")
+
 
 def search_eis(
     keyword: str,

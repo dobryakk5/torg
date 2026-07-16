@@ -1,14 +1,7 @@
 # Тест Tenderplan API
-
-curl --location --request GET 'https://tenderplan.ru/api/info/firm' \
---header 'Authorization: Bearer '
-
-curl -sS -i \
-  -H "Authorization: Bearer " \
-  -H "Accept: application/json" \
-  'https://tenderplan.ru/api/info/user'
-
-echo
+https://agregatoreat.ru/purchases/all?searchText=%D1%81%D0%B0%D0%B9%D1%82 
+python main.py --eat-only
+python main.py --stage2
 
 
 

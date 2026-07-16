@@ -4,14 +4,18 @@ main.py — двухэтапный тендерный монитор.
 Этап 1: массово собирает карточки закупок из ЕИС, делает первичный скоринг по описанию,
         сохраняет ссылку и метаданные. Документы не скачиваются.
 Этап 2: берет только закупки с высоким первичным скором, скачивает ТЗ/документы,
-        извлекает условия, делает детальный скоринг и отправляет лучшие в Telegram.
+        извлекает условия, делает детальный скоринг и складывает всё в БД.
+Этап 2.5: разбирает собранное LLM и отправляет лучшее в Telegram — читает только БД,
+        к площадкам не ходит. Сеть и LLM разделены: сбор не ждёт модель, а падение
+        LLM/OpenRouter не заставляет заново качать документы.
 Этап 3: после дедлайна подтягивает результаты/протоколы для аналитики конкуренции.
 
 Запуск:
     python main.py --stage1   # только массовая подгрузка карточек
-    python main.py --stage2   # только детальный анализ кандидатов
-    python main.py --once     # stage1 + stage2
-    python main.py --test     # stage1 + stage2 без отправки в Telegram
+    python main.py --stage2   # только сбор документов и деталей в БД
+    python main.py --llm      # только LLM-разбор и отправка по данным из БД
+    python main.py --once     # stage1 + stage2 + llm
+    python main.py --test     # то же без отправки в Telegram
 """
 
 from __future__ import annotations
@@ -821,21 +825,27 @@ def run_redocs(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
 
 
 def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
-    """Детальный анализ ТЗ/документов только по кандидатам этапа 1.
+    """Этап 2 — ТОЛЬКО сбор: страницы, документы, условия, скоринг → в БД.
+
+    Сеть здесь есть, LLM и Telegram — нет: разбор моделью и отправка вынесены в
+    Stage 2.5 (`run_llm`), который читает уже сохранённые данные из БД. Так дорогой
+    и хрупкий LLM-проход не блокирует скачивание и переживает падение сети.
 
     Ошибка одного тендера не должна останавливать весь проход. Финальная
     статистика и запись runs выполняются всегда.
+
+    Возвращает (обработано, кандидатов на LLM).
     """
     started_at = datetime.now().isoformat(timespec="seconds")
     logger.info("═" * 50)
-    logger.info("Этап 2: детальный анализ документов")
+    logger.info("Этап 2: сбор документов и деталей (без LLM)")
 
     limit = limit or config.STAGE2_LIMIT
     tenders = db.get_detail_candidates(limit=limit, min_primary_score=config.MIN_PRIMARY_SCORE_FOR_DETAIL)
     logger.info("Кандидатов на детальный анализ: %d", len(tenders))
 
     processed = 0
-    notified_count = 0
+    llm_pending = 0
     failed_count = 0
     docs_reported = 0
     docs_saved = 0
@@ -994,17 +1004,124 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
                 pnum,
             )
 
+            # LLM и отправка в Telegram живут в Stage 2.5 (run_llm) и работают
+            # уже по данным из БД: здесь только сбор и скоринг.
+            db.save_detail(
+                tender,
+                detail_score,
+                detail_reasons,
+                document_text=scoring_text,
+            )
+            db.save_filter_result(filter_result, stage="stage2")
+            processed += 1
+            if detail_score >= config.MIN_SCORE_FOR_LLM:
+                llm_pending += 1
+
+        except Exception as exc:
+            failed_count += 1
+            msg = f"Stage2 {pnum}: {type(exc).__name__}: {exc}"
+            logger.error("Ошибка обработки тендера %s; продолжаю следующий: %s", pnum, exc)
+            errors.append(msg)
+            continue
+
+    logger.info("═" * 50)
+    logger.info(
+        "ИТОГО ЭТАПА 2: кандидатов %d; успешно %d; ошибок %d; "
+        "GO %d; CAUTION %d; NO-GO %d; ждут LLM %d",
+        len(tenders), processed, failed_count,
+        decision_counts.get("GO", 0),
+        decision_counts.get("CAUTION", 0),
+        decision_counts.get("NO-GO", 0),
+        llm_pending,
+    )
+    logger.info(
+        "ИТОГО ПО ДОКУМЕНТАМ: заявлено загрузчиками %d; реально сохранено %d; "
+        "тендеров с извлечённым текстом %d",
+        docs_reported, docs_saved, docs_with_text,
+    )
+    if errors:
+        logger.warning("Ошибки этапа 2 (%d): %s", len(errors), " || ".join(errors[:10]))
+
+    try:
+        db.log_run(
+            "stage2",
+            started_at,
+            found=len(tenders),
+            processed=processed,
+            notified=0,
+            errors="; ".join(errors),
+        )
+    except Exception as exc:
+        logger.error("Не удалось сохранить статистику запуска Stage2: %s", exc)
+
+    return processed, llm_pending
+
+
+def run_llm(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
+    """Этап 2.5 — LLM-разбор и отправка в Telegram ПО ДАННЫМ ИЗ БД, без сети к площадкам.
+
+    Читает лоты, которые Stage 2 уже собрал (текст ТЗ лежит в document_text_full),
+    прогоняет через `analyze_tender` те, у кого скор ≥ MIN_SCORE_FOR_LLM, и отправляет
+    в Telegram те, у кого скор ≥ MIN_DETAILED_SCORE_FOR_NOTIFY и решение не NO-GO.
+
+    Возвращает (разобрано моделью, отправлено).
+    """
+    import llm_provider
+
+    started_at = datetime.now().isoformat(timespec="seconds")
+    logger.info("═" * 50)
+    logger.info("Этап 2.5: LLM-разбор собранных лотов (без обращения к площадкам)")
+
+    limit = limit or config.STAGE2_LIMIT
+    # Порог выборки — нижний из двух: лот со скором ниже LLM-порога, но выше порога
+    # отправки, всё равно должен уйти в Telegram (пусть и без разбора моделью).
+    min_score = min(config.MIN_SCORE_FOR_LLM, config.MIN_DETAILED_SCORE_FOR_NOTIFY)
+    tenders = db.get_llm_candidates(limit=limit, min_score=min_score)
+    logger.info("Лотов в очереди на LLM/отправку: %d", len(tenders))
+
+    llm_configured = llm_provider.is_configured()
+    if not llm_configured:
+        logger.warning("LLM-провайдер не настроен — будет только отправка без разбора")
+
+    analyzed = 0
+    notified_count = 0
+    failed_count = 0
+    errors: list[str] = []
+
+    for tender in tenders:
+        pnum = tender.get("purchase_number", "")
+        try:
+            detail_score = int(tender.get("detail_score") or 0)
+            detail_reasons = [
+                part.strip()
+                for part in str(tender.get("detail_reasons") or "").split("|")
+                if part.strip()
+            ]
+            # Полный текст пишет Stage 2; для лотов, собранных до разделения этапов,
+            # остаётся только обрезка excerpt — этого хватает на разбор.
+            scoring_text = str(
+                tender.get("document_text_full")
+                or tender.get("document_text_excerpt")
+                or tender.get("primary_text")
+                or ""
+            )
+
             llm_analysis = None
-            import llm_provider
-            if detail_score >= config.MIN_SCORE_FOR_LLM and llm_provider.is_configured():
+            wants_llm = detail_score >= config.MIN_SCORE_FOR_LLM
+            if llm_configured and wants_llm:
                 try:
                     llm_analysis = analyze_tender(tender, scoring_text)
+                    if llm_analysis:
+                        analyzed += 1
                 except Exception as exc:
                     logger.warning("Ошибка LLM-анализа %s: %s", pnum, exc)
+            # Лот считается разобранным, если модель ответила или разбор ему не
+            # полагался по скору. Сбой провайдера оставляет лот в очереди.
+            mark_analyzed = bool(llm_analysis) or not wants_llm
 
             should_notify = (
                 detail_score >= config.MIN_DETAILED_SCORE_FOR_NOTIFY
-                and filter_result.decision != "NO-GO"
+                and (tender.get("filter_decision") or "") != "NO-GO"
                 and not tender.get("notified_at")
             )
             notified = False
@@ -1023,71 +1140,57 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
                         config.TELEGRAM_CHAT_ID,
                     )
                     time.sleep(0.5)
-
-            db.save_detail(
-                tender,
-                detail_score,
-                detail_reasons,
-                llm_analysis or "",
-                document_text=scoring_text,
-                notified=notified,
-            )
-            db.save_filter_result(filter_result, stage="stage2")
-            processed += 1
             if notified:
                 notified_count += 1
 
+            if not dry_run:
+                db.save_llm_analysis(
+                    pnum,
+                    llm_analysis or "",
+                    model=llm_provider.deep_model() if llm_analysis else "",
+                    notified=notified,
+                    mark_analyzed=mark_analyzed,
+                )
         except Exception as exc:
             failed_count += 1
-            msg = f"Stage2 {pnum}: {type(exc).__name__}: {exc}"
-            logger.error("Ошибка обработки тендера %s; продолжаю следующий: %s", pnum, exc)
+            msg = f"LLM {pnum}: {type(exc).__name__}: {exc}"
+            logger.error("Ошибка LLM-разбора %s; продолжаю следующий: %s", pnum, exc)
             errors.append(msg)
             continue
 
     logger.info("═" * 50)
     logger.info(
-        "ИТОГО ЭТАПА 2: кандидатов %d; успешно %d; ошибок %d; "
-        "GO %d; CAUTION %d; NO-GO %d; отправлено %d",
-        len(tenders), processed, failed_count,
-        decision_counts.get("GO", 0),
-        decision_counts.get("CAUTION", 0),
-        decision_counts.get("NO-GO", 0),
-        notified_count,
-    )
-    logger.info(
-        "ИТОГО ПО ДОКУМЕНТАМ: заявлено загрузчиками %d; реально сохранено %d; "
-        "тендеров с извлечённым текстом %d",
-        docs_reported, docs_saved, docs_with_text,
+        "ИТОГО ЭТАПА 2.5: в очереди %d; разобрано моделью %d; отправлено %d; ошибок %d",
+        len(tenders), analyzed, notified_count, failed_count,
     )
     if errors:
-        logger.warning("Ошибки этапа 2 (%d): %s", len(errors), " || ".join(errors[:10]))
+        logger.warning("Ошибки этапа 2.5 (%d): %s", len(errors), " || ".join(errors[:10]))
 
     if not dry_run:
         try:
             send_summary(
                 config.TELEGRAM_BOT_TOKEN,
                 config.TELEGRAM_CHAT_ID,
-                processed,
+                len(tenders),
                 notified_count,
                 len(config.SEARCH_KEYWORDS),
             )
         except Exception as exc:
-            logger.warning("Не удалось отправить итог Stage2 в Telegram: %s", exc)
+            logger.warning("Не удалось отправить итог Stage2.5 в Telegram: %s", exc)
 
-    try:
-        db.log_run(
-            "stage2",
-            started_at,
-            found=len(tenders),
-            processed=processed,
-            notified=notified_count,
-            errors="; ".join(errors),
-        )
-    except Exception as exc:
-        logger.error("Не удалось сохранить статистику запуска Stage2: %s", exc)
+        try:
+            db.log_run(
+                "llm",
+                started_at,
+                found=len(tenders),
+                processed=analyzed,
+                notified=notified_count,
+                errors="; ".join(errors),
+            )
+        except Exception as exc:
+            logger.error("Не удалось сохранить статистику запуска Stage2.5: %s", exc)
 
-    return processed, notified_count
-
+    return analyzed, notified_count
 
 
 def _parse_deadline(value: str | None) -> datetime | None:
@@ -1194,10 +1297,13 @@ def run_once(
     # LLM-триаж в автоцикл НЕ включаем — он запускается вручную кнопкой в /control
     # (или `python main.py --triage`) и размечает только лоты без LLM-оценки.
 
-    if _stage_completed_today("stage2", skip_completed_today):
-        processed, notified = 0, 0
-    else:
-        processed, notified = run_stage2(dry_run=dry_run, limit=stage2_limit)
+    processed = 0
+    if not _stage_completed_today("stage2", skip_completed_today):
+        processed, _ = run_stage2(dry_run=dry_run, limit=stage2_limit)
+
+    # Stage 2.5 отделён от сбора, но в автоцикле идёт следом: он разбирает моделью
+    # и отправляет то, что Stage 2 уже положил в БД (включая очередь с прошлых прогонов).
+    _, notified = run_llm(dry_run=dry_run, limit=stage2_limit)
     return found + processed, notified
 
 
@@ -1314,7 +1420,8 @@ def main() -> None:
     parser.add_argument("--triage", action="store_true", help="Только LLM-триаж карточек (Stage 1.5)")
     parser.add_argument("--rescore", action="store_true", help="Разовый пересчёт скоринга всех лотов (без сети/LLM)")
     parser.add_argument("--redocs", action="store_true", help="Переобработка уже скачанных документов с диска (без сети/LLM)")
-    parser.add_argument("--stage2", action="store_true", help="Только детальный анализ кандидатов")
+    parser.add_argument("--stage2", action="store_true", help="Только сбор документов и деталей в БД (без LLM/Telegram)")
+    parser.add_argument("--llm", action="store_true", help="Только LLM-разбор и отправка по данным из БД (без обращения к площадкам)")
     parser.add_argument("--stage3", action="store_true", help="После дедлайна подтянуть результаты/победителей")
     parser.add_argument("--results", action="store_true", help="Алиас для --stage3")
     parser.add_argument("--tenderplan-only", action="store_true", help="Только импорт Tenderplan")
@@ -1345,6 +1452,7 @@ def main() -> None:
     config.MIN_PRIMARY_SCORE_FOR_DETAIL = config.get_runtime("MIN_PRIMARY_SCORE_FOR_DETAIL", config.MIN_PRIMARY_SCORE_FOR_DETAIL)
     config.MIN_DETAILED_SCORE_FOR_NOTIFY= config.get_runtime("MIN_DETAILED_SCORE_FOR_NOTIFY",config.MIN_DETAILED_SCORE_FOR_NOTIFY)
     config.DOCUMENT_DOWNLOAD_MIN_SCORE  = config.get_runtime("DOCUMENT_DOWNLOAD_MIN_SCORE",  config.DOCUMENT_DOWNLOAD_MIN_SCORE)
+    config.MIN_SCORE_FOR_LLM            = config.get_runtime("MIN_SCORE_FOR_LLM",            config.MIN_SCORE_FOR_LLM)
     config.STAGE2_LIMIT                 = config.get_runtime("STAGE2_LIMIT",                 config.STAGE2_LIMIT)
     config.SEARCH_KEYWORDS              = config.get_runtime("SEARCH_KEYWORDS",              config.SEARCH_KEYWORDS)
     config.OKPD2_SEARCH_ENABLED         = config.get_runtime("OKPD2_SEARCH_ENABLED",         config.OKPD2_SEARCH_ENABLED)
@@ -1390,7 +1498,8 @@ def main() -> None:
         stage2_notified = 0
         # Сразу запускаем детальный анализ, чтобы скачать ТЗ через Tenderplan API
         if not _stage_completed_today("stage2", args.skip_completed_today):
-            stage2_processed, stage2_notified = run_stage2(dry_run=args.test, limit=args.limit)
+            stage2_processed, _ = run_stage2(dry_run=args.test, limit=args.limit)
+        _, stage2_notified = run_llm(dry_run=args.test, limit=args.limit)
         logger.info(
             "ИТОГО ЗАПУСКА TENDERPLAN: найдено новых %d; кандидатов Stage2 %d; "
             "детально обработано %d; отправлено %d",
@@ -1428,6 +1537,8 @@ def main() -> None:
     elif args.stage2:
         if not _stage_completed_today("stage2", args.skip_completed_today):
             run_stage2(dry_run=args.test, limit=args.limit)
+    elif args.llm:
+        run_llm(dry_run=args.test, limit=args.limit)
     elif args.stage3 or args.results:
         if not _stage_completed_today("stage3", args.skip_completed_today):
             run_stage3(dry_run=args.test, limit=args.limit)

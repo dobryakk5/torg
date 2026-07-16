@@ -82,9 +82,10 @@ class JobRunner:
         "pipeline":  "Конвейер (поиск + документы + пересчёт)",
         "triage":    "LLM-триаж карточек (по кнопке)",
         "rescore":   "Пересчёт скоринга (без сети/LLM)",
-        "stage2":    "Stage 2 — анализ ТЗ",
+        "stage2":    "Stage 2 — сбор ТЗ и деталей в БД",
+        "llm":       "Stage 2.5 — LLM-разбор и отправка (из БД)",
         "stage3":    "Stage 3 — результаты",
-        "all":       "Полный цикл (1+2)",
+        "all":       "Полный цикл (1+2+LLM)",
         "analytics": "Аналитика (коридоры + заказчики + детектор)",
     }
 
@@ -138,7 +139,7 @@ class JobRunner:
         """Возвращает функцию для запуска задачи."""
         # Импортируем лениво, чтобы не тащить всё при старте веб-сервера
         from main import (
-            run_stage1, run_triage, run_rescore, run_stage2, run_stage3,
+            run_stage1, run_triage, run_rescore, run_stage2, run_llm, run_stage3,
             run_once, run_analytics,
         )
 
@@ -184,6 +185,7 @@ class JobRunner:
             "triage":    _with_runtime_config(run_triage),
             "rescore":   _with_runtime_config(run_rescore),
             "stage2":    _with_runtime_config(run_stage2),
+            "llm":       _with_runtime_config(run_llm),
             "stage3":    _with_runtime_config(run_stage3),
             "all":       _with_runtime_config(run_once),
             "analytics": _with_runtime_config(run_analytics),
@@ -375,6 +377,8 @@ def _reload_runtime_config() -> None:
     config.MIN_PRIMARY_SCORE_FOR_DETAIL  = config.get_runtime("MIN_PRIMARY_SCORE_FOR_DETAIL", config.MIN_PRIMARY_SCORE_FOR_DETAIL)
     config.MIN_DETAILED_SCORE_FOR_NOTIFY = config.get_runtime("MIN_DETAILED_SCORE_FOR_NOTIFY",config.MIN_DETAILED_SCORE_FOR_NOTIFY)
     config.DOCUMENT_DOWNLOAD_MIN_SCORE   = config.get_runtime("DOCUMENT_DOWNLOAD_MIN_SCORE",  config.DOCUMENT_DOWNLOAD_MIN_SCORE)
+    config.MIN_SCORE_FOR_LLM             = config.get_runtime("MIN_SCORE_FOR_LLM",            config.MIN_SCORE_FOR_LLM)
+    config.STAGE2_LIMIT                  = config.get_runtime("STAGE2_LIMIT",                 config.STAGE2_LIMIT)
     config.SEARCH_KEYWORDS               = config.get_runtime("SEARCH_KEYWORDS",              config.SEARCH_KEYWORDS)
     config.OKPD2_SEARCH_ENABLED          = config.get_runtime("OKPD2_SEARCH_ENABLED",         config.OKPD2_SEARCH_ENABLED)
     config.OKPD2_CODES                   = config.get_runtime("OKPD2_CODES",                  config.OKPD2_CODES)
@@ -490,9 +494,13 @@ def _web_notice_type(source: str) -> str:
     if "zakupki.gov.ru" not in parsed.netloc.lower():
         return ""
     match = re.search(r"/epz/order/notice/([^/]+)/", parsed.path, flags=re.I)
-    if not match or match.group(1).lower() == "notice223":
+    if not match:
         return ""
-    return match.group(1)
+    notice_type = match.group(1)
+    # Отсекаем служебные разделы (printForm, notice223) — у них нет /view/
+    if not re.fullmatch(r"[a-z]{2}\d{2}", notice_type, flags=re.I):
+        return ""
+    return notice_type
 
 
 def zakupki_common_info_url(url: str, purchase_number: str = "") -> str:
@@ -549,10 +557,13 @@ def zakupki_documents_url(url: str, purchase_number: str = "") -> str:
             + urlencode(query)
         )
 
+    notice_type = _web_notice_type(source) or str(
+        getattr(config, "EIS_DEFAULT_NOTICE_TYPE", "ea20") or "ea20"
+    ).strip()
     query.pop("purchaseNoticeNumber", None)
     query["regNumber"] = reg_number
     return (
-        "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?"
+        f"https://zakupki.gov.ru/epz/order/notice/{notice_type}/view/documents.html?"
         + urlencode(query)
     )
 
@@ -1001,7 +1012,7 @@ async def api_save_settings(request: Request):
         "PRICE_MIN", "PRICE_MAX", "PUBLISH_DAYS_BACK", "SCHEDULE_HOURS",
         "PUBLISH_DATE_FROM", "PUBLISH_DATE_TO",
         "MIN_PRIMARY_SCORE_FOR_DETAIL", "MIN_DETAILED_SCORE_FOR_NOTIFY",
-        "DOCUMENT_DOWNLOAD_MIN_SCORE",
+        "DOCUMENT_DOWNLOAD_MIN_SCORE", "MIN_SCORE_FOR_LLM",
         "OKPD2_SEARCH_ENABLED", "OKPD2_CODES", "SEARCH_KEYWORDS",
         "CHANGE_CHECK_HOURS", "CHANGE_MIN_SCORE", "WINNER_ANALYTICS_PAGES",
         "SOURCE_B2B_ENABLED", "B2B_SEARCH_PAGES",

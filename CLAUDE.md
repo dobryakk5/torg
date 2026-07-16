@@ -24,10 +24,10 @@
 ```bash
 python init_db.py                 # ОДИН РАЗ: создать схему + засеять дефолты/правила
 uvicorn web_app:app --host 0.0.0.0 --port 8000 --reload   # веб-панель
-python main.py --once             # полный цикл stage1 + триаж + stage2
+python main.py --once             # полный цикл stage1 + stage2 + llm
 python main.py --test             # то же без отправки в Telegram
 python main.py                    # демон по расписанию (SCHEDULE_HOURS)
-python main.py --stage1|--triage|--stage2|--stage3|--analytics
+python main.py --stage1|--triage|--stage2|--llm|--stage3|--analytics
 python main.py --reset-db         # DROP+пересоздание схемы (осознанно!)
 ```
 
@@ -49,11 +49,20 @@ LLM: по умолчанию **OpenRouter** — задай `OPENROUTER_API_KEY` 
    вердикт БЕРУ/ЧАСТИЧНО/МИМО + флаг перекупа + причина. Ловит ложные совпадения
    ключевых слов и перекуп лицензий/железа. Результат пишется в колонки `tenders.llm_triage_*`
    и **мягко** корректирует Ф1 (профиль) на ±1–2 балла. Флаг `LLM_TRIAGE_ENABLED`.
-3. **Stage 2** (`main.run_stage2`) — для кандидатов с высоким первичным скором:
+3. **Stage 2 — сбор** (`main.run_stage2`) — для кандидатов с высоким первичным скором:
    скачивание страницы/ТЗ (ТЗ — только для ЕИС), извлечение условий, детальный
-   скоринг, LLM-анализ топов (`OPENROUTER_DEEP_MODEL`), отправка в Telegram.
-4. **Stage 3** (`main.run_stage3`) — после дедлайна тянет результаты/победителей.
-5. **Аналитика** (`run_analytics`) — ценовые коридоры, карточки заказчиков,
+   скоринг. **Ходит в сеть, но не в LLM и не в Telegram.** Полный текст для разбора
+   кладётся в `tenders.document_text_full`.
+4. **Stage 2.5 — LLM-разбор** (`main.run_llm`) — работает **только по данным из БД**,
+   к площадкам не обращается: берёт лоты со скором ≥ `MIN_SCORE_FOR_LLM`, гоняет
+   `llm_analyzer.analyze_tender` (`OPENROUTER_DEEP_MODEL`) и отправляет в Telegram то,
+   что ≥ `MIN_DETAILED_SCORE_FOR_NOTIFY` и не NO-GO. Очередь = `db.get_llm_candidates`:
+   `llm_analyzed_at IS NULL OR llm_analyzed_at < detail_checked_at` — переобработка
+   лота на Stage 2 автоматически ставит его назад в очередь на разбор. Сбой провайдера
+   не ставит отметку `llm_analyzed_at`, поэтому лот вернётся в очередь на следующем
+   прогоне (повторной отправки не будет — её сторожит `notified_at`).
+5. **Stage 3** (`main.run_stage3`) — после дедлайна тянет результаты/победителей.
+6. **Аналитика** (`run_analytics`) — ценовые коридоры, карточки заказчиков,
    детектор изменений ТЗ.
 
 Дедуп по `purchase_number` (у B2B он вида `B2B-<id>`, не пересекается с ЕИС).
@@ -62,7 +71,7 @@ LLM: по умолчанию **OpenRouter** — задай `OPENROUTER_API_KEY` 
 
 | Файл | Назначение |
 |---|---|
-| `main.py` | Оркестратор stage1/2/3, CLI, демон-расписание |
+| `main.py` | Оркестратор stage1/2/2.5/3, CLI, демон-расписание |
 | `scraper.py` | Парсинг открытого поиска ЕИС (zakupki.gov.ru) |
 | `sources/b2b_center.py` | Коннектор витрины B2B-Center (тот же формат `dict`, что у ЕИС) |
 | `filter_engine.py` | **8-фильтровый движок оценки** (см. ниже) |

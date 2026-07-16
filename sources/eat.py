@@ -400,13 +400,67 @@ def search_eat(
     return tenders
 
 
+def find_file_refs(obj: Any, path: str = "") -> list[tuple[str, Any]]:
+    """Рекурсивно ищет в структуре всё, что похоже на ссылку/описание файла:
+    ключи с file/document/attachment/contract или значения с расширением документа.
+
+    Разведочный инструмент: по его выводу пишется скачивание документов лота.
+    """
+    hits: list[tuple[str, Any]] = []
+    key_re = re.compile(r"file|document|attach|contract|scan|blob", re.I)
+    val_re = re.compile(r"\.(docx?|pdf|xlsx?|rtf|odt|zip|rar)\b", re.I)
+
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            p = f"{path}.{k}" if path else k
+            if isinstance(v, (dict, list)):
+                if key_re.search(str(k)) and v:
+                    hits.append((p, v))
+                hits.extend(find_file_refs(v, p))
+            elif v not in (None, "", []):
+                if key_re.search(str(k)) or val_re.search(str(v)):
+                    hits.append((p, v))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj[:10]):
+            hits.extend(find_file_refs(v, f"{path}[{i}]"))
+    return hits
+
+
 if __name__ == "__main__":
-    # Самотест:        python -m sources.eat "сайт"
-    # Сырой дамп полей: python -m sources.eat "сайт" --raw   (для сверки lotItems/deliveryInfos)
+    # Самотест:         python -m sources.eat "сайт"
+    # Сырой дамп полей: python -m sources.eat "сайт" --raw
+    # Поиск документов: python -m sources.eat --docs <guid лота из URL карточки>
     import sys
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     kw = args[0] if args else "программное обеспечение"
+
+    if "--docs" in sys.argv:
+        guid = args[0] if args else ""
+        if not guid:
+            print("Укажи GUID лота: python -m sources.eat --docs 2c177788-3374-4094-8ef7-0d0968c256b2")
+            sys.exit(2)
+        detail = get_lot_details(guid)
+        if not detail:
+            print("Детальная карточка не получена (антибот/куки?)")
+            sys.exit(1)
+        print("── Верхние ключи детали ──"); print(", ".join(detail.keys()))
+        trade = detail.get("trade") if isinstance(detail.get("trade"), dict) else {}
+        if trade:
+            print("\n── Ключи trade ──"); print(", ".join(trade.keys()))
+        lot = trade.get("lot") if isinstance(trade.get("lot"), dict) else {}
+        docs = lot.get("documents") if isinstance(lot, dict) else None
+        if docs:
+            print(f"\n── trade.lot.documents (полностью, {len(docs)} шт.) ──")
+            print(json.dumps(docs, ensure_ascii=False, indent=1))
+        print("\n── Похожее на файлы/документы (путь → значение) ──")
+        hits = find_file_refs(detail)
+        if not hits:
+            print("  (ничего не найдено)")
+        for p, v in hits[:40]:
+            s = json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else str(v)
+            print(f"  {p} = {s[:300]}")
+        sys.exit(0)
 
     if "--raw" in sys.argv:
         # size=1 API отвергает ("The field Size is invalid") — берём валидный размер

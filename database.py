@@ -757,6 +757,11 @@ def ensure_extra_columns() -> None:
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS profile_price_lo INTEGER",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS profile_price_hi INTEGER",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS profile_price_hard_max INTEGER",
+            # Разделение Stage 2 (сбор) и Stage 2.5 (LLM): полный текст для разбора
+            # хранится в БД, чтобы LLM-проход не ходил в сеть и не читал диск.
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS document_text_full TEXT",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS llm_analyzed_at TIMESTAMPTZ",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS llm_model TEXT",
         ):
             cur.execute(ddl)
         # До разделения причин все отказы создавались кнопкой X.
@@ -765,6 +770,17 @@ def ensure_extra_columns() -> None:
                   SET rejection_reason = 'not_my_profile'
                 WHERE decision = 'rejected'
                   AND (rejection_reason IS NULL OR btrim(rejection_reason) = '')"""
+        )
+        # До разделения Stage 2 и Stage 2.5 разбор делался внутри Stage 2 и отметки
+        # времени не оставлял. Без бэкфилла все ранее разобранные лоты выглядели бы
+        # как неразобранные и ушли бы в LLM повторно — за деньги и впустую.
+        cur.execute(
+            """UPDATE tenders
+                  SET llm_analyzed_at = detail_checked_at
+                WHERE llm_analyzed_at IS NULL
+                  AND detail_checked_at IS NOT NULL
+                  AND llm_analysis IS NOT NULL
+                  AND btrim(llm_analysis) <> ''"""
         )
 
 
@@ -1642,8 +1658,10 @@ def _save_detail_once(
                    score_reasons = %(detail_reasons)s,
                    filter_total = %(detail_score)s,
                    filter_decision = %(filter_decision)s,
-                   llm_analysis = %(llm_analysis)s,
-                   llm_verdict = %(llm_verdict)s,
+                   -- Пустая строка = вызывающий не занимался LLM (Stage 2 после
+                   -- разделения этапов), прошлый разбор не затираем.
+                   llm_analysis = COALESCE(NULLIF(%(llm_analysis)s, ''), llm_analysis),
+                   llm_verdict = COALESCE(NULLIF(%(llm_verdict)s, ''), llm_verdict),
                    application_security_amount = %(application_security_amount)s,
                    contract_security_amount = %(contract_security_amount)s,
                    warranty_security_amount = %(warranty_security_amount)s,
@@ -1654,6 +1672,7 @@ def _save_detail_once(
                    documents_dir = %(documents_dir)s,
 	                   documents_hash = %(documents_hash)s,
 	                   document_text_excerpt = %(document_text_excerpt)s,
+	                   document_text_full = COALESCE(NULLIF(%(document_text_full)s, ''), document_text_full),
 	                   url = COALESCE(NULLIF(%(url)s, ''), url),
 	                   status = %(status)s,
 	                   detail_checked_at = %(detail_checked_at)s,
@@ -1678,6 +1697,7 @@ def _save_detail_once(
                 "documents_dir": tender.get("documents_dir", ""),
                 "documents_hash": tender.get("documents_hash", ""),
 	                "document_text_excerpt": (document_text or "")[:4000],
+	                "document_text_full": document_text or "",
 	                "url": tender.get("url", ""),
 	                "status": status,
                 "detail_checked_at": now,
@@ -1687,6 +1707,92 @@ def _save_detail_once(
             },
         )
 
+
+
+def get_llm_candidates(limit: int, min_score: int) -> list[dict[str, Any]]:
+    """Кандидаты для Stage 2.5 (LLM-разбор) — берутся ТОЛЬКО из БД, без сети.
+
+    Условия: Stage 2 по лоту уже отработал (detail_checked_at), скор дотягивает до
+    порога, лот не отклонён вручную и дедлайн не прошёл. Повторный разбор нужен,
+    если Stage 2 переобработал лот позже последнего LLM-прохода
+    (llm_analyzed_at < detail_checked_at) — например, у лота изменились документы.
+    """
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            f"""
+            SELECT * FROM tenders t
+             WHERE t.detail_checked_at IS NOT NULL
+               AND t.needs_detail_refresh = FALSE
+               AND COALESCE(t.detail_score, 0) >= %s
+               AND t.decision NOT IN ('rejected', 'tailored')
+               AND (t.llm_analyzed_at IS NULL OR t.llm_analyzed_at < t.detail_checked_at)
+               AND {_active_or_unknown_deadline_sql("t.deadline")}
+             ORDER BY {_deadline_timestamp_sql("t.deadline")} ASC NULLS LAST,
+                      t.detail_score DESC, t.price DESC NULLS LAST
+             LIMIT %s
+            """,
+            (min_score, limit),
+        )
+        rows = cur.fetchall()
+    return _rows_to_dicts(rows)
+
+
+def save_llm_analysis(
+    purchase_number: str,
+    llm_analysis: str,
+    model: str = "",
+    notified: bool = False,
+    mark_analyzed: bool = True,
+) -> None:
+    """Сохраняет результат Stage 2.5. Скоринг и решение фильтров не трогает.
+
+    mark_analyzed=False снимает отметку llm_analyzed_at — лот останется в очереди
+    и будет разобран при следующем проходе (ключ LLM не настроен, провайдер упал).
+    Отметка об отправке при этом сохраняется, чтобы не дублировать сообщение.
+    """
+    if not purchase_number:
+        return
+    clean_analysis = strip_nul(llm_analysis or "")
+    _with_db_retries(
+        "save_llm_analysis",
+        lambda: _save_llm_analysis_once(
+            purchase_number, clean_analysis, model, notified, mark_analyzed
+        ),
+    )
+
+
+def _save_llm_analysis_once(
+    purchase_number: str,
+    llm_analysis: str,
+    model: str,
+    notified: bool,
+    mark_analyzed: bool,
+) -> None:
+    now = _now()
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE tenders
+               SET llm_analysis    = COALESCE(NULLIF(%(llm_analysis)s, ''), llm_analysis),
+                   llm_verdict     = COALESCE(NULLIF(%(llm_verdict)s, ''), llm_verdict),
+                   llm_model       = COALESCE(NULLIF(%(llm_model)s, ''), llm_model),
+                   llm_analyzed_at = CASE WHEN %(mark_analyzed)s THEN %(now)s ELSE llm_analyzed_at END,
+                   notified_at     = CASE WHEN %(notified)s THEN %(now)s ELSE notified_at END,
+                   updated_at      = %(now)s
+             WHERE purchase_number = %(purchase_number)s
+            """,
+            {
+                "llm_analysis": llm_analysis or "",
+                "llm_verdict": _extract_llm_verdict(llm_analysis),
+                "llm_model": model or "",
+                "notified": notified,
+                "mark_analyzed": mark_analyzed,
+                "now": now,
+                "purchase_number": purchase_number,
+            },
+        )
 
 
 def get_result_candidates(limit: int = 50) -> list[dict[str, Any]]:
