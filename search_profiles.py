@@ -171,6 +171,11 @@ class Profile:
     min_score: int = 3
     okpd2_codes: list[str] = field(default_factory=list)
     phrases: list[Phrase] = field(default_factory=list)
+    # Ценовой коридор Ф2 (filter_engine._filter_finance) для ЭТОГО профиля.
+    # None у любого поля = наследовать глобальный config.PRICE_TARGET_LO/HI/PRICE_HARD_MAX.
+    price_target_lo: int | None = None
+    price_target_hi: int | None = None
+    price_hard_max: int | None = None
 
 
 @dataclass
@@ -182,6 +187,9 @@ class MatchResult:
     hits: list[tuple[str, int]] = field(default_factory=list)
     hard_hit: str | None = None
     min_score: int = 3
+    price_target_lo: int | None = None
+    price_target_hi: int | None = None
+    price_hard_max: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -238,6 +246,9 @@ def _profile_from_row(r: dict[str, Any]) -> Profile:
         min_score=int(r.get("min_score") or 3),
         okpd2_codes=list(r.get("okpd2_codes") or []),
         phrases=phrases,
+        price_target_lo=r.get("price_target_lo"),
+        price_target_hi=r.get("price_target_hi"),
+        price_hard_max=r.get("price_hard_max"),
     )
 
 
@@ -262,6 +273,9 @@ def _default_profiles_as_objects() -> list[Profile]:
             enabled=True, is_default=bool(d.get("is_default", False)),
             priority=int(d.get("priority", 100)), min_score=int(d.get("min_score", 3)),
             okpd2_codes=list(d.get("okpd2_codes", [])), phrases=phrases,
+            price_target_lo=d.get("price_target_lo"),
+            price_target_hi=d.get("price_target_hi"),
+            price_hard_max=d.get("price_hard_max"),
         ))
     return result
 
@@ -319,6 +333,9 @@ def match_profile(profile: Profile, tokens: list[tuple[int, str]]) -> MatchResul
         profile_id=profile.id, profile_name=profile.name,
         accepted=accepted, score=total, hits=hits, hard_hit=hard_hit,
         min_score=profile.min_score,
+        price_target_lo=profile.price_target_lo,
+        price_target_hi=profile.price_target_hi,
+        price_hard_max=profile.price_hard_max,
     )
 
 
@@ -360,6 +377,9 @@ def filter_and_tag(
         tender["profile_id"] = best.profile_id
         tender["profile_score"] = best.score
         tender["matched_profiles"] = [r.to_dict() for r in results if r.accepted]
+        tender["profile_price_lo"] = best.price_target_lo
+        tender["profile_price_hi"] = best.price_target_hi
+        tender["profile_price_hard_max"] = best.price_hard_max
         kept.append(tender)
     return kept, dropped
 

@@ -66,6 +66,10 @@ input[type=text]:focus,select:focus{border-color:var(--accent)}
 .toggle input:checked+.toggle-slider{background:var(--green)}
 .toggle input:checked+.toggle-slider:before{transform:translateX(14px)}
 .sec-title{font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);margin:.7rem 0 .3rem}
+.phrase-accordion{margin-bottom:.3rem}
+.phrase-accordion summary{cursor:pointer;user-select:none;list-style:revert}
+.phrase-accordion summary:hover{color:var(--text)}
+.phrase-accordion[open] summary{margin-bottom:.2rem}
 .addbar{display:flex;gap:.5rem;margin-top:.3rem;flex-wrap:wrap;align-items:center}
 .feedback{font-size:.68rem;color:var(--green);font-family:var(--mono)}
 .lint-box{margin-top:.5rem;font-size:.68rem;border-radius:6px;overflow:hidden}
@@ -145,60 +149,79 @@ input[type=text]:focus,select:focus{border-color:var(--accent)}
       <button class="btn btn-save btn-sm" onclick="saveProfileMeta({{ p.id }})">✓ Сохранить настройки</button>
       <span class="feedback" id="fb-meta-{{ p.id }}"></span>
     </div>
-
-    <div class="sec-title">Плюс-фразы</div>
-    <table>
-      <thead><tr>
-        <th>Фраза</th><th class="col-w">Вес</th><th>Запрос в ЕИС (query_text)</th>
-        <th class="col-flag" title="только запрос, не считать локально">запрос</th>
-        <th class="col-flag" title="только локально, не отправлять в ЕИС">локал.</th>
-        <th class="col-flag">вкл</th><th>Заметка</th><th class="col-del"></th>
-      </tr></thead>
-      <tbody class="p-plus-body">
-        {% for ph in (p.phrases or []) if ph.kind == 'plus' %}
-        <tr class="pf-row {{ '' if ph.enabled else 'disabled-row' }}" data-id="{{ ph.id }}">
-          <td><input type="text" class="f-phrase" value="{{ ph.phrase }}"></td>
-          <td><input type="number" class="f-weight" value="{{ ph.weight }}"></td>
-          <td><input type="text" class="f-query" value="{{ ph.query_text or '' }}"></td>
-          <td class="col-flag"><input type="checkbox" class="f-query-only" {% if ph.query_only %}checked{% endif %}></td>
-          <td class="col-flag"><input type="checkbox" class="f-local-only" {% if ph.local_only %}checked{% endif %}></td>
-          <td class="col-flag"><input type="checkbox" class="f-enabled" {% if ph.enabled %}checked{% endif %}></td>
-          <td><input type="text" class="f-note" value="{{ ph.note or '' }}"></td>
-          <td class="col-del"><button class="btn btn-del btn-sm" onclick="this.closest('tr').remove()">✕</button></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    <div class="addbar">
-      <button class="btn btn-ghost btn-sm" onclick="addPlusRow({{ p.id }})">+ фраза</button>
+    <div class="pf-meta">
+      <label title="целевая зона НМЦК — бонус к Ф2; пусто = взять из общих настроек">цена от
+        <input type="number" class="p-price-lo" value="{{ p.price_target_lo if p.price_target_lo is not none else '' }}" placeholder="{{ default_price_lo }}">
+      </label>
+      <label title="целевая зона НМЦК — бонус к Ф2; пусто = взять из общих настроек">цена до
+        <input type="number" class="p-price-hi" value="{{ p.price_target_hi if p.price_target_hi is not none else '' }}" placeholder="{{ default_price_hi }}">
+      </label>
+      <label title="выше этой НМЦК — стоп-фактор Ф2 (не хватит обеспечения); пусто = взять из общих настроек">жёсткий максимум
+        <input type="number" class="p-price-hard-max" value="{{ p.price_hard_max if p.price_hard_max is not none else '' }}" placeholder="{{ default_price_hard_max }}">
+      </label>
+      <span class="hint" style="font-size:.62rem">пусто = взять из общих настроек (/control)</span>
     </div>
 
-    <div class="sec-title">Минус-фразы</div>
-    <table>
-      <thead><tr>
-        <th>Фраза</th><th>Режим</th><th class="col-w">Вес</th>
-        <th class="col-flag">вкл</th><th>Заметка</th><th class="col-del"></th>
-      </tr></thead>
-      <tbody class="p-minus-body">
-        {% for ph in (p.phrases or []) if ph.kind in ('minus_hard','minus_soft') %}
-        <tr class="pf-row {{ '' if ph.enabled else 'disabled-row' }}" data-id="{{ ph.id }}">
-          <td><input type="text" class="f-phrase" value="{{ ph.phrase }}"></td>
-          <td>
-            <select class="f-kind">
-              <option value="minus_soft" {% if ph.kind == 'minus_soft' %}selected{% endif %}>мягкий штраф</option>
-              <option value="minus_hard" {% if ph.kind == 'minus_hard' %}selected{% endif %}>жёсткое исключение</option>
-            </select>
-          </td>
-          <td><input type="number" class="f-weight" value="{{ ph.weight }}"></td>
-          <td class="col-flag"><input type="checkbox" class="f-enabled" {% if ph.enabled %}checked{% endif %}></td>
-          <td><input type="text" class="f-note" value="{{ ph.note or '' }}"></td>
-          <td class="col-del"><button class="btn btn-del btn-sm" onclick="this.closest('tr').remove()">✕</button></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    <div class="addbar">
-      <button class="btn btn-ghost btn-sm" onclick="addMinusRow({{ p.id }})">+ фраза</button>
+    <details class="phrase-accordion" open>
+      <summary class="sec-title">Плюс-фразы</summary>
+      <table>
+        <thead><tr>
+          <th>Фраза</th><th class="col-w">Вес</th><th>Запрос в ЕИС (query_text)</th>
+          <th class="col-flag" title="только запрос, не считать локально">запрос</th>
+          <th class="col-flag" title="только локально, не отправлять в ЕИС">локал.</th>
+          <th class="col-flag">вкл</th><th>Заметка</th><th class="col-del"></th>
+        </tr></thead>
+        <tbody class="p-plus-body">
+          {% for ph in (p.phrases or []) if ph.kind == 'plus' %}
+          <tr class="pf-row {{ '' if ph.enabled else 'disabled-row' }}" data-id="{{ ph.id }}">
+            <td><input type="text" class="f-phrase" value="{{ ph.phrase }}"></td>
+            <td><input type="number" class="f-weight" value="{{ ph.weight }}"></td>
+            <td><input type="text" class="f-query" value="{{ ph.query_text or '' }}"></td>
+            <td class="col-flag"><input type="checkbox" class="f-query-only" {% if ph.query_only %}checked{% endif %}></td>
+            <td class="col-flag"><input type="checkbox" class="f-local-only" {% if ph.local_only %}checked{% endif %}></td>
+            <td class="col-flag"><input type="checkbox" class="f-enabled" {% if ph.enabled %}checked{% endif %}></td>
+            <td><input type="text" class="f-note" value="{{ ph.note or '' }}"></td>
+            <td class="col-del"><button class="btn btn-del btn-sm" onclick="this.closest('tr').remove()">✕</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="addbar">
+        <button class="btn btn-ghost btn-sm" onclick="addPlusRow({{ p.id }})">+ фраза</button>
+      </div>
+    </details>
+
+    <details class="phrase-accordion" open>
+      <summary class="sec-title">Минус-фразы</summary>
+      <table>
+        <thead><tr>
+          <th>Фраза</th><th>Режим</th><th class="col-w">Вес</th>
+          <th class="col-flag">вкл</th><th>Заметка</th><th class="col-del"></th>
+        </tr></thead>
+        <tbody class="p-minus-body">
+          {% for ph in (p.phrases or []) if ph.kind in ('minus_hard','minus_soft') %}
+          <tr class="pf-row {{ '' if ph.enabled else 'disabled-row' }}" data-id="{{ ph.id }}">
+            <td><input type="text" class="f-phrase" value="{{ ph.phrase }}"></td>
+            <td>
+              <select class="f-kind">
+                <option value="minus_soft" {% if ph.kind == 'minus_soft' %}selected{% endif %}>мягкий штраф</option>
+                <option value="minus_hard" {% if ph.kind == 'minus_hard' %}selected{% endif %}>жёсткое исключение</option>
+              </select>
+            </td>
+            <td><input type="number" class="f-weight" value="{{ ph.weight }}"></td>
+            <td class="col-flag"><input type="checkbox" class="f-enabled" {% if ph.enabled %}checked{% endif %}></td>
+            <td><input type="text" class="f-note" value="{{ ph.note or '' }}"></td>
+            <td class="col-del"><button class="btn btn-del btn-sm" onclick="this.closest('tr').remove()">✕</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="addbar">
+        <button class="btn btn-ghost btn-sm" onclick="addMinusRow({{ p.id }})">+ фраза</button>
+      </div>
+    </details>
+
+    <div class="addbar" style="margin-top:.5rem">
       <button class="btn btn-accent btn-sm" onclick="savePhrases({{ p.id }})">💾 Сохранить фразы</button>
       <button class="btn btn-ghost btn-sm" onclick="lintProfile({{ p.id }})">⚠ Проверить (линтер)</button>
       <button class="btn btn-ghost btn-sm" onclick="previewProfile({{ p.id }})">▶ Прогнать по базе</button>
@@ -327,6 +350,7 @@ function addMinusRow(id) {
 async function saveProfileMeta(id) {
   const card = cardOf(id);
   const okpd2 = card.querySelector('.p-okpd2').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const optNum = sel => { const v = card.querySelector(sel).value.trim(); return v === '' ? null : Number(v); };
   const payload = {
     name: card.querySelector('.p-name').value.trim(),
     description: card.querySelector('.p-desc').value.trim(),
@@ -334,6 +358,9 @@ async function saveProfileMeta(id) {
     priority: Number(card.querySelector('.p-priority').value || 100),
     min_score: Number(card.querySelector('.p-min-score').value || 3),
     okpd2_codes: okpd2,
+    price_target_lo: optNum('.p-price-lo'),
+    price_target_hi: optNum('.p-price-hi'),
+    price_hard_max: optNum('.p-price-hard-max'),
   };
   try {
     const r = await fetch(`/api/profiles/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});

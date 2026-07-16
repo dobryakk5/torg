@@ -591,6 +591,11 @@ CREATE TABLE IF NOT EXISTS search_profiles (
     priority    INT NOT NULL DEFAULT 100,
     min_score   INT NOT NULL DEFAULT 3,
     okpd2_codes TEXT[] NOT NULL DEFAULT '{}',
+    -- Ценовой коридор Ф2 (filter_engine._filter_finance) для ЭТОГО профиля.
+    -- NULL у любого поля = наследовать глобальный config.PRICE_TARGET_LO/HI/PRICE_HARD_MAX.
+    price_target_lo  INT,
+    price_target_hi  INT,
+    price_hard_max   INT,
     created_at  TIMESTAMPTZ DEFAULT NOW(),
     updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
@@ -746,6 +751,10 @@ def ensure_extra_columns() -> None:
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS profile_id INTEGER",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS profile_score INTEGER",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS matched_profiles JSONB",
+            # Ценовой коридор Ф2 профиля с лучшим совпадением (наследуется Stage1→Stage2).
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS profile_price_lo INTEGER",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS profile_price_hi INTEGER",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS profile_price_hard_max INTEGER",
         ):
             cur.execute(ddl)
 
@@ -1252,7 +1261,8 @@ def _upsert_primary_once(
                  customer_inn, published_at, matched_keywords, primary_text, primary_score,
                  primary_reasons, total_score, score, score_reasons, filter_total, filter_decision,
                  status, decision, content_hash, last_changed_at, needs_detail_refresh, first_seen_at,
-                 last_seen_at, primary_checked_at, updated_at, profile_id, profile_score, matched_profiles)
+                 last_seen_at, primary_checked_at, updated_at, profile_id, profile_score, matched_profiles,
+                 profile_price_lo, profile_price_hi, profile_price_hard_max)
             VALUES
                 (%(pnum)s, %(title)s, %(customer)s, %(price)s, %(law_type)s, %(deadline)s, %(url)s,
                  %(platform)s, %(region)s, %(customer_inn)s, %(published_at)s, %(matched_keywords)s,
@@ -1260,7 +1270,8 @@ def _upsert_primary_once(
                  %(score)s, %(score_reasons)s, %(filter_total)s, %(filter_decision)s,
                  %(status)s, %(decision)s, %(content_hash)s, %(last_changed_at)s, %(needs_detail_refresh)s,
                  %(first_seen_at)s, %(last_seen_at)s, %(primary_checked_at)s, %(updated_at)s,
-                 %(profile_id)s, %(profile_score)s, %(matched_profiles)s)
+                 %(profile_id)s, %(profile_score)s, %(matched_profiles)s,
+                 %(profile_price_lo)s, %(profile_price_hi)s, %(profile_price_hard_max)s)
             ON CONFLICT (purchase_number) DO UPDATE SET
                 title = EXCLUDED.title,
                 customer = EXCLUDED.customer,
@@ -1296,7 +1307,10 @@ def _upsert_primary_once(
                 updated_at = EXCLUDED.updated_at,
                 profile_id = EXCLUDED.profile_id,
                 profile_score = EXCLUDED.profile_score,
-                matched_profiles = EXCLUDED.matched_profiles
+                matched_profiles = EXCLUDED.matched_profiles,
+                profile_price_lo = EXCLUDED.profile_price_lo,
+                profile_price_hi = EXCLUDED.profile_price_hi,
+                profile_price_hard_max = EXCLUDED.profile_price_hard_max
             """,
             {
                 "pnum": pnum,
@@ -1332,6 +1346,9 @@ def _upsert_primary_once(
                 "profile_score": tender.get("profile_score"),
                 "matched_profiles": json.dumps(tender.get("matched_profiles"), ensure_ascii=False)
                     if tender.get("matched_profiles") is not None else None,
+                "profile_price_lo": tender.get("profile_price_lo"),
+                "profile_price_hi": tender.get("profile_price_hi"),
+                "profile_price_hard_max": tender.get("profile_price_hard_max"),
             },
         )
     return result
@@ -2781,6 +2798,16 @@ def search_profile_get(profile_id: int) -> Optional[dict[str, Any]]:
     return rows[0] if rows else None
 
 
+def _opt_int(value: Any) -> Optional[int]:
+    """Пусто/None → None (наследовать глобальный дефолт), иначе int."""
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def search_profile_save(data: dict[str, Any]) -> int:
     """Создаёт/обновляет карточку профиля (без фраз — см. search_phrases_replace)."""
     clean = {
@@ -2790,6 +2817,9 @@ def search_profile_save(data: dict[str, Any]) -> int:
         "priority":    int(data.get("priority") or 100),
         "min_score":   int(data.get("min_score") or 3),
         "okpd2_codes": [str(c).strip() for c in (data.get("okpd2_codes") or []) if str(c).strip()],
+        "price_target_lo": _opt_int(data.get("price_target_lo")),
+        "price_target_hi": _opt_int(data.get("price_target_hi")),
+        "price_hard_max":  _opt_int(data.get("price_hard_max")),
     }
     if not clean["name"]:
         raise ValueError("search_profile: требуется непустое имя")
@@ -2803,15 +2833,19 @@ def search_profile_save(data: dict[str, Any]) -> int:
                 """UPDATE search_profiles SET
                        name=%(name)s, description=%(description)s, enabled=%(enabled)s,
                        priority=%(priority)s, min_score=%(min_score)s,
-                       okpd2_codes=%(okpd2_codes)s::text[], updated_at=NOW()
+                       okpd2_codes=%(okpd2_codes)s::text[],
+                       price_target_lo=%(price_target_lo)s, price_target_hi=%(price_target_hi)s,
+                       price_hard_max=%(price_hard_max)s, updated_at=NOW()
                    WHERE id=%(_id)s RETURNING id""",
                 clean,
             )
         else:
             cur.execute(
-                """INSERT INTO search_profiles (name, description, enabled, priority, min_score, okpd2_codes)
+                """INSERT INTO search_profiles
+                       (name, description, enabled, priority, min_score, okpd2_codes,
+                        price_target_lo, price_target_hi, price_hard_max)
                    VALUES (%(name)s, %(description)s, %(enabled)s, %(priority)s, %(min_score)s,
-                           %(okpd2_codes)s::text[])
+                           %(okpd2_codes)s::text[], %(price_target_lo)s, %(price_target_hi)s, %(price_hard_max)s)
                    RETURNING id""",
                 clean,
             )
@@ -2862,10 +2896,13 @@ def search_profile_copy(profile_id: int) -> int:
             name = f"{base_name} {n}"
             n += 1
         cur.execute(
-            """INSERT INTO search_profiles (name, description, enabled, is_default, priority, min_score, okpd2_codes)
-               VALUES (%s, %s, FALSE, FALSE, %s, %s, %s::text[]) RETURNING id""",
+            """INSERT INTO search_profiles
+                   (name, description, enabled, is_default, priority, min_score, okpd2_codes,
+                    price_target_lo, price_target_hi, price_hard_max)
+               VALUES (%s, %s, FALSE, FALSE, %s, %s, %s::text[], %s, %s, %s) RETURNING id""",
             (name, src.get("description") or "", src.get("priority") or 100,
-             src.get("min_score") or 3, src.get("okpd2_codes") or []),
+             src.get("min_score") or 3, src.get("okpd2_codes") or [],
+             src.get("price_target_lo"), src.get("price_target_hi"), src.get("price_hard_max")),
         )
         new_id = int(cur.fetchone()[0])
         for ph in src.get("phrases") or []:

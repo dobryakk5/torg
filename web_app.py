@@ -429,6 +429,17 @@ def fmt_date(v: str) -> str:
     m = re.search(r"(\d{4})-(\d{2})-(\d{2})", str(v))
     return f"{m.group(3)}.{m.group(2)}.{m.group(1)}" if m else str(v)[:10]
 
+def days_left(v: str) -> Optional[int]:
+    """Сколько дней осталось до срока подачи заявок (deadline). None — не распознано/не задано."""
+    if not v: return None
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", str(v))
+    if not m: return None
+    try:
+        deadline_date = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3))).date()
+    except ValueError:
+        return None
+    return (deadline_date - datetime.now().date()).days
+
 def score_color(s: int) -> str:
     return {1:"#EF4444",2:"#F97316",3:"#EAB308",4:"#84CC16",5:"#22C55E"}.get(int(s or 0),"#3A3A55")
 
@@ -521,7 +532,7 @@ def zakupki_documents_url(url: str, purchase_number: str = "") -> str:
         + urlencode(query)
     )
 
-for name, fn in [("fmt_price",fmt_price),("fmt_date",fmt_date),
+for name, fn in [("fmt_price",fmt_price),("fmt_date",fmt_date),("days_left",days_left),
                   ("score_color",score_color),("decision_class",decision_class),
                   ("parse_signals",parse_signals),("parse_stop",parse_stop),
                   ("zakupki_common_info_url",zakupki_common_info_url)]:
@@ -743,6 +754,9 @@ async def profiles_page(request: Request):
     return templates.TemplateResponse(request, "profiles.html", {
         "profiles": db.search_profiles_list(),
         "llm_available": llm_provider.is_configured(),
+        "default_price_lo": config.get_runtime("PRICE_TARGET_LO", config.PRICE_TARGET_LO),
+        "default_price_hi": config.get_runtime("PRICE_TARGET_HI", config.PRICE_TARGET_HI),
+        "default_price_hard_max": config.get_runtime("PRICE_HARD_MAX", config.PRICE_HARD_MAX),
     })
 
 

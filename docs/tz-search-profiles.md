@@ -92,6 +92,9 @@ CREATE TABLE IF NOT EXISTS search_profiles (
     priority    INT NOT NULL DEFAULT 100,          -- порядок прогона/отображения
     min_score   INT NOT NULL DEFAULT 3,            -- порог принятия тендера
     okpd2_codes TEXT[] NOT NULL DEFAULT '{}',      -- доп. канал ОКПД2 для ЭТОГО профиля; пусто = без ОКПД2
+    price_target_lo INT,  -- ценовой коридор Ф2 (filter_engine); NULL = взять из config.PRICE_TARGET_LO/HI/PRICE_HARD_MAX
+    price_target_hi INT,
+    price_hard_max  INT,
     created_at  TIMESTAMPTZ DEFAULT now(),
     updated_at  TIMESTAMPTZ DEFAULT now()
 );
@@ -339,6 +342,17 @@ Tenderplan (§2) в этот пост-фильтр **не попадает** —
 нет отдельных списков: витринные запросы = plus-фразы профиля из ≤2 слов
 (после снятия масок). Витрины включаются/выключаются как сейчас (глобальные
 флаги), список фраз для них строится из включённых профилей.
+
+### 7.3a Ценовой коридор Ф2 — настраивается в профиле
+
+Каждый профиль может переопределить целевую зону НМЦК и жёсткий максимум Ф2
+(`price_target_lo/hi`, `price_hard_max` в `search_profiles`; поля пусты по
+умолчанию — тогда действует общий `config.PRICE_TARGET_LO/HI/PRICE_HARD_MAX`
+из `/control`). При принятии тендера профилем (`search_profiles.filter_and_tag`)
+границы лучшего профиля копируются на тендер (`profile_price_lo/hi/hard_max`,
+персистентные колонки `tenders`) и используются `filter_engine._filter_finance`
+вместо глобальных — так Stage 1 и Stage 2 видят одни и те же границы.
+Редактируется на `/profiles` в блоке настроек профиля.
 
 ### 7.3 Связь с filter_engine
 

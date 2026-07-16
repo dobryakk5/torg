@@ -450,12 +450,17 @@ def _filter_finance(tender: dict[str, Any], text: str, stage: str) -> FilterScor
     score = 3
     price_stop = False
 
-    # Ценовой коридор скоринга (см. config): целевая зона — бонус; вне её, но
-    # в пределах PRICE_HARD_MAX — штраф 1 балл; выше PRICE_HARD_MAX — отсекаем
-    # (стоп-фактор: не хватит обеспечения).
-    lo = float(getattr(config, "PRICE_TARGET_LO", 100_000))
-    hi = float(getattr(config, "PRICE_TARGET_HI", 500_000))
-    hard_max = float(getattr(config, "PRICE_HARD_MAX", 1_000_000))
+    # Ценовой коридор скоринга: целевая зона — бонус; вне её, но в пределах
+    # hard_max — штраф 1 балл; выше hard_max — отсекаем (стоп-фактор: не хватит
+    # обеспечения). Профиль (search_profiles.py) может переопределить границы —
+    # tender["profile_price_*"] выставляется в search_profiles.filter_and_tag();
+    # что не задано в профиле (None), берётся из глобального config.
+    lo = float(tender.get("profile_price_lo") if tender.get("profile_price_lo") is not None
+               else getattr(config, "PRICE_TARGET_LO", 100_000))
+    hi = float(tender.get("profile_price_hi") if tender.get("profile_price_hi") is not None
+               else getattr(config, "PRICE_TARGET_HI", 500_000))
+    hard_max = float(tender.get("profile_price_hard_max") if tender.get("profile_price_hard_max") is not None
+                      else getattr(config, "PRICE_HARD_MAX", 1_000_000))
     if price:
         if lo <= price <= hi:
             score += 1
