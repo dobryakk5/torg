@@ -30,7 +30,11 @@ import config
 
 logger = logging.getLogger(__name__)
 
-_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+# OpenRouter edge/WAF may temporarily return 403 "Access denied by security
+# policy" for a burst of otherwise valid requests. Retry the same model with
+# backoff before switching models; immediate fallback only creates another
+# burst and tends to receive the same temporary block.
+_RETRYABLE_STATUS = {403, 429, 500, 502, 503, 504}
 _RETRY_BACKOFF_SECONDS = (5, 20, 60)
 
 # Модели, ответившие 400 на response_format=json_object — больше не шлём им

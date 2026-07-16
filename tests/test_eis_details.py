@@ -93,6 +93,31 @@ def test_date_only_deadline_stays_active_until_end_of_day():
     assert database.deadline_is_expired("12.06.2026", now=next_day) is True
 
 
+def test_print_form_is_not_treated_as_document():
+    html = """
+    <a href="/epz/order/notice/printForm/listModal.html?regNumber=0842600001626000024">
+      Печатная форма
+    </a>
+    <a href="/filestore/document.docx">Техническое задание</a>
+    """
+
+    links = document_processor.find_document_links(html, "https://zakupki.gov.ru/")
+
+    assert links == ["https://zakupki.gov.ru/filestore/document.docx"]
+
+
+def test_eis_documents_use_notice223_page():
+    url = (
+        "https://zakupki.gov.ru/epz/order/notice/printForm/listModal.html?"
+        "regNumber=0842600001626000024"
+    )
+
+    assert scraper.to_documents_url(url) == (
+        "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?"
+        "regNumber=0842600001626000024"
+    )
+
+
 def test_tender_detail_opens_expired_tender_from_db(monkeypatch):
     import asyncio
     import web_app

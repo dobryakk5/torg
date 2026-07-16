@@ -28,7 +28,6 @@ DOWNLOAD_MARKERS = (
     "/download/",
     "/filestore/",
     "file.html",
-    "printform",
 )
 DOCUMENT_PAGE_MARKERS = (
     "documents.html",
@@ -57,7 +56,7 @@ def find_document_items(page_html: str, base_url: str, *, include_pages: bool = 
         raw_text = a.get_text(" ", strip=True)
         text = raw_text.lower()
         lower_href = href.lower()
-        if "/rpt/" in lower_href or "zakupki-traffic" in lower_href:
+        if "/rpt/" in lower_href or "zakupki-traffic" in lower_href or "printform" in lower_href:
             continue
         looks_like_file = _looks_like_document_file(lower_href, text)
         looks_like_page = include_pages and _looks_like_document_page(lower_href)
@@ -126,6 +125,10 @@ def _repair_mojibake(text: str) -> str:
     мягкую (errors="ignore": теряем один-два "битых" байта, но получаем
     читаемое имя вместо мойибаке целиком). Если и это не помогло — исходная строка.
     """
+    # Корректную кириллицу нельзя отправлять в мягкую Latin-1-конвертацию:
+    # она отбросит все русские символы и оставит, например, только ".docx".
+    if not any(marker in text for marker in ("Ð", "Ñ", "Ã", "Â")):
+        return text
     try:
         return text.encode("latin-1").decode("utf-8")
     except (UnicodeDecodeError, UnicodeEncodeError):

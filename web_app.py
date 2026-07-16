@@ -549,12 +549,10 @@ def zakupki_documents_url(url: str, purchase_number: str = "") -> str:
             + urlencode(query)
         )
 
-    notice_type = _web_notice_type(source) or str(
-        getattr(config, "EIS_DEFAULT_NOTICE_TYPE", "ea20") or "ea20"
-    ).strip()
+    query.pop("purchaseNoticeNumber", None)
     query["regNumber"] = reg_number
     return (
-        f"https://zakupki.gov.ru/epz/order/notice/{notice_type}/view/documents.html?"
+        "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?"
         + urlencode(query)
     )
 

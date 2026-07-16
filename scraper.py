@@ -187,7 +187,7 @@ def to_common_info_url(url_or_number: str) -> str:
 
 
 def to_documents_url(url_or_number: str) -> str:
-    """Возвращает URL документов, сохраняя тип извещения исходной ссылки."""
+    """Возвращает URL раздела документов ЕИС notice223."""
     value = str(url_or_number or "").strip()
     reg_number = _extract_reg_number(value)
     if not reg_number:
@@ -204,7 +204,15 @@ def to_documents_url(url_or_number: str) -> str:
             + urlencode(query)
         )
 
-    return _build_44_notice_url(value, reg_number, "documents")
+    query: dict[str, str] = {}
+    if "://" in value:
+        query = dict(parse_qsl(urlparse(value).query, keep_blank_values=True))
+    query.pop("purchaseNoticeNumber", None)
+    query["regNumber"] = reg_number
+    return (
+        f"{BASE_URL}/epz/order/notice/notice223/documents.html?"
+        + urlencode(query)
+    )
 
 def search_eis(
     keyword: str,

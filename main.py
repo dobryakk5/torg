@@ -879,7 +879,7 @@ def run_stage2(dry_run: bool = False, limit: int | None = None) -> tuple[int, in
                 and preliminary_result.total_score >= config.DOCUMENT_DOWNLOAD_MIN_SCORE
             )
             if should_download_docs:
-                docs_url = _documents_url_from_page(page_html, page_url) or to_documents_url(tender.get("url", "") or pnum)
+                docs_url = to_documents_url(tender.get("url", "") or pnum)
                 docs_html, _ = get_tender_page(docs_url)
                 docs = download_documents(pnum, docs_html or page_html, docs_url if docs_html else page_url)
                 reported_files = [Path(path) for path in docs.get("files", [])]
