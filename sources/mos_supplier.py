@@ -1,11 +1,12 @@
 """
 sources/mos_supplier.py — коннектор к Порталу поставщиков (zakupki.mos.ru),
-закупки малого объёма: котировочные сессии и потребности.
+активные котировочные сессии малого объёма.
 
-API снят разведкой 15.07.2026 (probe_zmo_v3 + живой фильтр из браузера):
+API снят с живого фильтра zakupki.mos.ru:
 
     GET https://old.zakupki.mos.ru/api/Cssp/Purchase/Query?queryDto=<URL-encoded JSON>
-        queryDto = {"filter": {...}, "take": N, "skip": N}
+        queryDto = {"filter": {...}, "order": [...], "withCount": true,
+                    "take": N, "skip": N}
     Ответ: {"count": N, "items": [...]}
 
 Поля item: id ("Need6135537"/"Auction..."), number, name, customers[].{name,inn},
@@ -15,9 +16,8 @@ startPrice, regionName, regionPath (Москва ".1.504."), beginDate/endDate
 
 Особенности:
   · Реестр ОБЩЕРОССИЙСКИЙ (Сургут, ХМАО и т.д.) — регион режется MOS_REGION_PATHS.
-  · nameLike строкой старый API не принимает (HTTP 500); фронт шлёт объект
-    {"value": "...", "contains": true} — пробуем его, при 500 откатываемся на
-    выборку без nameLike с клиентской фильтрацией по названию.
+  · Поиск котировочных сессий требует typeIn={"values":[1]} и полную форму
+    фильтра из фронтенда, включая пустые вложенные объекты.
   · Окна подачи у сессий — часы (3/6/24), поэтому канал для частого опроса.
   · Активность гарантируем клиентской пост-фильтрацией stateId + endDate > now.
 
@@ -44,13 +44,13 @@ logger = logging.getLogger(__name__)
 
 API_URL = "https://old.zakupki.mos.ru/api/Cssp/Purchase/Query"
 BASE_URL = "https://zakupki.mos.ru"
-PAGE_SIZE = 50
+# Фронтенд портала запрашивает выдачу порциями по 10 карточек.
+PAGE_SIZE = 10
 
-# Статусы «Прием предложений»
+# Тип 1 — котировочные сессии; статус «Прием предложений».
+PURCHASE_TYPE_AUCTION = 1
 STATE_AUCTION_ACTIVE = 19000002
-STATE_NEED_ACTIVE = 20000002
-STATE_TENDER_ACTIVE = 5
-ACTIVE_STATE_IDS = {STATE_AUCTION_ACTIVE, STATE_NEED_ACTIVE, STATE_TENDER_ACTIVE}
+ACTIVE_STATE_IDS = {STATE_AUCTION_ACTIVE}
 
 HEADERS = {
     "User-Agent": (
@@ -59,7 +59,10 @@ HEADERS = {
     ),
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "ru-RU,ru;q=0.9",
-    "Referer": f"{BASE_URL}/purchases",
+    "Cache-Control": "no-cache",
+    "Origin": BASE_URL,
+    "Pragma": "no-cache",
+    "Referer": f"{BASE_URL}/",
 }
 
 _DT_RE = re.compile(r"(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})")
@@ -88,11 +91,22 @@ def _deadline_passed(raw: str) -> bool:
 
 def _build_filter(keyword: str | None, price_from: int | None, price_to: int | None,
                   region_paths: list[str]) -> dict[str, Any]:
-    """Фильтр в форме, которую шлёт фронт zakupki.mos.ru/purchase/list."""
+    """Фильтр котировочных сессий в точной форме фронтенда портала."""
     flt: dict[str, Any] = {
-        "auctionSpecificFilter": {"stateIdIn": [STATE_AUCTION_ACTIVE]},
-        "needSpecificFilter": {"stateIdIn": [STATE_NEED_ACTIVE]},
-        "tenderSpecificFilter": {"stateIdIn": [STATE_TENDER_ACTIVE]},
+        "typeIn": {"values": [PURCHASE_TYPE_AUCTION]},
+        "nameLike": {"contains": True},
+        "regionPaths": {},
+        "customerInnOrName": {"contains": True},
+        "numberLike": {"contains": True},
+        "externalNumberLike": {"contains": True},
+        "auctionSpecificFilter": {
+            "stateIdIn": [STATE_AUCTION_ACTIVE],
+            "initialDuration": [3, 6, 24],
+            "supplierTotalPoints": {},
+        },
+        "needSpecificFilter": {"supplierTotalPoints": {}},
+        "tenderSpecificFilter": {},
+        "ptkrSpecificFilter": {},
     }
     if keyword:
         flt["nameLike"] = {"value": keyword, "contains": True}
@@ -105,9 +119,22 @@ def _build_filter(keyword: str | None, price_from: int | None, price_to: int | N
     return flt
 
 
+def _build_query_dto(flt: dict[str, Any], take: int, skip: int) -> dict[str, Any]:
+    return {
+        "filter": flt,
+        "order": [{"field": "relevance", "desc": True}],
+        "withCount": True,
+        "take": take,
+        "skip": skip,
+    }
+
+
 def _query(flt: dict[str, Any], take: int, skip: int, retries: int = 3) -> Optional[dict[str, Any]]:
-    dto = {"filter": flt, "take": take, "skip": skip, "withCount": True}
-    url = API_URL + "?queryDto=" + urllib.parse.quote(json.dumps(dto, ensure_ascii=False))
+    dto = _build_query_dto(flt, take, skip)
+    encoded_dto = urllib.parse.quote(
+        json.dumps(dto, ensure_ascii=False, separators=(",", ":")), safe=""
+    )
+    url = API_URL + "?queryDto=" + encoded_dto
     for attempt in range(retries):
         try:
             resp = requests.get(url, headers=HEADERS, timeout=25)
@@ -188,7 +215,7 @@ def search_mos(
     pages: int = 1,
     days_back: int | None = None,   # для совместимости с сигнатурой других каналов
 ) -> list[dict]:
-    """Ищет активные ЗМО Портала поставщиков по ключевому слову.
+    """Ищет активные котировочные сессии по ключевому слову.
 
     Возвращает список dict в формате scraper._parse_card.
     """
@@ -269,7 +296,7 @@ if __name__ == "__main__":
     import sys
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     kw = sys.argv[1] if len(sys.argv) > 1 else "сайт"
-    rows = search_mos(kw, price_from=20000, price_to=590000, pages=2)
+    rows = search_mos(kw, pages=2)
     print(f"\nНайдено: {len(rows)}")
     for r in rows[:10]:
         print("─" * 60)

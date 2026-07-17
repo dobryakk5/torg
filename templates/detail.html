@@ -669,6 +669,7 @@ body::before {
       {% endif %}
       {% elif (tender.platform or 'ЕИС') == 'ЕИС' %}
       <button class="explain-btn" id="docsBtn" onclick="fetchTenderDocs(this)">📄 Документы</button>
+      {% if documents_url %}<a class="explain-btn" href="{{ documents_url }}" target="_blank" rel="noopener noreferrer">↗ Открыть в ЕИС</a>{% endif %}
       <div id="docsMsg" class="explain-meta" style="margin-left:.6rem"></div>
       {% else %}
       <div class="fin-na">Скачивание документов поддерживается только для ЕИС.</div>
@@ -1117,6 +1118,12 @@ function _docsStageText(p) {
   return 'Скачиваю документы…';
 }
 
+function _docsErrorHtml(p) {
+  var message = _esc(p.error || 'Не удалось скачать документы');
+  if (!p.documents_url) return message;
+  return message + ' · <a href="' + _esc(p.documents_url) + '" target="_blank" rel="noopener noreferrer">Открыть документы в ЕИС ↗</a>';
+}
+
 function pollDocsProgress(pnum, onTick, onDone, onError) {
   var timer = setInterval(async function() {
     try {
@@ -1158,7 +1165,7 @@ async function downloadTenderDocs(btn) {
         window.location = p.zip_url;
       },
       function(p) {
-        status.textContent = p.error || 'Не удалось скачать документы';
+        status.innerHTML = _docsErrorHtml(p);
         btn.disabled = false;
         btn.textContent = original;
       });
@@ -1199,7 +1206,7 @@ async function fetchTenderDocs(btn) {
         document.getElementById('docsContent').innerHTML = html;
       },
       function(p) {
-        msg.textContent = p.error || 'Не удалось скачать документы';
+        msg.innerHTML = _docsErrorHtml(p);
         btn.disabled = false;
         btn.textContent = original;
       });

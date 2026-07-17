@@ -393,6 +393,14 @@ MOSREG_SEARCH_KEYWORDS = [
     x.strip() for x in os.getenv("MOSREG_SEARCH_KEYWORDS", "").split(",") if x.strip()
 ]
 
+# Бизнес-площадка ZakazRF (bp.zakazrf.ru) — запросы доставки из HTML-выдачи.
+SOURCE_ZAKAZRF_ENABLED = os.getenv("SOURCE_ZAKAZRF_ENABLED", "0") != "0"
+ZAKAZRF_SEARCH_PAGES = int(os.getenv("ZAKAZRF_SEARCH_PAGES", "1"))
+ZAKAZRF_SEARCH_KEYWORDS = [
+    x.strip() for x in os.getenv("ZAKAZRF_SEARCH_KEYWORDS", "").split(",") if x.strip()
+]
+ZAKAZRF_PLANED_DATE_FROM_TICKS = os.getenv("ZAKAZRF_PLANED_DATE_FROM_TICKS", "")
+
 OKPD2_CODES = [
     "62.01",    # разработка ПО
     "62.02",    # консультирование в ИТ

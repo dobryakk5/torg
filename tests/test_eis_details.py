@@ -223,7 +223,7 @@ def test_web_document_fetch_uses_existing_files_without_network(tmp_path, monkey
 
     result = web_app._fetch_tender_documents(
         {
-            "purchase_number": "32616194818",
+            "purchase_number": "32699999999",
             "documents_dir": str(tmp_path),
             "url": "https://zakupki.gov.ru/",
         },
@@ -233,6 +233,22 @@ def test_web_document_fetch_uses_existing_files_without_network(tmp_path, monkey
     assert result["files"] == [document]
     assert "Локально сохранённый документ" in result["text"]
     assert stages == ["cached"]
+
+
+def test_web_documents_dir_prefers_current_project_cache(tmp_path, monkeypatch):
+    import web_app
+
+    current_dir = tmp_path / "32616194818"
+    current_dir.mkdir()
+    (current_dir / "Техническое задание.txt").write_text("Документ", encoding="utf-8")
+    monkeypatch.setattr(web_app.config, "DOCUMENTS_DIR", tmp_path)
+
+    result = web_app._tender_documents_dir({
+        "purchase_number": "32616194818",
+        "documents_dir": "/path/from/another/server/32616194818",
+    })
+
+    assert result == current_dir
 
 
 def test_tender_detail_opens_expired_tender_from_db(monkeypatch):

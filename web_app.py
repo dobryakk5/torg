@@ -385,6 +385,12 @@ def _reload_runtime_config() -> None:
     config.BACKFILL_SEARCH_PAGES         = config.get_runtime("BACKFILL_SEARCH_PAGES",        config.BACKFILL_SEARCH_PAGES)
     config.SOURCE_B2B_ENABLED            = config.get_runtime("SOURCE_B2B_ENABLED",           config.SOURCE_B2B_ENABLED)
     config.B2B_SEARCH_PAGES              = config.get_runtime("B2B_SEARCH_PAGES",             config.B2B_SEARCH_PAGES)
+    config.SOURCE_ZAKAZRF_ENABLED        = config.get_runtime("SOURCE_ZAKAZRF_ENABLED",       config.SOURCE_ZAKAZRF_ENABLED)
+    config.ZAKAZRF_SEARCH_PAGES          = config.get_runtime("ZAKAZRF_SEARCH_PAGES",         config.ZAKAZRF_SEARCH_PAGES)
+    config.ZAKAZRF_SEARCH_KEYWORDS       = config.get_runtime("ZAKAZRF_SEARCH_KEYWORDS",      config.ZAKAZRF_SEARCH_KEYWORDS)
+    config.ZAKAZRF_PLANED_DATE_FROM_TICKS = config.get_runtime(
+        "ZAKAZRF_PLANED_DATE_FROM_TICKS", config.ZAKAZRF_PLANED_DATE_FROM_TICKS,
+    )
     config.LLM_PROVIDER                  = config.get_runtime("LLM_PROVIDER",                 config.LLM_PROVIDER)
     config.OPENROUTER_TRIAGE_MODEL       = config.get_runtime("OPENROUTER_TRIAGE_MODEL",      config.OPENROUTER_TRIAGE_MODEL)
     config.OPENROUTER_DEEP_MODEL         = config.get_runtime("OPENROUTER_DEEP_MODEL",        config.OPENROUTER_DEEP_MODEL)
@@ -461,6 +467,7 @@ PLATFORM_SHORT = {
     "ЭМ СПб": "СПб",
     "ЭМ МО": "ЭМО",
     "ПП Москвы": "ППМ",
+    "БП ZakazRF": "ЗРФ",
 }
 
 def platform_short(v: str) -> str:
@@ -769,16 +776,22 @@ async def tender_detail(request: Request, purchase_number: str):
             if rebuilt_work_scope.get("tables"):
                 work_scope = rebuilt_work_scope
     docs_files = []
-    docs_dir = tender.get("documents_dir") or ""
-    if docs_dir and Path(docs_dir).is_dir():
+    docs_dir = _tender_documents_dir(tender)
+    if docs_dir:
         try:
-            docs_files = [_display_download_name(p) for p in sorted(Path(docs_dir).iterdir()) if p.is_file()]
+            docs_files = [_display_download_name(p) for p in sorted(docs_dir.iterdir()) if p.is_file()]
         except Exception:
             logger.exception("Не удалось прочитать documents_dir для %s", purchase_number)
+    documents_url = zakupki_documents_url(
+        tender.get("url") or "",
+        purchase_number,
+        tender.get("notice_guid") or "",
+    )
     return templates.TemplateResponse(request, "detail.html",
         {"tender": tender, "card": card, "criteria": criteria,
          "work_stages": WORK_STAGES, "spec": spec, "spec_rollup": spec_rollup,
-         "work_scope": work_scope, "docs_files": docs_files})
+         "work_scope": work_scope, "docs_files": docs_files,
+         "documents_url": documents_url})
 
 
 @app.get("/rules", response_class=HTMLResponse)
@@ -943,6 +956,21 @@ def _display_download_name(path: Path) -> str:
         return path.name
 
 
+def _tender_documents_dir(tender: dict) -> Path | None:
+    """Находит документы локально, даже если путь в БД записан на другой машине."""
+    import document_processor as dp
+
+    purchase_number = str(tender.get("purchase_number") or "")
+    candidates = [config.DOCUMENTS_DIR / dp.safe_filename(purchase_number)]
+    stored = str(tender.get("documents_dir") or "").strip()
+    if stored:
+        candidates.append(Path(stored))
+    for candidate in candidates:
+        if candidate.is_dir() and any(path.is_file() for path in candidate.iterdir()):
+            return candidate
+    return None
+
+
 def _zip_documents(files: list[Path], purchase_number: str) -> Path:
     """Собирает ZIP из уже скачанных файлов в кеш-каталог (не в per-tender docs_dir,
     чтобы архив не попадал в списки/парсинг документов)."""
@@ -981,8 +1009,8 @@ def _fetch_tender_documents(tender: dict, progress_cb: Callable[..., None] | Non
     from document_processor import download_documents, hash_files, collect_document_text
     from scraper import extract_notice_guid, get_tender_page
 
-    cached_dir = Path(tender.get("documents_dir") or "")
-    cached_files = [p for p in cached_dir.iterdir() if p.is_file()] if cached_dir.is_dir() else []
+    cached_dir = _tender_documents_dir(tender)
+    cached_files = [p for p in cached_dir.iterdir() if p.is_file()] if cached_dir else []
     if cached_files:
         _cb("cached", current=len(cached_files), total=len(cached_files))
         cached_text = collect_document_text(cached_files)
@@ -1034,7 +1062,10 @@ def _fetch_tender_documents(tender: dict, progress_cb: Callable[..., None] | Non
 
     files = [Path(p) for p in docs.get("files", []) if Path(p).is_file()]
     if not files:
-        raise HTTPException(502, "Документы не скачались с ЕИС")
+        raise HTTPException(502, detail={
+            "message": "ЕИС не отдала документы серверу",
+            "documents_url": docs_url,
+        })
 
     _cb("extracting")
     text = collect_document_text(files)
@@ -1098,7 +1129,17 @@ async def api_tender_documents_fetch(purchase_number: str):
                 zip_url=f"/api/tender/{purchase_number}/documents.zip",
             )
         except HTTPException as exc:
-            _set_doc_progress(purchase_number, status="error", error=str(exc.detail))
+            detail = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
+            _set_doc_progress(
+                purchase_number,
+                status="error",
+                error=detail.get("message") or "Документы не скачались с ЕИС",
+                documents_url=detail.get("documents_url") or zakupki_documents_url(
+                    tender.get("url") or "",
+                    purchase_number,
+                    tender.get("notice_guid") or "",
+                ),
+            )
         except Exception as exc:
             logger.exception("Фоновое скачивание документов упало для %s", purchase_number)
             _set_doc_progress(purchase_number, status="error", error=str(exc))
@@ -1119,8 +1160,8 @@ async def api_tender_documents_zip_download(purchase_number: str):
     tender = db.get_tender(purchase_number)
     if not tender:
         raise HTTPException(404, "Тендер не найден")
-    docs_dir = tender.get("documents_dir") or ""
-    files = [p for p in Path(docs_dir).iterdir() if p.is_file()] if docs_dir and Path(docs_dir).is_dir() else []
+    docs_dir = _tender_documents_dir(tender)
+    files = [p for p in docs_dir.iterdir() if p.is_file()] if docs_dir else []
     if not files:
         raise HTTPException(404, "Документы ещё не скачаны")
     zip_path = _zip_documents(files, purchase_number)
@@ -1155,6 +1196,8 @@ async def api_save_settings(request: Request):
         "SOURCE_EAT_ENABLED", "EAT_SEARCH_PAGES", "EAT_SEARCH_KEYWORDS",
         "SOURCE_MOS_ENABLED", "MOS_SEARCH_PAGES", "MOS_SEARCH_KEYWORDS", "MOS_REGION_PATHS",
         "SOURCE_MOSREG_ENABLED", "MOSREG_SEARCH_PAGES", "MOSREG_SEARCH_KEYWORDS",
+        "SOURCE_ZAKAZRF_ENABLED", "ZAKAZRF_SEARCH_PAGES", "ZAKAZRF_SEARCH_KEYWORDS",
+        "ZAKAZRF_PLANED_DATE_FROM_TICKS",
         "BACKFILL_SEARCH_PAGES",
         "LLM_PROVIDER", "OPENROUTER_TRIAGE_MODEL", "OPENROUTER_DEEP_MODEL",
         "LLM_TRIAGE_ENABLED",

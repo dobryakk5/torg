@@ -287,6 +287,7 @@ def run_stage1(
     eat: bool | None = None,
     mos: bool | None = None,
     mosreg: bool | None = None,
+    zakazrf: bool | None = None,
     tenderplan: bool | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -345,6 +346,7 @@ def run_stage1(
     use_eat = eat if eat is not None else getattr(config, "SOURCE_EAT_ENABLED", False)
     use_mos = mos if mos is not None else getattr(config, "SOURCE_MOS_ENABLED", False)
     use_mosreg = mosreg if mosreg is not None else getattr(config, "SOURCE_MOSREG_ENABLED", False)
+    use_zakazrf = zakazrf if zakazrf is not None else getattr(config, "SOURCE_ZAKAZRF_ENABLED", False)
     use_tenderplan = tenderplan if tenderplan is not None else getattr(config, "SOURCE_TENDERPLAN_ENABLED", False)
     pages = config.BACKFILL_SEARCH_PAGES if (backfill_active or auto_active) else config.SEARCH_PAGES
 
@@ -562,7 +564,9 @@ def run_stage1(
                 logger.info("ПП Москвы-поиск '%s' уже готов сегодня — пропускаю", keyword)
                 continue
             try:
-                mos_tenders = search_mos(keyword, price_from=p_min, price_to=p_max, pages=mos_pages)
+                # Портал поставщиков ищем в форме живого фильтра фронтенда:
+                # глобальные PRICE_MIN/PRICE_MAX к queryDto этого канала не добавляем.
+                mos_tenders = search_mos(keyword, pages=mos_pages)
                 db.reconnect_db()
                 mos_tenders, dropped = _apply_profile_filter(mos_tenders, profiles)
                 if dropped:
@@ -615,7 +619,44 @@ def run_stage1(
                 errors.append(msg)
                 continue
 
-    # ── Канал 8: Tenderplan ───────────────────────────────────────────────────
+    # ── Канал 8: Бизнес-площадка ZakazRF (запросы доставки) ────────────────
+    if use_zakazrf:
+        from sources.zakazrf import search_zakazrf
+        zakazrf_pages = getattr(config, "ZAKAZRF_SEARCH_PAGES", 1)
+        zakazrf_keywords = (
+            getattr(config, "ZAKAZRF_SEARCH_KEYWORDS", None)
+            or getattr(config, "SPB_SEARCH_KEYWORDS", None)
+            or storefront_kw_fallback
+        )
+        for keyword in zakazrf_keywords:
+            phase_started_at = datetime.now().isoformat(timespec="seconds")
+            kw_clean = re.sub(r"\s+", " ", keyword).strip()
+            phase_mode = f"stage1:zakazrf:{kw_clean}:pages={zakazrf_pages}"
+            if skip_completed_today and db.was_stage_completed_today(phase_mode):
+                logger.info("БП ZakazRF-поиск '%s' уже готов сегодня — пропускаю", keyword)
+                continue
+            try:
+                zakazrf_tenders = search_zakazrf(keyword, pages=zakazrf_pages)
+                db.reconnect_db()
+                zakazrf_tenders, dropped = _apply_profile_filter(zakazrf_tenders, profiles)
+                if dropped:
+                    logger.info("Профильный фильтр отсеял %d карточек БП ZakazRF по '%s'", dropped, keyword)
+                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
+                    zakazrf_tenders, f"zakazrf:{keyword}", dry_run, seen_this_run,
+                )
+                saved += phase_saved
+                unique_saved += phase_unique
+                primary_candidates += phase_candidates
+                db.log_run(
+                    phase_mode, phase_started_at, found=len(zakazrf_tenders),
+                    processed=phase_saved, notified=0, errors="",
+                )
+            except Exception as exc:
+                msg = f"Ошибка БП ZakazRF-поиска по '{keyword}': {exc}"
+                logger.error(msg)
+                errors.append(msg)
+
+    # ── Канал 9: Tenderplan ───────────────────────────────────────────────────
     if use_tenderplan:
         phase_started_at = datetime.now().isoformat(timespec="seconds")
         phase_mode = "stage1:tenderplan"
@@ -935,15 +976,20 @@ def run_stage2(
         try:
             is_tenderplan = (tender.get("platform") or "") == "Tenderplan"
             is_eat = (tender.get("platform") or "") == "ЕАТ"
+            is_zakazrf = (tender.get("platform") or "") == "БП ZakazRF"
             is_eis = ((tender.get("platform") or "ЕИС") == "ЕИС") or (is_tenderplan and _is_eis_number(pnum))
 
             # Для ЕИС-тендеров (включая пришедшие через Tenderplan с ЕИС-номером)
             # тянем zakupki.gov.ru. Для коммерческих Tenderplan и ЕАТ (Angular SPA
             # с анти-ботом, common-info-URL для них не строится) — не тянем: их
             # primary_text из Stage 1 уже содержит спецификацию/условия поставки.
-            if (is_tenderplan and not _is_eis_number(pnum)) or is_eat:
-                logger.info("%s: %s, страницу ЕИС не тянем", pnum,
-                           "коммерческий Tenderplan-тендер" if is_tenderplan else "лот ЕАТ")
+            if (is_tenderplan and not _is_eis_number(pnum)) or is_eat or is_zakazrf:
+                source_label = (
+                    "коммерческий Tenderplan-тендер" if is_tenderplan
+                    else "лот ЕАТ" if is_eat
+                    else "запрос доставки ZakazRF"
+                )
+                logger.info("%s: %s, страницу ЕИС не тянем", pnum, source_label)
             else:
                 page_url = to_common_info_url(tender.get("url", "") or pnum)
                 tender["url"] = page_url
@@ -1554,6 +1600,8 @@ def main() -> None:
     parser.add_argument("--results", action="store_true", help="Алиас для --stage3")
     parser.add_argument("--tenderplan-only", action="store_true", help="Только импорт Tenderplan")
     parser.add_argument("--eat-only", action="store_true", help="Stage1 только через ЕАТ «Берёзка» (остальные каналы выключены)")
+    parser.add_argument("--mos-only", action="store_true", help="Stage1 только через Портал поставщиков (остальные каналы выключены)")
+    parser.add_argument("--zakazrf-only", action="store_true", help="Stage1 только через БП ZakazRF (остальные каналы выключены)")
     parser.add_argument("--only-new", action="store_true", help="Stage1/Tenderplan: обрабатывать только новые закупки")
     parser.add_argument("--once", action="store_true", help="Один полный цикл: stage1 + stage2")
     parser.add_argument("--test", action="store_true", help="Тестовый полный цикл без отправки в Telegram")
@@ -1602,6 +1650,12 @@ def main() -> None:
     config.SOURCE_MOSREG_ENABLED        = config.get_runtime("SOURCE_MOSREG_ENABLED",        config.SOURCE_MOSREG_ENABLED)
     config.MOSREG_SEARCH_PAGES          = config.get_runtime("MOSREG_SEARCH_PAGES",          config.MOSREG_SEARCH_PAGES)
     config.MOSREG_SEARCH_KEYWORDS       = config.get_runtime("MOSREG_SEARCH_KEYWORDS",       config.MOSREG_SEARCH_KEYWORDS)
+    config.SOURCE_ZAKAZRF_ENABLED       = config.get_runtime("SOURCE_ZAKAZRF_ENABLED",       config.SOURCE_ZAKAZRF_ENABLED)
+    config.ZAKAZRF_SEARCH_PAGES         = config.get_runtime("ZAKAZRF_SEARCH_PAGES",         config.ZAKAZRF_SEARCH_PAGES)
+    config.ZAKAZRF_SEARCH_KEYWORDS      = config.get_runtime("ZAKAZRF_SEARCH_KEYWORDS",      config.ZAKAZRF_SEARCH_KEYWORDS)
+    config.ZAKAZRF_PLANED_DATE_FROM_TICKS = config.get_runtime(
+        "ZAKAZRF_PLANED_DATE_FROM_TICKS", config.ZAKAZRF_PLANED_DATE_FROM_TICKS,
+    )
     config.SOURCE_TENDERPLAN_ENABLED    = config.get_runtime("SOURCE_TENDERPLAN_ENABLED",    config.SOURCE_TENDERPLAN_ENABLED)
     config.TENDERPLAN_LIST_PARAMS       = config.get_runtime("TENDERPLAN_LIST_PARAMS",       config.TENDERPLAN_LIST_PARAMS)
     # LLM-настройки (провайдер/модели/триаж) — тоже из БД с откатом на env.
@@ -1620,6 +1674,7 @@ def main() -> None:
             keywords=[],
             okpd2=False,
             b2b=False,
+            zakazrf=False,
             tenderplan=True,
             only_new=args.only_new,
         )
@@ -1646,10 +1701,53 @@ def main() -> None:
             eat=True,
             mos=False,
             mosreg=False,
+            zakazrf=False,
             tenderplan=False,
             only_new=args.only_new,
         )
         logger.info("ИТОГО ЗАПУСКА ЕАТ: найдено новых %d; кандидатов Stage2 %d", found, candidates)
+    elif args.mos_only:
+        found, candidates = run_stage1(
+            dry_run=args.test,
+            skip_completed_today=args.skip_completed_today,
+            backfill_active=args.backfill_active,
+            keywords=[],   # отключает ЕИС и поисковые каналы общих профилей
+            okpd2=False,
+            b2b=False,
+            spb=False,
+            eat=False,
+            mos=True,
+            mosreg=False,
+            zakazrf=False,
+            tenderplan=False,
+            only_new=args.only_new,
+        )
+        logger.info(
+            "ИТОГО ЗАПУСКА ПП МОСКВЫ: сохранено %d; кандидатов Stage2 %d",
+            found,
+            candidates,
+        )
+    elif args.zakazrf_only:
+        found, candidates = run_stage1(
+            dry_run=args.test,
+            skip_completed_today=args.skip_completed_today,
+            backfill_active=args.backfill_active,
+            keywords=[],
+            okpd2=False,
+            b2b=False,
+            spb=False,
+            eat=False,
+            mos=False,
+            mosreg=False,
+            zakazrf=True,
+            tenderplan=False,
+            only_new=args.only_new,
+        )
+        logger.info(
+            "ИТОГО ЗАПУСКА БП ZAKAZRF: сохранено %d; кандидатов Stage2 %d",
+            found,
+            candidates,
+        )
     elif args.stage1:
         run_stage1(
             dry_run=args.test,

@@ -33,8 +33,11 @@ def test_soft_profile_filter_keeps_unmatched_and_penalizes_f1():
         id=1, name="IT", min_score=3,
         phrases=[sp.Phrase(id=None, kind="plus", phrase="разработк* сайт*", weight=3)],
     )
+    # Нейтральный не-ИТ лот БЕЗ маркеров перекупа: «закупка …товаров» теперь
+    # стопится стражем перекупа ещё до профильного штрафа, поэтому для проверки
+    # самого штрафа нужен лот, который никакие другие правила не трогают.
     tender = {
-        "title": "Закупка канцелярских товаров",
+        "title": "Организация питания школьников",
         "primary_text": "", "purchase_number": "eat-soft",
     }
     kept, unmatched = sp.filter_and_tag(

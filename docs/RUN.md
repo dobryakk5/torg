@@ -75,6 +75,10 @@ python main.py --triage --test           # печатать вердикты, н
 
 ## Отдельные площадки
 
+### Портал поставщиков Москвы
+```bash
+python main.py --mos-only
+```
 ### ЕАТ «Берёзка»
 ```bash
 python main.py --eat-only                # поиск только по ЕАТ
