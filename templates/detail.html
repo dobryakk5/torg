@@ -1107,7 +1107,9 @@ async function loadCriteria(btn) {
 }
 
 function _docsStageText(p) {
-  if (p.stage === 'connecting') return 'Захожу на ЕИС…';
+  if (p.stage === 'cached') return 'Документы уже скачаны, готовлю архив…';
+  if (p.stage === 'resolving') return 'Определяю точный адрес документов ЕИС…';
+  if (p.stage === 'connecting') return 'Захожу в раздел документов ЕИС…';
   if (p.stage === 'connected') return 'Доступ к сайту получен, ищу документы…';
   if (p.stage === 'downloading' && p.total) return 'Скачан документ ' + p.current + ' из ' + p.total + (p.name ? ': ' + p.name : '');
   if (p.stage === 'extracting') return 'Извлекаю текст из документов…';

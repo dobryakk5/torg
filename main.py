@@ -52,7 +52,7 @@ from document_processor import (
 from llm_analyzer import analyze_tender
 from notifier import format_tender_message, send_startup_message, send_summary, send_tender_message
 from scraper import (
-    get_tender_page, parse_result_info, search_eis, search_eis_by_okpd2,
+    extract_notice_guid, get_tender_page, parse_result_info, search_eis, search_eis_by_okpd2,
     to_common_info_url, to_documents_url,
 )
 from sources.tenderplan import search_tenderplan, download_tenderplan_documents as _download_tp_docs, _is_eis_number
@@ -948,6 +948,9 @@ def run_stage2(
                 page_url = to_common_info_url(tender.get("url", "") or pnum)
                 tender["url"] = page_url
                 page_html, page_text = get_tender_page(page_url)
+                notice_guid = extract_notice_guid(page_html)
+                if notice_guid:
+                    tender["notice_guid"] = notice_guid
 
             full_text_for_terms = "\n".join([scoring_text, page_text])
             scoring_text = "\n".join([scoring_text, page_text])
@@ -965,7 +968,10 @@ def run_stage2(
                 and preliminary_result.total_score >= config.DOCUMENT_DOWNLOAD_MIN_SCORE
             )
             if should_download_docs:
-                docs_url = to_documents_url(tender.get("url", "") or pnum)
+                docs_url = to_documents_url(
+                    tender.get("url", "") or pnum,
+                    tender.get("notice_guid", ""),
+                )
                 docs_html, _ = get_tender_page(docs_url)
                 docs = download_documents(pnum, docs_html or page_html, docs_url if docs_html else page_url)
                 reported_files = [Path(path) for path in docs.get("files", [])]

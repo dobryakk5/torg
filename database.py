@@ -275,6 +275,7 @@ CREATE TABLE IF NOT EXISTS tenders (
     platform                     TEXT,
     project_type                 TEXT,
     rejection_reason             TEXT,
+    notice_guid                  TEXT,
     region                       TEXT,
     customer_inn                 TEXT,
     published_at                 TEXT,
@@ -735,6 +736,7 @@ def ensure_extra_columns() -> None:
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS work_updated_at TIMESTAMPTZ",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS project_type TEXT",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS rejection_reason TEXT",
+            "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS notice_guid TEXT",
             # MVP4b-1: спецификация позиций тендера (без FK — уникальность pn не гарантирована).
             """CREATE TABLE IF NOT EXISTS tender_items (
                 id SERIAL PRIMARY KEY,
@@ -1690,7 +1692,8 @@ def _save_detail_once(
                    documents_dir = %(documents_dir)s,
 	                   documents_hash = %(documents_hash)s,
 	                   document_text_excerpt = %(document_text_excerpt)s,
-	                   document_text_full = COALESCE(NULLIF(%(document_text_full)s, ''), document_text_full),
+                   document_text_full = COALESCE(NULLIF(%(document_text_full)s, ''), document_text_full),
+	                   notice_guid = COALESCE(NULLIF(%(notice_guid)s, ''), notice_guid),
 	                   url = COALESCE(NULLIF(%(url)s, ''), url),
 	                   status = %(status)s,
 	                   detail_checked_at = %(detail_checked_at)s,
@@ -1716,6 +1719,7 @@ def _save_detail_once(
                 "documents_hash": tender.get("documents_hash", ""),
 	                "document_text_excerpt": (document_text or "")[:4000],
 	                "document_text_full": document_text or "",
+	                "notice_guid": tender.get("notice_guid", ""),
 	                "url": tender.get("url", ""),
 	                "status": status,
                 "detail_checked_at": now,

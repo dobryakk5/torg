@@ -535,7 +535,7 @@ def zakupki_common_info_url(url: str, purchase_number: str = "") -> str:
     )
 
 
-def zakupki_documents_url(url: str, purchase_number: str = "") -> str:
+def zakupki_documents_url(url: str, purchase_number: str = "", notice_guid: str = "") -> str:
     source = str(url or "").strip()
     reg_number = _web_extract_reg_number(source) or _web_extract_reg_number(purchase_number)
     if not reg_number:
@@ -550,8 +550,12 @@ def zakupki_documents_url(url: str, purchase_number: str = "") -> str:
 
     query = dict(parse_qsl(urlparse(source).query, keep_blank_values=True)) if source else {}
     if is_223:
+        source_guid = notice_guid or query.get("noticeGuid") or query.get("purchaseNoticeGuid") or ""
         query.pop("regNumber", None)
+        query.pop("purchaseNoticeGuid", None)
         query["purchaseNoticeNumber"] = reg_number
+        if source_guid:
+            query["noticeGuid"] = source_guid
         return (
             "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?"
             + urlencode(query)
@@ -975,11 +979,18 @@ def _fetch_tender_documents(tender: dict, progress_cb: Callable[..., None] | Non
 
     purchase_number = tender["purchase_number"]
     from document_processor import download_documents, hash_files, collect_document_text
-    from scraper import get_tender_page
+    from scraper import extract_notice_guid, get_tender_page
+
+    cached_dir = Path(tender.get("documents_dir") or "")
+    cached_files = [p for p in cached_dir.iterdir() if p.is_file()] if cached_dir.is_dir() else []
+    if cached_files:
+        _cb("cached", current=len(cached_files), total=len(cached_files))
+        cached_text = collect_document_text(cached_files)
+        return {"files": cached_files, "dir": str(cached_dir), "text": cached_text}
 
     def _fetch_from(url: str) -> dict:
-        _cb("connecting")
-        html, _ = get_tender_page(url)
+        _cb("connecting", url=url)
+        html, _ = get_tender_page(url, retries=1, timeout=20)
         if not html:
             return {"files": []}
         _cb("connected")
@@ -988,12 +999,38 @@ def _fetch_tender_documents(tender: dict, progress_cb: Callable[..., None] | Non
             on_progress=lambda i, total, name: _cb("downloading", current=i, total=total, name=name),
         )
 
-    docs_url = zakupki_documents_url(tender.get("url") or "", purchase_number)
+    source_url = tender.get("url") or ""
+    is_223 = "notice223" in source_url.lower() or bool(re.fullmatch(r"3\d{10}", purchase_number))
+    notice_guid = tender.get("notice_guid") or extract_notice_guid(source_url)
+    common_url = zakupki_common_info_url(source_url, purchase_number)
+    common_html = ""
+
+    if is_223 and not notice_guid:
+        _cb("resolving")
+        common_html, _ = get_tender_page(common_url, retries=1, timeout=20)
+        notice_guid = extract_notice_guid(common_html)
+        if notice_guid:
+            tender["notice_guid"] = notice_guid
+            with db._conn() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "UPDATE tenders SET notice_guid = %s, updated_at = NOW() WHERE purchase_number = %s",
+                    (notice_guid, purchase_number),
+                )
+
+    docs_url = zakupki_documents_url(source_url, purchase_number, notice_guid)
     docs = _fetch_from(docs_url)
 
     if not docs.get("files"):
-        common_url = zakupki_common_info_url(tender.get("url") or "", purchase_number)
-        docs = _fetch_from(common_url)
+        if not common_html:
+            _cb("connecting", url=common_url)
+            common_html, _ = get_tender_page(common_url, retries=1, timeout=20)
+        if common_html:
+            _cb("connected")
+            docs = download_documents(
+                purchase_number, common_html, common_url,
+                on_progress=lambda i, total, name: _cb("downloading", current=i, total=total, name=name),
+            )
 
     files = [Path(p) for p in docs.get("files", []) if Path(p).is_file()]
     if not files:

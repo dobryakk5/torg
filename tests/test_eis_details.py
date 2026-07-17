@@ -184,6 +184,57 @@ def test_eis_223_documents_use_notice223_page():
     )
 
 
+def test_eis_223_documents_include_notice_guid():
+    guid = "34aac1c7-dbad-4b90-b11e-a93bcd769eff"
+    url = "https://zakupki.gov.ru/epz/order/notice/notice223/common-info.html?regNumber=32616194818"
+
+    assert scraper.extract_notice_guid(
+        f'<a href="printForm/view.html?purchaseNoticeGuid={guid}&amp;purchaseNoticeNumber=32616194818">'
+    ) == guid
+    assert scraper.to_documents_url(url, guid) == (
+        "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?"
+        f"purchaseNoticeNumber=32616194818&noticeGuid={guid}"
+    )
+
+
+def test_web_documents_url_includes_notice_guid():
+    import web_app
+
+    guid = "34aac1c7-dbad-4b90-b11e-a93bcd769eff"
+    url = "https://zakupki.gov.ru/epz/order/notice/notice223/common-info.html?regNumber=32616194818"
+
+    assert web_app.zakupki_documents_url(url, "32616194818", guid) == (
+        "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?"
+        f"purchaseNoticeNumber=32616194818&noticeGuid={guid}"
+    )
+
+
+def test_web_document_fetch_uses_existing_files_without_network(tmp_path, monkeypatch):
+    import web_app
+
+    document = tmp_path / "Техническое задание.txt"
+    document.write_text("Локально сохранённый документ", encoding="utf-8")
+    monkeypatch.setattr(
+        scraper,
+        "get_tender_page",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("network must not be used")),
+    )
+    stages = []
+
+    result = web_app._fetch_tender_documents(
+        {
+            "purchase_number": "32616194818",
+            "documents_dir": str(tmp_path),
+            "url": "https://zakupki.gov.ru/",
+        },
+        progress_cb=lambda stage, **data: stages.append(stage),
+    )
+
+    assert result["files"] == [document]
+    assert "Локально сохранённый документ" in result["text"]
+    assert stages == ["cached"]
+
+
 def test_tender_detail_opens_expired_tender_from_db(monkeypatch):
     import asyncio
     import web_app

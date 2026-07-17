@@ -80,11 +80,16 @@ def _sleep(multiplier: float = 1.0) -> None:
     time.sleep(max(0.5, REQUEST_DELAY * multiplier + random.uniform(0.2, 1.1)))
 
 
-def _get(url: str, params: dict | None = None, retries: int = 3) -> Optional[requests.Response]:
+def _get(
+    url: str,
+    params: dict | None = None,
+    retries: int = 3,
+    timeout: int = 25,
+) -> Optional[requests.Response]:
     """GET с повторами при ошибке и лёгким backoff."""
     for attempt in range(retries):
         try:
-            resp = requests.get(url, params=params, headers=HEADERS, timeout=25, verify=REQUEST_VERIFY)
+            resp = requests.get(url, params=params, headers=HEADERS, timeout=timeout, verify=REQUEST_VERIFY)
             if resp.status_code == 200:
                 return resp
             logger.warning("HTTP %s для %s", resp.status_code, url)
@@ -122,6 +127,16 @@ def _parse_price(text: str) -> Optional[float]:
 def _extract_reg_number(value: str) -> str:
     match = re.search(r"\b\d{11,22}\b", str(value or ""))
     return match.group(0) if match else ""
+
+
+def extract_notice_guid(value: str) -> str:
+    """Извлекает GUID извещения 223-ФЗ из URL или HTML страницы ЕИС."""
+    match = re.search(
+        r"(?:noticeGuid|purchaseNoticeGuid)(?:=|%3D)([0-9a-f]{8}-[0-9a-f-]{27})",
+        str(value or ""),
+        flags=re.I,
+    )
+    return match.group(1).lower() if match else ""
 
 
 def _is_223_notice(value: str, reg_number: str) -> bool:
@@ -190,7 +205,7 @@ def to_common_info_url(url_or_number: str) -> str:
     return _build_44_notice_url(value, reg_number, "common-info")
 
 
-def to_documents_url(url_or_number: str) -> str:
+def to_documents_url(url_or_number: str, notice_guid: str = "") -> str:
     """Возвращает URL раздела документов ЕИС notice223."""
     value = str(url_or_number or "").strip()
     reg_number = _extract_reg_number(value)
@@ -201,8 +216,12 @@ def to_documents_url(url_or_number: str) -> str:
         query: dict[str, str] = {}
         if "://" in value:
             query = dict(parse_qsl(urlparse(value).query, keep_blank_values=True))
+        source_guid = notice_guid or query.get("noticeGuid") or query.get("purchaseNoticeGuid") or ""
         query.pop("regNumber", None)
+        query.pop("purchaseNoticeGuid", None)
         query["purchaseNoticeNumber"] = reg_number
+        if source_guid:
+            query["noticeGuid"] = source_guid
         return (
             f"{BASE_URL}/epz/order/notice/notice223/documents.html?"
             + urlencode(query)
@@ -397,8 +416,8 @@ def _parse_card(card) -> Optional[dict]:
         return None
 
 
-def get_tender_page(url: str) -> tuple[str, str]:
-    resp = _get(url)
+def get_tender_page(url: str, retries: int = 3, timeout: int = 25) -> tuple[str, str]:
+    resp = _get(url, retries=retries, timeout=timeout)
     if not resp:
         return "", ""
     soup = BeautifulSoup(resp.text, "html.parser")
