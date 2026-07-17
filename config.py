@@ -164,6 +164,10 @@ PUBLISH_DAYS_BACK = int(os.getenv("PUBLISH_DAYS_BACK", "30"))
 # Если PUBLISH_DATE_FROM заполнен другим значением, он важнее PUBLISH_DAYS_BACK.
 PUBLISH_DATE_FROM = os.getenv("PUBLISH_DATE_FROM", "").strip()
 PUBLISH_DATE_TO   = os.getenv("PUBLISH_DATE_TO",   "").strip()
+# PUBLISH_DATE_FROM=last — инкрементальный Stage 1: искать с даты прошлого
+# успешного прогона (settings.STAGE1_WATERMARK) минус запас перекрытия:
+# площадки публикуют карточки с задержкой, без нахлёста граничные лоты теряются.
+STAGE1_WATERMARK_OVERLAP_DAYS = int(os.getenv("STAGE1_WATERMARK_OVERLAP_DAYS", "2"))
 
 # --- Двухэтапная воронка ---
 MIN_PRIMARY_SCORE_FOR_DETAIL    = int(os.getenv("MIN_PRIMARY_SCORE_FOR_DETAIL",    "24"))

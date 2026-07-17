@@ -557,15 +557,51 @@ def find_file_refs(obj: Any, path: str = "") -> list[tuple[str, Any]]:
     return hits
 
 
+def probe_search_syntax() -> None:
+    """Проверяет, что понимает searchText: точную фразу, корень слова, wildcard, OR.
+
+    Нужно, чтобы подобрать формат EAT_SEARCH_KEYWORDS: если поиск подстрочный,
+    хватит корня («автоматизац»), если словарный — нужны полные слова, а «||»
+    позволяет искать несколько слов одним запросом.
+    """
+    cases = [
+        ("точная фраза",      "автоматизация"),
+        ("корень без звёзд",  "автоматизац"),
+        ("wildcard *",        "автоматизац*"),
+        ("две основы",        "информационная система"),
+        ("две основы + *",    "информационн* систем*"),
+        ("OR через ||",       "сайт ||автоматизация"),
+        ("широкий OR",        "сайт ||автоматизация ||информационная система ||техническая поддержка"),
+    ]
+    print(f"{'вариант':22} {'запрос':60} итог")
+    print("─" * 100)
+    for label, query in cases:
+        data = _post(_request_body(query, None, None, 1, 10))
+        if data is None:
+            print(f"{label:22} {query[:58]:60} антибот/ошибка — обнови куки")
+            continue
+        total = data.get("totalCount")
+        print(f"{label:22} {query[:58]:60} найдено {total}")
+        for item in (data.get("items") or [])[:2]:
+            print(f"{'':22} {'':60}   · {(item.get('subject') or '')[:60]}")
+        _sleep(0.5)
+    print("\nВывод: бери тот формат, где находок больше и они по делу.")
+
+
 if __name__ == "__main__":
     # Самотест:           python -m sources.eat "сайт"
     # Сырой дамп полей:   python -m sources.eat "сайт" --raw
     # Поиск документов:   python -m sources.eat --docs <guid лота из URL карточки>
     # Скачать все доки:   python -m sources.eat --download <guid лота>
+    # Синтаксис поиска:   python -m sources.eat --probe-search
     import sys
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     kw = args[0] if args else "программное обеспечение"
+
+    if "--probe-search" in sys.argv:
+        probe_search_syntax()
+        sys.exit(0)
 
     if "--download" in sys.argv:
         guid = args[0] if args else ""

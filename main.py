@@ -25,7 +25,7 @@ import logging
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Должно выполняться до импорта requests/urllib3 из модулей проекта.
@@ -73,6 +73,10 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 AUTO_ACTIVE_DATE_VALUES = {"auto", "active", "all-active", "активные", "авто"}
+# PUBLISH_DATE_FROM=last — инкрементальный режим: искать с даты последнего
+# успешного Stage 1 (хранится в settings.STAGE1_WATERMARK), а не за весь период.
+LAST_RUN_DATE_VALUES = {"last", "since-last", "инкремент", "incremental"}
+STAGE1_WATERMARK_KEY = "STAGE1_WATERMARK"
 
 
 def _stage1_period_label(
@@ -90,6 +94,52 @@ def _stage1_period_label(
 
 def _is_auto_active_date(value: str | None) -> bool:
     return str(value or "").strip().lower() in AUTO_ACTIVE_DATE_VALUES
+
+
+def _is_last_run_date(value: str | None) -> bool:
+    return str(value or "").strip().lower() in LAST_RUN_DATE_VALUES
+
+
+def _resolve_watermark_date_from() -> str:
+    """Дата «с» для инкрементального Stage 1 (PUBLISH_DATE_FROM=last).
+
+    Берём метку последнего успешного прогона минус запас перекрытия
+    (STAGE1_WATERMARK_OVERLAP_DAYS): площадки публикуют карточки с задержкой,
+    и без нахлёста граничные лоты потерялись бы навсегда. Если метки ещё нет
+    (первый запуск) — откатываемся на обычный PUBLISH_DAYS_BACK.
+    """
+    saved = db.get_setting(STAGE1_WATERMARK_KEY)
+    if not saved:
+        logger.info(
+            "Stage1 инкремент: метки прошлого прогона нет — беру период %d дн. (первый запуск)",
+            config.PUBLISH_DAYS_BACK,
+        )
+        return ""
+    try:
+        base = datetime.strptime(saved.strip(), "%Y-%m-%d")
+    except ValueError:
+        logger.warning("Stage1 инкремент: битая метка %r — беру период по умолчанию", saved)
+        return ""
+    overlap = int(getattr(config, "STAGE1_WATERMARK_OVERLAP_DAYS", 2))
+    date_from = (base - timedelta(days=overlap)).strftime("%d.%m.%Y")
+    logger.info(
+        "Stage1 инкремент: прошлый прогон %s, ищу с %s (перекрытие %d дн.)",
+        saved, date_from, overlap,
+    )
+    return date_from
+
+
+def _save_watermark(had_errors: bool, dry_run: bool) -> None:
+    """Двигает метку только после успешного боевого прогона: при ошибках канала
+    часть карточек могла не сохраниться, и сдвиг метки потерял бы их навсегда."""
+    if dry_run:
+        return
+    if had_errors:
+        logger.warning("Stage1 инкремент: были ошибки — метку не двигаю, следующий прогон повторит период")
+        return
+    today = datetime.now().strftime("%Y-%m-%d")
+    db.set_setting(STAGE1_WATERMARK_KEY, today, "Дата последнего успешного Stage 1 (инкрементальный режим)")
+    logger.info("Stage1 инкремент: метка сдвинута на %s", today)
 
 
 def _stage1_phase_mode(
@@ -275,6 +325,13 @@ def run_stage1(
     d_to = None if backfill_active else (date_to if date_to is not None else getattr(config, "PUBLISH_DATE_TO", ""))
     d_from = str(d_from or "").strip() or None
     d_to = str(d_to or "").strip() or None
+    # PUBLISH_DATE_FROM=last — стартуем с даты прошлого успешного прогона.
+    incremental = _is_last_run_date(d_from)
+    if incremental:
+        d_from = _resolve_watermark_date_from() or None
+        d_to = None
+        if d_from is None:          # первый запуск: обычный период по умолчанию
+            d_back = config.PUBLISH_DAYS_BACK
     auto_active = _is_auto_active_date(d_from)
     if auto_active:
         d_back = 0
@@ -586,6 +643,8 @@ def run_stage1(
 
     logger.info("Этап 1 завершён: найдено %d, кандидатов на этап 2: %d", unique_saved, primary_candidates)
     db.log_run("stage1", started_at, found=unique_saved, processed=saved, notified=0, errors="; ".join(errors))
+    if incremental:
+        _save_watermark(had_errors=bool(errors), dry_run=dry_run)
     return unique_saved, primary_candidates
 
 
@@ -1510,6 +1569,7 @@ def main() -> None:
     config.PRICE_MAX                    = config.get_runtime("PRICE_MAX",                    config.PRICE_MAX)
     config.PUBLISH_DAYS_BACK            = config.get_runtime("PUBLISH_DAYS_BACK",            config.PUBLISH_DAYS_BACK)
     config.PUBLISH_DATE_FROM            = config.get_runtime("PUBLISH_DATE_FROM",            config.PUBLISH_DATE_FROM)
+    config.STAGE1_WATERMARK_OVERLAP_DAYS = config.get_runtime("STAGE1_WATERMARK_OVERLAP_DAYS", config.STAGE1_WATERMARK_OVERLAP_DAYS)
     config.PUBLISH_DATE_TO              = config.get_runtime("PUBLISH_DATE_TO",              config.PUBLISH_DATE_TO)
     config.SCHEDULE_HOURS               = config.get_runtime("SCHEDULE_HOURS",               config.SCHEDULE_HOURS)
     config.MIN_PRIMARY_SCORE_FOR_DETAIL = config.get_runtime("MIN_PRIMARY_SCORE_FOR_DETAIL", config.MIN_PRIMARY_SCORE_FOR_DETAIL)

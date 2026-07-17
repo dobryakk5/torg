@@ -155,6 +155,23 @@ def test_dev_contract_mentioning_rights_transfer_is_not_blocked():
     assert sp.best_match(sp.score_tender(tender, profiles=profiles)) is not None
 
 
+def test_verbose_eis_title_with_words_between_is_matched():
+    """Регрессия по реальному лоту ЕИС 0820200000226000037 (пропал на Stage 1).
+
+    Заголовки ЕИС многословные: «доработке информационного портала (веб-сайта)»
+    разносит «доработк*» и «сайт*» на 2 слова — при окне 1 плюс-фраза молчала.
+    Плюс лот не должен топиться штрафом за слово «сопровождение», раз в нём
+    есть настоящая доработка.
+    """
+    title = (
+        "Оказание услуг по информационно-техническому сопровождению, технической "
+        "поддержке и доработке информационного портала (веб-сайта) КГКУ «УЗИ»"
+    )
+    r = _accept(title, "Сайты и веб-разработка")
+    assert r.accepted is True, f"скор {r.score}, хиты {r.hits}"
+    assert any("доработк" in h[0] for h in r.hits)
+
+
 def test_parse_phrase_window_syntax():
     words, window = sp.parse_phrase("(капитальн* ремонт*)~1")
     assert words == ["капитальн*", "ремонт*"]
@@ -162,7 +179,7 @@ def test_parse_phrase_window_syntax():
 
     words, window = sp.parse_phrase("разработк* сайт*")
     assert words == ["разработк*", "сайт*"]
-    assert window == 1  # окно по умолчанию
+    assert window == sp._DEFAULT_WINDOW  # окно по умолчанию
 
 
 def test_eis_queries_skip_manual_syntax_without_query_text():
