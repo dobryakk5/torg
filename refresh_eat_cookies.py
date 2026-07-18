@@ -153,7 +153,7 @@ def refresh_and_save(headed: bool = False) -> str | None:
         return None
     cookie_str, ua = result
 
-    from update_eat_cookie import update_env
+    from utils.update_eat_cookie import update_env
     update_env(cookie_str, ua)
     print("✅ .env обновлён:")
     print("   EAT_COOKIE =", cookie_str[:80] + ("…" if len(cookie_str) > 80 else ""))
