@@ -1289,11 +1289,22 @@ def run_llm(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
             # полагался по скору. Сбой провайдера оставляет лот в очереди.
             mark_analyzed = bool(llm_analysis) or not wants_llm
 
+            # LLM прочитал полное ТЗ и может отсеять то, что фильтр по карточке
+            # пропустил (перекуп/«под своего»/вне профиля, видимые только в ТЗ).
+            # Такой лот в Telegram НЕ шлём — «система сама убирает неподходящие».
+            # Если LLM не сработал (analysis пуст) — решаем по фильтру, как раньше.
+            from llm_analyzer import extract_verdict as _verdict
+            llm_verdict = _verdict(llm_analysis).upper() if llm_analysis else ""
+            llm_rejected = llm_verdict == "ПРОПУСТИТЬ"
+
             should_notify = (
                 detail_score >= config.MIN_DETAILED_SCORE_FOR_NOTIFY
                 and (tender.get("filter_decision") or "") != "NO-GO"
                 and not tender.get("notified_at")
+                and not llm_rejected
             )
+            if llm_rejected and not tender.get("notified_at"):
+                logger.info("%s: LLM-вердикт ПРОПУСТИТЬ — не отправляю (отсеяно по ТЗ)", pnum)
             notified = False
             if should_notify:
                 if dry_run:
@@ -1602,6 +1613,8 @@ def main() -> None:
     parser.add_argument("--eat-only", action="store_true", help="Stage1 только через ЕАТ «Берёзка» (остальные каналы выключены)")
     parser.add_argument("--mos-only", action="store_true", help="Stage1 только через Портал поставщиков (остальные каналы выключены)")
     parser.add_argument("--zakazrf-only", action="store_true", help="Stage1 только через БП ZakazRF (остальные каналы выключены)")
+    parser.add_argument("--zmo-only", action="store_true", help="Stage1 только через каналы ЗМО: ПП Москвы, ЭМ МО, ЕАТ «Берёзка», ЭМ СПб (ЕИС/B2B/ОКПД2/ZakazRF/Tenderplan выключены)")
+    parser.add_argument("--zmo", action="store_true", help="Полный ЗМО-цикл: сбор ЗМО (stage1) + stage2 + LLM-разбор + отправка в Telegram. Для частого прогона по расписанию (каждые 15 мин)")
     parser.add_argument("--only-new", action="store_true", help="Stage1/Tenderplan: обрабатывать только новые закупки")
     parser.add_argument("--once", action="store_true", help="Один полный цикл: stage1 + stage2")
     parser.add_argument("--test", action="store_true", help="Тестовый полный цикл без отправки в Telegram")
@@ -1747,6 +1760,51 @@ def main() -> None:
             "ИТОГО ЗАПУСКА БП ZAKAZRF: сохранено %d; кандидатов Stage2 %d",
             found,
             candidates,
+        )
+    elif args.zmo_only:
+        found, candidates = run_stage1(
+            dry_run=args.test,
+            skip_completed_today=args.skip_completed_today,
+            backfill_active=args.backfill_active,
+            keywords=[],   # отключает ЕИС-каналы (ключевые слова/ОКПД2) и B2B
+            okpd2=False,
+            b2b=False,
+            spb=True,
+            eat=True,
+            mos=True,
+            mosreg=True,
+            zakazrf=False,
+            tenderplan=False,
+            only_new=args.only_new,
+        )
+        logger.info("ИТОГО ЗАПУСКА ЗМО: найдено новых %d; кандидатов Stage2 %d", found, candidates)
+    elif args.zmo:
+        # Полный ЗМО-цикл для частого прогона по расписанию: собрать ЗМО-каналы,
+        # тут же добрать детали (Stage 2) и разобрать/отправить моделью (Stage 2.5).
+        # У ЗМО (особенно ЕАТ) окно подачи часто ~24 ч — ловим быстро и сразу шлём.
+        found, _ = run_stage1(
+            dry_run=args.test,
+            skip_completed_today=args.skip_completed_today,
+            backfill_active=args.backfill_active,
+            keywords=[],   # отключает ЕИС-каналы (ключевые слова/ОКПД2) и B2B
+            okpd2=False,
+            b2b=False,
+            spb=True,
+            eat=True,
+            mos=True,
+            mosreg=True,
+            zakazrf=False,
+            tenderplan=False,
+            only_new=args.only_new,
+        )
+        # Stage 2 работает по очереди из БД (не по конкретному источнику) — доберёт
+        # ЗМО-кандидатов, что собрали только что, плюс всё, что ждало с прошлых прогонов.
+        processed, _ = run_stage2(dry_run=args.test, limit=args.limit)
+        # Stage 2.5: LLM-разбор и отправка в Telegram того, что ≥ порога и не NO-GO.
+        _, notified = run_llm(dry_run=args.test, limit=args.limit)
+        logger.info(
+            "ИТОГО ЗМО-ЦИКЛ: собрано %d; детально обработано %d; отправлено %d",
+            found, processed, notified,
         )
     elif args.stage1:
         run_stage1(

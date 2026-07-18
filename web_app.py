@@ -1808,7 +1808,7 @@ async def api_decide_explain(purchase_number: str):
     # 2. LLM доступна?
     if not llm_provider.is_configured():
         return JSONResponse(content={"card": card, "explain": None, "cached": False,
-                                     "error": "LLM недоступна — добавьте ключ API в /control."})
+                                     "error": "LLM недоступна — добавьте ключ OPENROUTER_API_KEY (или ANTHROPIC_API_KEY) в .env и перезапустите веб-панель."})
 
     # 3. Вызов LLM
     logger.info("decision_aid_llm_explain_started: %s", purchase_number)
@@ -2128,7 +2128,7 @@ async def api_spec_extract(purchase_number: str, request: Request):
         import llm_analyzer
         if not llm_provider.is_configured():
             # НЕ трогаем текущие позиции
-            return JSONResponse(content={"error": "LLM недоступна — добавьте ключ API в /control."})
+            return JSONResponse(content={"error": "LLM недоступна — добавьте ключ OPENROUTER_API_KEY (или ANTHROPIC_API_KEY) в .env и перезапустите веб-панель."})
         chunks = dp._windows_around(text, dp.SPEC_MARKERS) or [text[:4000]]
         res = llm_analyzer.extract_spec_llm(chunks)
         if not res or not res.get("items"):

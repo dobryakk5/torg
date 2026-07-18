@@ -401,6 +401,30 @@ ZAKAZRF_SEARCH_KEYWORDS = [
 ]
 ZAKAZRF_PLANED_DATE_FROM_TICKS = os.getenv("ZAKAZRF_PLANED_DATE_FROM_TICKS", "")
 
+# ============================================================
+# ПРОКСИ ДЛЯ ТЕНДЕРНЫХ ПЛОЩАДОК
+# ============================================================
+# Все запросы к площадкам (ЕИС, ЕАТ, ПП Москвы, ЭМ МО/СПб, B2B, ZakazRF,
+# Tenderplan) и скачивание документов идут через этот прокси — анти-боты
+# (ЕАТ «Берёзка» и пр.) пропускают только российские IP.
+# LLM (OpenRouter/Anthropic) и Telegram ходят НАПРЯМУЮ — потоки разделены,
+# поэтому переменная НЕ называется HTTP_PROXY/HTTPS_PROXY (те подхватились бы
+# библиотекой requests глобально и увели бы в прокси и LLM-трафик).
+# Формат: http://user:pass@host:port  Пусто = без прокси.
+SOURCES_PROXY_URL = os.getenv("SOURCES_PROXY_URL", "").strip()
+
+
+def source_proxies() -> dict | None:
+    """Словарь proxies= для requests при походах на тендерные площадки.
+
+    None, если прокси не настроен — requests тогда идёт напрямую.
+    Читает атрибут модуля (а не env), чтобы значение можно было
+    переопределить на лету в тестах/скриптах.
+    """
+    url = str(globals().get("SOURCES_PROXY_URL", "") or "").strip()
+    return {"http": url, "https": url} if url else None
+
+
 OKPD2_CODES = [
     "62.01",    # разработка ПО
     "62.02",    # консультирование в ИТ

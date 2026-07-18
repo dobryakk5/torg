@@ -134,6 +134,11 @@ def _via_curl(url: str, headers: dict[str, str], body: dict[str, Any] | None = N
         return None
 
     cmd = [curl_bin, "-s", "--max-time", "30", url]
+    # Площадки обходим через тот же прокси, что и python-requests, — иначе
+    # анти-бот увидит другой (не российский) IP и фолбэк потеряет смысл.
+    proxy_url = (config.source_proxies() or {}).get("https")
+    if proxy_url:
+        cmd += ["-x", proxy_url]
     for key, value in headers.items():
         if key.lower() == "cookie":
             cmd += ["-b", value]
@@ -204,9 +209,9 @@ def _request(url: str, body: dict[str, Any] | None = None, retries: int = 3) -> 
     for attempt in range(retries):
         try:
             if body is None:
-                resp = requests.get(url, headers=headers, timeout=25)
+                resp = requests.get(url, headers=headers, timeout=25, proxies=config.source_proxies())
             else:
-                resp = requests.post(url, json=body, headers=headers, timeout=25)
+                resp = requests.post(url, json=body, headers=headers, timeout=25, proxies=config.source_proxies())
             ctype = resp.headers.get("content-type", "").lower()
             text_head = (resp.text or "")[:300].lower()
             if resp.status_code == 200 and "json" in ctype:
@@ -292,7 +297,7 @@ def download_document(trade_id: str, doc: dict[str, Any]) -> Optional[tuple[str,
         headers["Cookie"] = cookie
 
     try:
-        resp = requests.get(url, headers=headers, timeout=30)
+        resp = requests.get(url, headers=headers, timeout=30, proxies=config.source_proxies())
     except requests.RequestException as e:
         logger.warning("ЕАТ: ошибка скачивания %s: %s", name, e)
         return None

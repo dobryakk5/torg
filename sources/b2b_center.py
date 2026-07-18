@@ -59,7 +59,8 @@ def _sleep(multiplier: float = 1.0) -> None:
 def _get(url: str, params: dict | None = None, retries: int = 3) -> Optional[requests.Response]:
     for attempt in range(retries):
         try:
-            resp = requests.get(url, params=params, headers=HEADERS, timeout=25)
+            resp = requests.get(url, params=params, headers=HEADERS, timeout=25,
+                                proxies=config.source_proxies())
             if resp.status_code == 200:
                 return resp
             logger.warning("B2B HTTP %s для %s", resp.status_code, url)

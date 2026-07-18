@@ -117,7 +117,8 @@ def _request_body(keyword: str, price_from: int | None, price_to: int | None,
 def _post(body: dict[str, Any], retries: int = 3) -> Optional[Any]:
     for attempt in range(retries):
         try:
-            resp = requests.post(API_URL, json=body, headers=HEADERS, timeout=25)
+            resp = requests.post(API_URL, json=body, headers=HEADERS, timeout=25,
+                                 proxies=config.source_proxies())
             if resp.status_code == 200:
                 return resp.json()
             logger.warning("ЭМ МО HTTP %s: %s", resp.status_code, resp.text[:200])

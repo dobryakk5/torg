@@ -172,7 +172,8 @@ def search_zakazrf(keyword: str, pages: int = 1) -> list[dict[str, Any]]:
 
     for attempt in range(3):
         try:
-            response = requests.get(SEARCH_URL, params=params, headers=HEADERS, timeout=30)
+            response = requests.get(SEARCH_URL, params=params, headers=HEADERS, timeout=30,
+                                    proxies=config.source_proxies())
             response.raise_for_status()
             # Передаём bytes: BeautifulSoup сам прочитает meta charset=UTF-8;
             # requests для text/html без charset иначе может выбрать latin-1.

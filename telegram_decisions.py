@@ -23,8 +23,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 DECISION_LABELS = {
-    "interesting": "интересно",
-    "rejected": "мусор",
+    "interesting": "👍 в работу",
+    "rejected": "👎 не профиль",
+    "declined": "🤷 пас (профиль ок, не участвую)",
+    "hidden": "🙈 скрыто",
+    # старые метки — для обратной совместимости со ранее отправленными кнопками
     "tailored": "под своего",
     "need_calc": "надо посчитать",
     "applying": "подаемся",
@@ -67,19 +70,33 @@ def handle_callback(token: str, callback: dict) -> None:
     if not data.startswith("dec:"):
         return
     _, decision, purchase_number = data.split(":", 2)
-    if decision != "noop":
+    message = callback.get("message") or {}
+    chat_id = (message.get("chat") or {}).get("id")
+    message_id = message.get("message_id")
+
+    if decision == "noop":
+        text = "Это номер закупки, решение не изменено"
+    else:
         db.set_decision(purchase_number, decision)
         label = DECISION_LABELS.get(decision, decision)
-        text = f"Записал решение: {label}"
+        text = f"Записал: {label}"
         logger.info("%s → %s", purchase_number, decision)
-    else:
-        text = "Это номер закупки, решение не изменено"
 
+    # Подтверждаем нажатие (всплывающая подсказка у кнопки).
     requests.post(
         f"https://api.telegram.org/bot{token}/answerCallbackQuery",
         json={"callback_query_id": cb_id, "text": text, "show_alert": False},
         timeout=10,
     )
+
+    # «Скрыть» — убираем карточку из ленты целиком. Лайк/дизлайк оставляют кнопки
+    # на месте (решение можно переголосовать), обратная связь — во всплывашке выше.
+    if decision == "hidden" and chat_id is not None and message_id is not None:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/deleteMessage",
+            json={"chat_id": chat_id, "message_id": message_id},
+            timeout=10,
+        )
 
 
 if __name__ == "__main__":

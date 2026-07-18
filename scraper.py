@@ -89,7 +89,8 @@ def _get(
     """GET с повторами при ошибке и лёгким backoff."""
     for attempt in range(retries):
         try:
-            resp = requests.get(url, params=params, headers=HEADERS, timeout=timeout, verify=REQUEST_VERIFY)
+            resp = requests.get(url, params=params, headers=HEADERS, timeout=timeout, verify=REQUEST_VERIFY,
+                                proxies=config.source_proxies())
             if resp.status_code == 200:
                 return resp
             logger.warning("HTTP %s для %s", resp.status_code, url)

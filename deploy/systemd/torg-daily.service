@@ -1,0 +1,20 @@
+[Unit]
+Description=Торг: полный дневной цикл (ЕИС + B2B + ОКПД2 + Tenderplan + ЗМО, разбор, Telegram)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=__USER__
+Group=__GROUP__
+WorkingDirectory=__PROJECT_DIR__
+Environment=PATH=__PYTHON_BIN_DIR__:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# flock -w 3000: ждём общий лок до 50 мин (если крутится ЗМО-тик — короткий),
+# затем берём его сами. Дневной прогон обязателен, поэтому ждём, а не пропускаем.
+ExecStart=/usr/bin/flock -w 3000 /tmp/torg-pipeline.lock __PYTHON__ main.py --once
+# Полный прогон тяжёлый (ЕИС + ТЗ + LLM). Полтора часа с запасом.
+TimeoutStartSec=5400
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

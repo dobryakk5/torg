@@ -38,6 +38,33 @@ TARGET_URL = "https://agregatoreat.ru/purchases/new"
 WANTED = ("__hash_", "__lhash_", "__rhash_")
 
 
+def _playwright_proxy() -> dict | None:
+    """Прокси площадок (config.SOURCES_PROXY_URL) в формате Playwright.
+
+    Браузер ОБЯЗАН ходить через тот же прокси, что и запросы канала: куки
+    анти-бота привязаны к IP, и полученные с «чужого» IP работать не будут
+    (а с не-российского вместо JS-челленджа показывается слайдер-капча).
+    """
+    from urllib.parse import urlparse
+
+    try:
+        import config
+        url = str(getattr(config, "SOURCES_PROXY_URL", "") or "").strip()
+    except Exception:
+        url = ""
+    if not url:
+        return None
+    p = urlparse(url)
+    if not p.hostname:
+        return None
+    proxy: dict = {"server": f"{p.scheme or 'http'}://{p.hostname}:{p.port or 80}"}
+    if p.username:
+        proxy["username"] = p.username
+    if p.password:
+        proxy["password"] = p.password
+    return proxy
+
+
 def refresh_cookies(headed: bool = False, timeout_s: int = 90) -> tuple[str, str] | None:
     """Возвращает (cookie_string, user_agent) или None.
 
@@ -51,6 +78,7 @@ def refresh_cookies(headed: bool = False, timeout_s: int = 90) -> tuple[str, str
               file=sys.stderr)
         return None
 
+    proxy = _playwright_proxy()
     with sync_playwright() as p:
         browser = None
         # Родной Chrome предпочтительнее: настоящий отпечаток браузера.
@@ -59,7 +87,7 @@ def refresh_cookies(headed: bool = False, timeout_s: int = 90) -> tuple[str, str
             {"headless": not headed},
         ):
             try:
-                browser = p.chromium.launch(**launch_kwargs)
+                browser = p.chromium.launch(proxy=proxy, **launch_kwargs)
                 break
             except Exception:
                 continue

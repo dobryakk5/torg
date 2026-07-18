@@ -89,7 +89,8 @@ def _expand_document_items(items: list[tuple[str, str]]) -> list[tuple[str, str]
         lower = link.lower()
         if _looks_like_document_page(lower) and not _looks_like_document_file(lower):
             try:
-                resp = requests.get(link, headers=HEADERS, timeout=30, verify=REQUEST_VERIFY)
+                resp = requests.get(link, headers=HEADERS, timeout=30, verify=REQUEST_VERIFY,
+                                    proxies=config.source_proxies())
                 if resp.status_code != 200 or not resp.text:
                     logger.info("Страница документов не скачана %s: HTTP %s", link, resp.status_code)
                     continue
@@ -191,7 +192,8 @@ def download_documents(purchase_number: str, page_html: str, tender_url: str,
             if _looks_like_document_page(link.lower()) and not _looks_like_document_file(link.lower()):
                 continue
             try:
-                resp = requests.get(link, headers=HEADERS, timeout=30, verify=REQUEST_VERIFY)
+                resp = requests.get(link, headers=HEADERS, timeout=30, verify=REQUEST_VERIFY,
+                                    proxies=config.source_proxies())
                 if resp.status_code != 200 or not resp.content:
                     logger.info("Документ не скачан %s: HTTP %s", link, resp.status_code)
                     continue

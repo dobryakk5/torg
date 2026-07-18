@@ -47,7 +47,16 @@ def provider() -> str:
 
 
 def is_configured() -> bool:
-    """True, если у выбранного провайдера есть ключ — иначе LLM-шаги пропускаются."""
+    """True, если у выбранного провайдера есть ключ — иначе LLM-шаги пропускаются.
+
+    Ключи живут ТОЛЬКО в .env (в /control их нет — там лишь выбор провайдера/моделей).
+    Долгоживущий web-процесс мог стартовать раньше, чем ключ появился в .env, поэтому
+    перечитываем секреты здесь — так все вызывающие эндпоинты видят актуальный ключ.
+    """
+    try:
+        config.reload_llm_secrets()
+    except Exception:
+        pass
     if provider() == "anthropic":
         return bool(config.ANTHROPIC_API_KEY)
     return bool(getattr(config, "OPENROUTER_API_KEY", ""))

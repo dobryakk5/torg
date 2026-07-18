@@ -320,6 +320,17 @@ class TenderplanClient:
             }
         )
 
+        # Прокси тендерных площадок (config.SOURCES_PROXY_URL): через него идут
+        # обе сессии. Модуль остаётся работоспособным и без config (standalone).
+        try:
+            import config as _config
+            _proxies = _config.source_proxies()
+        except Exception:
+            _proxies = None
+        if _proxies:
+            self.api_session.proxies.update(_proxies)
+            self.external_session.proxies.update(_proxies)
+
     def api_get(
         self,
         path: str,

@@ -46,116 +46,128 @@ def send_tender_message(tender: dict, score: int, score_reasons: list[str], llm_
 
 
 def decision_keyboard(purchase_number: str, url: str = "") -> dict:
-    p = purchase_number[-16:] if len(purchase_number) > 16 else purchase_number
-    # callback_data ограничен 64 байтами, поэтому берём номер закупки, обычно он и так помещается.
-    key = purchase_number[:40]
+    """Компактная клавиатура под уведомлением: лайк / дизлайк / скрыть + «Подробности».
+
+    callback_data ограничен 64 байтами: префикс «dec:interesting:» = 16 символов,
+    поэтому номер закупки режем до 44 (реальные номера ЕИС/ЕАТ короче).
+    """
+    key = purchase_number[:44]
+    # Два вида «нет» — сырьё для будущих эвристик: «не профиль» = система ошиблась
+    # с отбором, «пас» = отбор верный, просто решили не участвовать.
     buttons = [
         [
-            {"text": "👍 интересно", "callback_data": f"dec:interesting:{key}"},
-            {"text": "👎 мусор", "callback_data": f"dec:rejected:{key}"},
+            {"text": "👍 в работу", "callback_data": f"dec:interesting:{key}"},
+            {"text": "👎 не профиль", "callback_data": f"dec:rejected:{key}"},
         ],
         [
-            {"text": "⚠️ под своего", "callback_data": f"dec:tailored:{key}"},
-            {"text": "💰 посчитать", "callback_data": f"dec:need_calc:{key}"},
-        ],
-        [
-            {"text": "✅ подаемся", "callback_data": f"dec:applying:{key}"},
-            {"text": f"№ {p}", "callback_data": f"dec:noop:{key}"},
+            {"text": "🤷 пас (профиль ок)", "callback_data": f"dec:declined:{key}"},
+            {"text": "🙈 скрыть", "callback_data": f"dec:hidden:{key}"},
         ],
     ]
     if url:
-        buttons.append([{"text": "🔗 открыть", "url": url}])
+        buttons.append([{"text": "🔗 Подробности", "url": url}])
     return {"inline_keyboard": buttons}
 
 
+# Метки для секции «ОБЪЕМ → что надо сделать» из LLM-разбора.
+_TODO_MARKERS = ("что надо сделать", "что нужно сделать", "что требуется")
+
+
+def _extract_todo(llm_analysis: Optional[str]) -> str:
+    """Достаёт из LLM-разбора короткую суть «что надо сделать» (секция ОБЪЕМ)."""
+    if not llm_analysis:
+        return ""
+    lines = llm_analysis.splitlines()
+    for i, ln in enumerate(lines):
+        low = ln.lower().lstrip("-• \t")
+        if any(low.startswith(m) for m in _TODO_MARKERS):
+            val = ln.split(":", 1)[1].strip() if ":" in ln else ""
+            if not val:  # значение развёрнуто буллетами на следующих строках
+                collected = []
+                for nxt in lines[i + 1 : i + 4]:
+                    t = nxt.strip("-• \t")
+                    if not t or ":" in t[:24] or t.isupper():
+                        break
+                    collected.append(t)
+                val = "; ".join(collected)
+            return val.strip()
+    return ""
+
+
+def _deadline_urgency(deadline: str) -> str:
+    """«через 2 дня» / «завтра» / «сегодня!» из строки дедлайна для срочности."""
+    from datetime import datetime
+
+    s = str(deadline or "").strip()
+    dt = None
+    for fmt, cut in (("%d.%m.%Y %H:%M", 16), ("%d.%m.%Y", 10), ("%Y-%m-%dT%H:%M", 16), ("%Y-%m-%d", 10)):
+        try:
+            dt = datetime.strptime(s[:cut], fmt)
+            break
+        except ValueError:
+            continue
+    if dt is None:
+        return ""
+    days = (dt.date() - datetime.now().date()).days
+    if days < 0:
+        return "просрочен"
+    if days == 0:
+        return "сегодня!"
+    if days == 1:
+        return "завтра"
+    if days <= 6:
+        return f"через {days} дн."
+    return ""
+
+
 def format_tender_message(tender: dict, score: int, score_reasons: list[str], llm_analysis: Optional[str] = None) -> str:
-    from scorer import format_score_summary
+    """Краткое уведомление: суть, дедлайн, НМЦК, что сделать, вердикт Claude.
 
+    Подробная раскладка по 8 фильтрам намеренно убрана — она есть в веб-панели,
+    а в Telegram нужен быстрый триаж «брать / не брать» одним взглядом.
+    """
     def money(value):
-        return f"{value:,.0f} ₽".replace(",", " ") if value else "не найдено"
+        return f"{value:,.0f} ₽".replace(",", " ") if value else "не указана"
 
-    price_str = money(tender.get("price")) if tender.get("price") else "не указана"
     decision = tender.get("filter_decision") or ("GO" if score >= 32 else ("CAUTION" if score >= 24 else "NO-GO"))
     emoji_score = "🟢" if decision == "GO" else ("🟡" if decision == "CAUTION" else "🔴")
 
     lines = [
-        f"🔍 <b>НОВАЯ ЗАКУПКА</b>  {emoji_score} скор: {score}/40 · {decision}",
-        "─" * 30,
-        f"📌 <b>{_esc(str(tender.get('title', '—'))[:220])}</b>",
-        f"🏛 {_esc(str(tender.get('customer', '—'))[:160])}",
-        f"💰 {price_str} · {_esc(tender.get('law_type', '—'))}",
+        f"{emoji_score} <b>{_esc(str(tender.get('title', '—'))[:180])}</b>",
+        f"🏛 {_esc(str(tender.get('customer', '—'))[:120])}",
     ]
 
-    if tender.get("deadline"):
-        lines.append(f"📅 Подача до: {_esc(str(tender.get('deadline')))}")
-    if tender.get("matched_keywords"):
-        keywords = tender.get("matched_keywords")
-        if isinstance(keywords, list):
-            keywords = ", ".join(keywords[:8])
-        lines.append(f"🔎 Ключи: {_esc(str(keywords)[:220])}")
+    deadline = str(tender.get("deadline") or "").strip()
+    if deadline:
+        urg = _deadline_urgency(deadline)
+        lines.append(f"📅 до {_esc(deadline[:16])}" + (f"  ·  ⏳ {urg}" if urg else ""))
+
+    lines.append(f"💰 {money(tender.get('price'))} · {_esc(str(tender.get('law_type', '—')))}")
 
     app_sec = tender.get("application_security_amount")
     contract_sec = tender.get("contract_security_amount")
-    if app_sec or contract_sec:
-        lines.append("─" * 30)
-        lines.append("💳 <b>Финансовый вход</b>")
-        if app_sec:
-            lines.append(f"- заявка: {money(app_sec)}")
-        if contract_sec:
-            lines.append(f"- исполнение: {money(contract_sec)}")
+    fin = []
+    if app_sec:
+        fin.append(f"заявка {money(app_sec)}")
+    if contract_sec:
+        fin.append(f"исполнение {money(contract_sec)}")
+    if fin:
+        lines.append("💳 обеспечение: " + " · ".join(fin))
 
-    if tender.get("payment_terms"):
-        lines.append(f"🧾 Оплата: {_esc(str(tender.get('payment_terms'))[:260])}")
-
-    # Если пришли 8 фильтров — показываем краткую раскладку.
-    filter_scores = tender.get("filter_scores") or []
-    if filter_scores:
-        lines.append("─" * 30)
-        lines.append("🧮 <b>8 фильтров</b>")
-        for f in filter_scores[:8]:
-            fname = str(f.get("filter_name", ""))[:28]
-            fscore = f.get("score", "—")
-            signals = str(f.get("signals", ""))
-            first_signal = signals.split("|")[0].strip() if signals else ""
-            mark = "⛔" if f.get("stop_factor") else "•"
-            lines.append(f"{mark} Ф{f.get('filter_number')}: {fscore}/5 {_esc(fname)}")
-            if first_signal:
-                lines.append(f"  {_esc(first_signal[:120])}")
-    else:
-        summary = format_score_summary(score, score_reasons)
-        if not summary and score_reasons:
-            summary = "\n".join(score_reasons[:8])
-        if summary:
-            lines.append("─" * 30)
-            lines.append(_esc(summary))
-
-    if tender.get("filter_stop"):
-        lines.append("─" * 30)
-        lines.append("⛔ <b>Стоп-факторы</b>")
-        for item in str(tender.get("filter_stop", "")).split("|")[:5]:
-            if item.strip():
-                lines.append(f"- {_esc(item.strip()[:160])}")
+    todo = _extract_todo(llm_analysis) or str(tender.get("title", "") or "")
+    if todo:
+        lines.append(f"🛠 <b>Что нужно:</b> {_esc(todo[:220])}")
 
     if llm_analysis:
         from llm_analyzer import extract_verdict
+
         verdict = extract_verdict(llm_analysis)
         verdict_emoji = {
             "СМОТРЕТЬ": "🟢",
             "ОСТОРОЖНО": "🟡",
             "ПРОПУСТИТЬ": "🔴",
         }.get(verdict.upper(), "⚪")
-        lines.append("─" * 30)
-        lines.append(f"🤖 <b>Claude: {verdict_emoji} {_esc(verdict)}</b>")
-        analysis_lines = [
-            line.strip() for line in llm_analysis.splitlines()
-            if line.strip() and not line.strip().upper().startswith("ВЕРДИКТ")
-        ][:12]
-        for line in analysis_lines:
-            lines.append(f"  {_esc(line)}")
-
-    if tender.get("url"):
-        lines.append("─" * 30)
-        lines.append(f'🔗 <a href="{_esc(tender["url"])}">Открыть на ЕИС</a>')
+        lines.append(f"🤖 Claude: {verdict_emoji} {_esc(verdict)}")
 
     return "\n".join(lines)
 

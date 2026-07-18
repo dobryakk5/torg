@@ -137,7 +137,8 @@ def _query(flt: dict[str, Any], take: int, skip: int, retries: int = 3) -> Optio
     url = API_URL + "?queryDto=" + encoded_dto
     for attempt in range(retries):
         try:
-            resp = requests.get(url, headers=HEADERS, timeout=25)
+            resp = requests.get(url, headers=HEADERS, timeout=25,
+                                proxies=config.source_proxies())
             if resp.status_code == 200:
                 return resp.json()
             if resp.status_code == 500:
