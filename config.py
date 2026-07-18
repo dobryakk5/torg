@@ -178,6 +178,12 @@ STAGE2_LIMIT                    = int(os.getenv("STAGE2_LIMIT",                 
 STAGE3_LIMIT                    = int(os.getenv("STAGE3_LIMIT",                    "50"))
 MIN_SCORE_FOR_NOTIFY = MIN_DETAILED_SCORE_FOR_NOTIFY   # совместимость
 
+# В Telegram слать ТОЛЬКО закупки малого объёма (ЗМО: ЕАТ, ПП Москвы, ЭМ МО,
+# ЭМ СПб, ZakazRF — все с law_type="ЗМО"). Остальные площадки (ЕИС, B2B,
+# Tenderplan) продолжают собираться, скориться и разбираться LLM — их видно в
+# веб-панели, но уведомления в TG по ним не идут. Выключи (0), чтобы слать всё.
+NOTIFY_ONLY_ZMO = env_bool("NOTIFY_ONLY_ZMO", True)
+
 # --- Документы ---
 DOWNLOAD_DOCUMENTS        = os.getenv("DOWNLOAD_DOCUMENTS",        "1") != "0"
 DOCUMENT_DOWNLOAD_MIN_SCORE = int(os.getenv("DOCUMENT_DOWNLOAD_MIN_SCORE", "30"))
@@ -400,6 +406,37 @@ ZAKAZRF_SEARCH_KEYWORDS = [
     x.strip() for x in os.getenv("ZAKAZRF_SEARCH_KEYWORDS", "").split(",") if x.strip()
 ]
 ZAKAZRF_PLANED_DATE_FROM_TICKS = os.getenv("ZAKAZRF_PLANED_DATE_FROM_TICKS", "")
+
+# РТС-Тендер (market.rts-tender.ru → zmo-new-webapi.rts-tender.ru) — ЗМО.
+# Сессия живёт ~10 ч: RTS_COOKIE_STRING (строка -b из curl целиком) и RTS_TOKEN
+# (заголовок token) вставляются свежими из DevTools (в /control или .env).
+# RTS_TENANT_IDS — список разделов витрины (по умолчанию 132, широкий агрегатор).
+# Ключевые слова: RTS_SEARCH_KEYWORDS → SPB_SEARCH_KEYWORDS → общие.
+SOURCE_RTS_ENABLED = os.getenv("SOURCE_RTS_ENABLED", "0") != "0"
+RTS_SEARCH_PAGES   = int(os.getenv("RTS_SEARCH_PAGES", "1"))
+RTS_SEARCH_KEYWORDS = [
+    x.strip() for x in os.getenv("RTS_SEARCH_KEYWORDS", "").split(",") if x.strip()
+]
+RTS_COOKIE_STRING = os.getenv("RTS_COOKIE_STRING", "")
+RTS_TOKEN = os.getenv("RTS_TOKEN", "")
+# Автоперевыпуск сессии headless-браузером при отказе (refresh_rts_session.py).
+RTS_AUTO_REFRESH = os.getenv("RTS_AUTO_REFRESH", "1") != "0"
+RTS_TENANT_IDS = [
+    x.strip() for x in os.getenv("RTS_TENANT_IDS", "132").split(",") if x.strip()
+]
+
+# SberB2B (sberb2b.ru) — публичные заявки (сбор КП) как ЗМО.
+# SBERB2B_SESSION_ID (кука SFSESSID) можно оставить пустым — коннектор пробует
+# добыть сессию автоматически GET-запросом. SBERB2B_SUBJECT_DOMAIN — необязательный
+# фильтр по региону-поддомену ("rostov" и т.п.), пусто = все регионы.
+# Ключевые слова: SBERB2B_SEARCH_KEYWORDS → SPB_SEARCH_KEYWORDS → общие.
+SOURCE_SBERB2B_ENABLED = os.getenv("SOURCE_SBERB2B_ENABLED", "0") != "0"
+SBERB2B_SEARCH_PAGES   = int(os.getenv("SBERB2B_SEARCH_PAGES", "1"))
+SBERB2B_SEARCH_KEYWORDS = [
+    x.strip() for x in os.getenv("SBERB2B_SEARCH_KEYWORDS", "").split(",") if x.strip()
+]
+SBERB2B_SESSION_ID = os.getenv("SBERB2B_SESSION_ID", "")
+SBERB2B_SUBJECT_DOMAIN = os.getenv("SBERB2B_SUBJECT_DOMAIN", "")
 
 # ============================================================
 # ПРОКСИ ДЛЯ ТЕНДЕРНЫХ ПЛОЩАДОК

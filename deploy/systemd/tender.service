@@ -1,0 +1,18 @@
+[Unit]
+Description=Тендерный монитор — веб-панель (FastAPI/uvicorn)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+Group=__GROUP__
+WorkingDirectory=__PROJECT_DIR__
+Environment=PATH=__PYTHON_BIN_DIR__:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# config.py сам читает .env из WorkingDirectory.
+ExecStart=__PYTHON_BIN_DIR__/uvicorn web_app:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

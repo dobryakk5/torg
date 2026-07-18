@@ -402,6 +402,65 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
       </div>
 
       <div class="field">
+        <label>Источник РТС-Тендер</label>
+        <div class="toggle-row">
+          <label class="toggle">
+            <input type="checkbox" name="SOURCE_RTS_ENABLED"
+              {% if settings.get('SOURCE_RTS_ENABLED','0') == '1' %}checked{% endif %}>
+            <span class="toggle-slider"></span>
+          </label>
+          <span style="font-size:.75rem;color:var(--dim)">ЗМО market.rts-tender.ru</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>РТС-Тендер: страниц на фразу</label>
+        <input type="number" name="RTS_SEARCH_PAGES" value="{{ settings.get('RTS_SEARCH_PAGES', '1') }}" min="1" max="10">
+        <span class="hint">Сессия живёт ~10 ч — обновляйте куки/токен из свежего curl</span>
+      </div>
+      <div class="field full-row">
+        <label>РТС-Тендер: cookie-строка (-b из curl целиком)</label>
+        <textarea name="RTS_COOKIE_STRING" rows="2" style="width:100%">{{ settings.get('RTS_COOKIE_STRING', '') }}</textarea>
+        <span class="hint">Пусто — не перезаписывает уже сохранённое значение</span>
+      </div>
+      <div class="field">
+        <label>РТС-Тендер: token</label>
+        <input type="text" name="RTS_TOKEN" value="{{ settings.get('RTS_TOKEN', '') }}">
+        <span class="hint">Заголовок token из свежего curl</span>
+      </div>
+      <div class="field">
+        <label>РТС-Тендер: tenant_id(ы)</label>
+        <input type="text" name="RTS_TENANT_IDS" value='{{ settings.get("RTS_TENANT_IDS", "[\"132\"]") }}'>
+        <span class="hint">JSON-массив разделов витрины, напр. ["132"]</span>
+      </div>
+
+      <div class="field">
+        <label>Источник SberB2B</label>
+        <div class="toggle-row">
+          <label class="toggle">
+            <input type="checkbox" name="SOURCE_SBERB2B_ENABLED"
+              {% if settings.get('SOURCE_SBERB2B_ENABLED','0') == '1' %}checked{% endif %}>
+            <span class="toggle-slider"></span>
+          </label>
+          <span style="font-size:.75rem;color:var(--dim)">Публичные заявки sberb2b.ru (сбор КП)</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>SberB2B: страниц на фразу</label>
+        <input type="number" name="SBERB2B_SEARCH_PAGES" value="{{ settings.get('SBERB2B_SEARCH_PAGES', '1') }}" min="1" max="10">
+        <span class="hint">SFSESSID добывается автоматически, иначе задайте вручную</span>
+      </div>
+      <div class="field">
+        <label>SberB2B: SFSESSID (необязательно)</label>
+        <input type="text" name="SBERB2B_SESSION_ID" value="{{ settings.get('SBERB2B_SESSION_ID', '') }}">
+        <span class="hint">Пусто — коннектор попробует получить сессию сам</span>
+      </div>
+      <div class="field">
+        <label>SberB2B: регион-поддомен</label>
+        <input type="text" name="SBERB2B_SUBJECT_DOMAIN" value="{{ settings.get('SBERB2B_SUBJECT_DOMAIN', '') }}">
+        <span class="hint">Гипотеза-фильтр subjectDomain, напр. rostov; пусто = все</span>
+      </div>
+
+      <div class="field">
         <label>Все активные: страниц ЕИС</label>
         <input type="number" name="BACKFILL_SEARCH_PAGES" value="{{ settings.get('BACKFILL_SEARCH_PAGES', '20') }}" min="1" max="200">
         <span class="hint">Используется при PUBLISH_DATE_FROM=auto и --backfill-active</span>

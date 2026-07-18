@@ -22,6 +22,9 @@ import collections
 import json
 import logging
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import database as db
 from filter_engine import run_stage1_filters

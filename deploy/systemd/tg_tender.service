@@ -1,0 +1,20 @@
+[Unit]
+Description=Тендерный монитор — обработчик Telegram-кнопок (решения GO/NO-GO/скрыть)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+Group=__GROUP__
+WorkingDirectory=__PROJECT_DIR__
+Environment=PATH=__PYTHON_BIN_DIR__:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# ВАЖНО: это ЕДИНСТВЕННЫЙ потребитель Telegram getUpdates. Не запускай при этом
+# `python main.py` в режиме демона (он поднимает свой обработчик) — будет конфликт
+# «terminated by other getUpdates». Периодику гоняй таймерами/cron (см. README).
+ExecStart=__PYTHON__ telegram_decisions.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

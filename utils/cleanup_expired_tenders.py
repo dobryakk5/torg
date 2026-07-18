@@ -21,6 +21,9 @@ from typing import Any
 
 import psycopg2.extras
 
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import config
 import database as db
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=Тендерный монитор — запускать полный цикл раз в день
+
+[Timer]
+# Раз в сутки в 06:30 по времени сервера. Поменяй при необходимости.
+OnCalendar=*-*-* 06:30:00
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

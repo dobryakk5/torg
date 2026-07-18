@@ -1,0 +1,26 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Тендерный монитор — периодические прогоны через cron.
+# АЛЬТЕРНАТИВА systemd-таймерам tender-zmo.timer / tender-daily.timer.
+# Ставь ЛИБО таймеры, ЛИБО cron — не оба сразу (будет двойной запуск).
+#
+# Постоянные сервисы (веб-панель, обработчик кнопок) всё равно через systemd:
+# tender.service и tg_tender.service. Cron закрывает только периодику.
+#
+# Установка (от пользователя, под которым крутится проект — НЕ root):
+#   1) подставь свои пути вместо __PROJECT_DIR__ и __PYTHON__ ниже
+#      (быстро: sed -e "s#__PROJECT_DIR__#/opt/torg#g" -e "s#__PYTHON__#/opt/torg/.venv/bin/python#g" \
+#               deploy/cron/tender.crontab | crontab -)
+#   2) проверь:  crontab -l
+#   3) логи:     tail -f __PROJECT_DIR__/data/cron-zmo.log
+#
+# flock: общий лок не даёт дневному и 15-мин прогону наслаиваться.
+#   -n  у ЗМО  — пропустить тик, если занято.
+#   -w 3000 у дневного — подождать до 50 мин и всё равно выполнить.
+# cd в проект обязателен: config.py читает .env из текущей папки.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ЗМО-цикл каждые 15 минут (сбор малых закупок + разбор + Telegram)
+*/15 * * * * cd __PROJECT_DIR__ && /usr/bin/flock -n /tmp/tender-pipeline.lock __PYTHON__ main.py --zmo >> __PROJECT_DIR__/data/cron-zmo.log 2>&1
+
+# Полный цикл раз в день в 06:30 (ЕИС+B2B+ОКПД2+Tenderplan+ЗМО, разбор, Telegram)
+30 6 * * * cd __PROJECT_DIR__ && /usr/bin/flock -w 3000 /tmp/tender-pipeline.lock __PYTHON__ main.py --once >> __PROJECT_DIR__/data/cron-daily.log 2>&1

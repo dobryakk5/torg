@@ -32,6 +32,8 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import config
 import database as db
 from filter_engine import run_stage1_filters

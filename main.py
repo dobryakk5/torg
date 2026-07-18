@@ -288,6 +288,8 @@ def run_stage1(
     mos: bool | None = None,
     mosreg: bool | None = None,
     zakazrf: bool | None = None,
+    rts: bool | None = None,
+    sberb2b: bool | None = None,
     tenderplan: bool | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -347,6 +349,8 @@ def run_stage1(
     use_mos = mos if mos is not None else getattr(config, "SOURCE_MOS_ENABLED", False)
     use_mosreg = mosreg if mosreg is not None else getattr(config, "SOURCE_MOSREG_ENABLED", False)
     use_zakazrf = zakazrf if zakazrf is not None else getattr(config, "SOURCE_ZAKAZRF_ENABLED", False)
+    use_rts = rts if rts is not None else getattr(config, "SOURCE_RTS_ENABLED", False)
+    use_sberb2b = sberb2b if sberb2b is not None else getattr(config, "SOURCE_SBERB2B_ENABLED", False)
     use_tenderplan = tenderplan if tenderplan is not None else getattr(config, "SOURCE_TENDERPLAN_ENABLED", False)
     pages = config.BACKFILL_SEARCH_PAGES if (backfill_active or auto_active) else config.SEARCH_PAGES
 
@@ -656,7 +660,77 @@ def run_stage1(
                 logger.error(msg)
                 errors.append(msg)
 
-    # ── Канал 9: Tenderplan ───────────────────────────────────────────────────
+    # ── Канал 9: РТС-Тендер (витрина ЗМО market.rts-tender.ru) ─────────────────
+    if use_rts:
+        from sources.rts_tender import search_rts
+        rts_pages = getattr(config, "RTS_SEARCH_PAGES", 1)
+        rts_keywords = (
+            getattr(config, "RTS_SEARCH_KEYWORDS", None)
+            or getattr(config, "SPB_SEARCH_KEYWORDS", None)
+            or storefront_kw_fallback
+        )
+        for keyword in rts_keywords:
+            phase_started_at = datetime.now().isoformat(timespec="seconds")
+            kw_clean = re.sub(r"\s+", " ", keyword).strip()
+            phase_mode = f"stage1:rts:{kw_clean}:pages={rts_pages}"
+            if skip_completed_today and db.was_stage_completed_today(phase_mode):
+                logger.info("РТС-Тендер-поиск '%s' уже готов сегодня — пропускаю", keyword)
+                continue
+            try:
+                rts_tenders = search_rts(keyword, price_from=p_min, price_to=p_max, pages=rts_pages)
+                db.reconnect_db()
+                rts_tenders, dropped = _apply_profile_filter(rts_tenders, profiles)
+                if dropped:
+                    logger.info("Профильный фильтр отсеял %d карточек РТС-Тендер по '%s'", dropped, keyword)
+                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
+                    rts_tenders, f"rts:{keyword}", dry_run, seen_this_run,
+                )
+                saved += phase_saved
+                unique_saved += phase_unique
+                primary_candidates += phase_candidates
+                db.log_run(phase_mode, phase_started_at, found=len(rts_tenders), processed=phase_saved, notified=0, errors="")
+            except Exception as exc:
+                msg = f"Ошибка РТС-Тендер-поиска по '{keyword}': {exc}"
+                logger.error(msg)
+                errors.append(msg)
+                continue
+
+    # ── Канал 10: SberB2B (публичные заявки sberb2b.ru) ────────────────────────
+    if use_sberb2b:
+        from sources.sberb2b import search_sberb2b
+        sberb2b_pages = getattr(config, "SBERB2B_SEARCH_PAGES", 1)
+        sberb2b_keywords = (
+            getattr(config, "SBERB2B_SEARCH_KEYWORDS", None)
+            or getattr(config, "SPB_SEARCH_KEYWORDS", None)
+            or storefront_kw_fallback
+        )
+        for keyword in sberb2b_keywords:
+            phase_started_at = datetime.now().isoformat(timespec="seconds")
+            kw_clean = re.sub(r"\s+", " ", keyword).strip()
+            phase_mode = f"stage1:sberb2b:{kw_clean}:pages={sberb2b_pages}"
+            if skip_completed_today and db.was_stage_completed_today(phase_mode):
+                logger.info("SberB2B-поиск '%s' уже готов сегодня — пропускаю", keyword)
+                continue
+            try:
+                sberb2b_tenders = search_sberb2b(keyword, price_from=p_min, price_to=p_max, pages=sberb2b_pages)
+                db.reconnect_db()
+                sberb2b_tenders, dropped = _apply_profile_filter(sberb2b_tenders, profiles)
+                if dropped:
+                    logger.info("Профильный фильтр отсеял %d карточек SberB2B по '%s'", dropped, keyword)
+                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
+                    sberb2b_tenders, f"sberb2b:{keyword}", dry_run, seen_this_run,
+                )
+                saved += phase_saved
+                unique_saved += phase_unique
+                primary_candidates += phase_candidates
+                db.log_run(phase_mode, phase_started_at, found=len(sberb2b_tenders), processed=phase_saved, notified=0, errors="")
+            except Exception as exc:
+                msg = f"Ошибка SberB2B-поиска по '{keyword}': {exc}"
+                logger.error(msg)
+                errors.append(msg)
+                continue
+
+    # ── Канал 11: Tenderplan ───────────────────────────────────────────────────
     if use_tenderplan:
         phase_started_at = datetime.now().isoformat(timespec="seconds")
         phase_mode = "stage1:tenderplan"
@@ -1297,11 +1371,17 @@ def run_llm(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
             llm_verdict = _verdict(llm_analysis).upper() if llm_analysis else ""
             llm_rejected = llm_verdict == "ПРОПУСТИТЬ"
 
+            # В Telegram шлём только ЗМО (если включён NOTIFY_ONLY_ZMO). Остальные
+            # площадки разбираются и остаются в веб-панели, но не спамят в чат.
+            is_zmo = (tender.get("law_type") or "") == "ЗМО"
+            notify_platform_ok = is_zmo or not config.NOTIFY_ONLY_ZMO
+
             should_notify = (
                 detail_score >= config.MIN_DETAILED_SCORE_FOR_NOTIFY
                 and (tender.get("filter_decision") or "") != "NO-GO"
                 and not tender.get("notified_at")
                 and not llm_rejected
+                and notify_platform_ok
             )
             if llm_rejected and not tender.get("notified_at"):
                 logger.info("%s: LLM-вердикт ПРОПУСТИТЬ — не отправляю (отсеяно по ТЗ)", pnum)
@@ -1613,8 +1693,8 @@ def main() -> None:
     parser.add_argument("--eat-only", action="store_true", help="Stage1 только через ЕАТ «Берёзка» (остальные каналы выключены)")
     parser.add_argument("--mos-only", action="store_true", help="Stage1 только через Портал поставщиков (остальные каналы выключены)")
     parser.add_argument("--zakazrf-only", action="store_true", help="Stage1 только через БП ZakazRF (остальные каналы выключены)")
-    parser.add_argument("--zmo-only", action="store_true", help="Stage1 только через каналы ЗМО: ПП Москвы, ЭМ МО, ЕАТ «Берёзка», ЭМ СПб (ЕИС/B2B/ОКПД2/ZakazRF/Tenderplan выключены)")
-    parser.add_argument("--zmo", action="store_true", help="Полный ЗМО-цикл: сбор ЗМО (stage1) + stage2 + LLM-разбор + отправка в Telegram. Для частого прогона по расписанию (каждые 15 мин)")
+    parser.add_argument("--zmo-only", action="store_true", help="Stage1 только через каналы ЗМО: ПП Москвы, ЭМ МО, ЕАТ «Берёзка», ЭМ СПб, РТС-Тендер, SberB2B (ЕИС/B2B/ОКПД2/ZakazRF/Tenderplan выключены)")
+    parser.add_argument("--zmo", action="store_true", help="Полный ЗМО-цикл: сбор ЗМО (stage1: ПП Москвы, ЭМ МО, ЕАТ, ЭМ СПб, РТС-Тендер, SberB2B) + stage2 + LLM-разбор + отправка в Telegram. Для частого прогона по расписанию (каждые 15 мин)")
     parser.add_argument("--only-new", action="store_true", help="Stage1/Tenderplan: обрабатывать только новые закупки")
     parser.add_argument("--once", action="store_true", help="Один полный цикл: stage1 + stage2")
     parser.add_argument("--test", action="store_true", help="Тестовый полный цикл без отправки в Telegram")
@@ -1641,6 +1721,7 @@ def main() -> None:
     config.SCHEDULE_HOURS               = config.get_runtime("SCHEDULE_HOURS",               config.SCHEDULE_HOURS)
     config.MIN_PRIMARY_SCORE_FOR_DETAIL = config.get_runtime("MIN_PRIMARY_SCORE_FOR_DETAIL", config.MIN_PRIMARY_SCORE_FOR_DETAIL)
     config.MIN_DETAILED_SCORE_FOR_NOTIFY= config.get_runtime("MIN_DETAILED_SCORE_FOR_NOTIFY",config.MIN_DETAILED_SCORE_FOR_NOTIFY)
+    config.NOTIFY_ONLY_ZMO              = config.get_runtime("NOTIFY_ONLY_ZMO",              config.NOTIFY_ONLY_ZMO)
     config.DOCUMENT_DOWNLOAD_MIN_SCORE  = config.get_runtime("DOCUMENT_DOWNLOAD_MIN_SCORE",  config.DOCUMENT_DOWNLOAD_MIN_SCORE)
     config.MIN_SCORE_FOR_LLM            = config.get_runtime("MIN_SCORE_FOR_LLM",            config.MIN_SCORE_FOR_LLM)
     config.STAGE2_LIMIT                 = config.get_runtime("STAGE2_LIMIT",                 config.STAGE2_LIMIT)
@@ -1669,6 +1750,17 @@ def main() -> None:
     config.ZAKAZRF_PLANED_DATE_FROM_TICKS = config.get_runtime(
         "ZAKAZRF_PLANED_DATE_FROM_TICKS", config.ZAKAZRF_PLANED_DATE_FROM_TICKS,
     )
+    config.SOURCE_RTS_ENABLED           = config.get_runtime("SOURCE_RTS_ENABLED",           config.SOURCE_RTS_ENABLED)
+    config.RTS_SEARCH_PAGES             = config.get_runtime("RTS_SEARCH_PAGES",             config.RTS_SEARCH_PAGES)
+    config.RTS_SEARCH_KEYWORDS          = config.get_runtime("RTS_SEARCH_KEYWORDS",          config.RTS_SEARCH_KEYWORDS)
+    config.RTS_COOKIE_STRING            = config.get_runtime("RTS_COOKIE_STRING",            config.RTS_COOKIE_STRING)
+    config.RTS_TOKEN                    = config.get_runtime("RTS_TOKEN",                    config.RTS_TOKEN)
+    config.RTS_TENANT_IDS               = config.get_runtime("RTS_TENANT_IDS",               config.RTS_TENANT_IDS)
+    config.SOURCE_SBERB2B_ENABLED       = config.get_runtime("SOURCE_SBERB2B_ENABLED",       config.SOURCE_SBERB2B_ENABLED)
+    config.SBERB2B_SEARCH_PAGES         = config.get_runtime("SBERB2B_SEARCH_PAGES",         config.SBERB2B_SEARCH_PAGES)
+    config.SBERB2B_SEARCH_KEYWORDS      = config.get_runtime("SBERB2B_SEARCH_KEYWORDS",      config.SBERB2B_SEARCH_KEYWORDS)
+    config.SBERB2B_SESSION_ID           = config.get_runtime("SBERB2B_SESSION_ID",           config.SBERB2B_SESSION_ID)
+    config.SBERB2B_SUBJECT_DOMAIN       = config.get_runtime("SBERB2B_SUBJECT_DOMAIN",       config.SBERB2B_SUBJECT_DOMAIN)
     config.SOURCE_TENDERPLAN_ENABLED    = config.get_runtime("SOURCE_TENDERPLAN_ENABLED",    config.SOURCE_TENDERPLAN_ENABLED)
     config.TENDERPLAN_LIST_PARAMS       = config.get_runtime("TENDERPLAN_LIST_PARAMS",       config.TENDERPLAN_LIST_PARAMS)
     # LLM-настройки (провайдер/модели/триаж) — тоже из БД с откатом на env.
@@ -1715,6 +1807,8 @@ def main() -> None:
             mos=False,
             mosreg=False,
             zakazrf=False,
+            rts=False,
+            sberb2b=False,
             tenderplan=False,
             only_new=args.only_new,
         )
@@ -1732,6 +1826,8 @@ def main() -> None:
             mos=True,
             mosreg=False,
             zakazrf=False,
+            rts=False,
+            sberb2b=False,
             tenderplan=False,
             only_new=args.only_new,
         )
@@ -1753,6 +1849,8 @@ def main() -> None:
             mos=False,
             mosreg=False,
             zakazrf=True,
+            rts=False,
+            sberb2b=False,
             tenderplan=False,
             only_new=args.only_new,
         )
@@ -1774,6 +1872,8 @@ def main() -> None:
             mos=True,
             mosreg=True,
             zakazrf=False,
+            rts=True,
+            sberb2b=True,
             tenderplan=False,
             only_new=args.only_new,
         )
@@ -1794,6 +1894,8 @@ def main() -> None:
             mos=True,
             mosreg=True,
             zakazrf=False,
+            rts=True,
+            sberb2b=True,
             tenderplan=False,
             only_new=args.only_new,
         )

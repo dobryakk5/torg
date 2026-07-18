@@ -1,0 +1,11 @@
+[Unit]
+Description=Тендерный монитор — запускать ЗМО-цикл каждые 15 минут
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+Persistent=false
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
