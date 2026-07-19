@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import logging
 from typing import Optional
+from urllib.parse import quote
 
 import requests
+
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +44,11 @@ def send_tender_message(tender: dict, score: int, score_reasons: list[str], llm_
         format_tender_message(tender, score, score_reasons, llm_analysis),
         bot_token,
         chat_id,
-        reply_markup=decision_keyboard(tender.get("purchase_number", ""), tender.get("url", "")),
+        reply_markup=decision_keyboard(tender.get("purchase_number", "")),
     )
 
 
-def decision_keyboard(purchase_number: str, url: str = "") -> dict:
+def decision_keyboard(purchase_number: str) -> dict:
     """Компактная клавиатура под уведомлением: лайк / дизлайк / скрыть + «Подробности».
 
     callback_data ограничен 64 байтами: префикс «dec:interesting:» = 16 символов,
@@ -64,8 +67,10 @@ def decision_keyboard(purchase_number: str, url: str = "") -> dict:
             {"text": "🙈 скрыть", "callback_data": f"dec:hidden:{key}"},
         ],
     ]
-    if url:
-        buttons.append([{"text": "🔗 Подробности", "url": url}])
+    if purchase_number:
+        # Ведёт на карточку тендера в веб-панели, а не на площадку-источник.
+        details_url = f"{config.WEB_APP_URL}/tender/{quote(purchase_number, safe='')}"
+        buttons.append([{"text": "🔗 Подробности", "url": details_url}])
     return {"inline_keyboard": buttons}
 
 

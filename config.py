@@ -94,6 +94,10 @@ PG_RETRY_DELAY           = float(os.getenv("PG_RETRY_DELAY", "1.5"))
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID",   "YOUR_CHAT_ID")
 
+# Адрес веб-панели — используется для ссылки «Подробности» в Telegram-уведомлениях
+# (ведёт на карточку тендера в системе, а не на площадку-источник).
+WEB_APP_URL = os.getenv("WEB_APP_URL", "http://178.104.150.180:8000").rstrip("/")
+
 # --- Anthropic (Claude) ---
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL      = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
