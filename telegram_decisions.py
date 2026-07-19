@@ -89,9 +89,9 @@ def handle_callback(token: str, callback: dict) -> None:
         timeout=10,
     )
 
-    # «Скрыть» — убираем карточку из ленты целиком. Лайк/дизлайк оставляют кнопки
-    # на месте (решение можно переголосовать), обратная связь — во всплывашке выше.
-    if decision == "hidden" and chat_id is not None and message_id is not None:
+    # Любое решение (кроме noop) убирает карточку из ленты целиком —
+    # решение уже записано в БД, обратная связь дана во всплывашке выше.
+    if decision != "noop" and chat_id is not None and message_id is not None:
         requests.post(
             f"https://api.telegram.org/bot{token}/deleteMessage",
             json={"chat_id": chat_id, "message_id": message_id},
