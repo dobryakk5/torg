@@ -1017,6 +1017,39 @@ def _fetch_tender_documents(tender: dict, progress_cb: Callable[..., None] | Non
         cached_text = collect_document_text(cached_files)
         return {"files": cached_files, "dir": str(cached_dir), "text": cached_text}
 
+    # SberB2B: документы блока «Документы» карточки /needs/<номер>, не с ЕИС.
+    if (tender.get("platform") or "") == "SberB2B":
+        import document_processor as dp
+        from sources.sberb2b import download_documents as _download_sber_docs
+        _cb("connecting", url=tender.get("url") or "")
+        sber_dir = config.DOCUMENTS_DIR / dp.safe_filename(purchase_number)
+        files = _download_sber_docs(purchase_number, sber_dir)
+        files = [Path(p) for p in files if Path(p).is_file()]
+        if not files:
+            raise HTTPException(502, detail={
+                "message": "SberB2B не отдал документы (нет вложений или протух SFSESSID)",
+                "documents_url": tender.get("url") or "",
+            })
+        _cb("extracting")
+        text = collect_document_text(files)
+        _cb("saving")
+        with db._conn() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE tenders SET
+                    document_count = %s,
+                    documents_dir = %s,
+                    documents_hash = %s,
+                    document_text_full = %s,
+                    document_text_excerpt = %s,
+                    updated_at = NOW()
+                WHERE purchase_number = %s
+                """,
+                (len(files), str(sber_dir), hash_files(files), text, text[:4000], purchase_number),
+            )
+        return {"files": files, "dir": str(sber_dir), "text": text}
+
     def _fetch_from(url: str) -> dict:
         _cb("connecting", url=url)
         html, _ = get_tender_page(url, retries=1, timeout=20)

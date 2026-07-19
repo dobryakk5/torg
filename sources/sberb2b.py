@@ -331,6 +331,140 @@ def search_sberb2b(
     return tenders
 
 
+# ── Документы карточки (блок «Документы» на /needs/<номер>) ──────────────────
+
+def _page_headers() -> dict[str, str]:
+    """Заголовки для загрузки HTML-страницы карточки и файлов (не JSON-API)."""
+    return {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ru-RU,ru;q=0.9",
+        "Referer": BOOTSTRAP_URL,
+        "User-Agent": _UA,
+    }
+
+
+def _needs_number(purchase_number: str) -> str:
+    """SBER-720636 → 720636 (для чужих форматов возвращает как есть)."""
+    pn = str(purchase_number or "").strip()
+    return pn[5:] if pn.upper().startswith("SBER-") else pn
+
+
+# Файловый объект в SPA-стейте карточки (медиа блока «Документы»):
+#   "web_path":"/uploads/documents/3e/783/a97/","id":"…",
+#   "original_name":"договор услуги.docx","name":"3e78…f31.docx"
+# URL файла = BASE_URL + web_path + name; человекочитаемое имя = original_name.
+_MEDIA_RE = re.compile(
+    r'"web_path"\s*:\s*"(/uploads/documents/[^"]+?/)"'
+    r'[^{}]*?"original_name"\s*:\s*"([^"]*)"'
+    r'[^{}]*?"name"\s*:\s*"([^"]+?\.[A-Za-z0-9]+)"'
+)
+
+
+def find_document_links(page_html: str) -> list[tuple[str, str]]:
+    """Из HTML карточки /needs/<номер> достаёт документы блока «Документы».
+
+    Возвращает список (url, имя_файла). Ссылки имеют вид
+    https://sberb2b.ru/uploads/documents/<хэш-путь>.<ext>.
+
+    Два источника (нужны оба):
+    - рендер `<a href … download>` — виден только авторизованной сессии;
+    - JSON-стейт SPA (медиа блока) — присутствует и для анонимной сессии,
+      поэтому имена/пути тянутся без входа в аккаунт.
+    """
+    import html as _html
+    from bs4 import BeautifulSoup
+
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    def _add(url: str, name: str) -> None:
+        if url.startswith("/"):
+            url = BASE_URL + url
+        if url in seen:
+            return
+        seen.add(url)
+        out.append((url, name or url.rsplit("/", 1)[-1]))
+
+    # 1) JSON-стейт: entity-декод + разэкранирование JSON-слэшей, затем regex.
+    text = _html.unescape(page_html or "").replace("\\/", "/")
+    for web_path, original, fname in _MEDIA_RE.findall(text):
+        _add(web_path + fname, original)
+
+    # 2) Готовые ссылки (авторизованный рендер, напр. сохранённый MHTML).
+    soup = BeautifulSoup(page_html or "", "html.parser")
+    for a in soup.select('a[href*="/uploads/documents/"]'):
+        href = (a.get("href") or "").strip()
+        if not href:
+            continue
+        name = (a.get("download") or "").strip()
+        if not name:
+            tr = a.find_parent("tr")
+            if tr and tr.find("td"):
+                name = tr.find("td").get_text(" ", strip=True)
+        _add(href, name)
+
+    return out
+
+
+def download_documents(purchase_number: str, target_dir=None,
+                       session_id: Optional[str] = None) -> list:
+    """Скачивает документы карточки SberB2B в target_dir (по умолчанию
+    data/documents/<purchase_number>). Возвращает список сохранённых Path.
+
+    Требует SFSESSID (как и поиск): страница /needs/<номер> отдаётся сессии.
+    Пустой список — не ошибка (у заявки может не быть вложений).
+    """
+    from pathlib import Path
+    from document_processor import safe_filename
+
+    number = _needs_number(purchase_number)
+    if not number:
+        return []
+
+    session_id = session_id or _resolve_session_id()
+    if not session_id:
+        logger.warning("SberB2B: нет SFSESSID — документы %s не скачиваю", purchase_number)
+        return []
+
+    cookies = {"SFSESSID": session_id}
+    page_url = f"{BASE_URL}/needs/{number}"
+    try:
+        resp = requests.get(page_url, headers=_page_headers(), cookies=cookies,
+                            timeout=25, proxies=config.source_proxies())
+        if resp.status_code != 200 or not resp.text:
+            logger.warning("SberB2B: страница %s вернула HTTP %s", page_url, resp.status_code)
+            return []
+    except requests.RequestException as e:
+        logger.warning("SberB2B: не удалось загрузить %s: %s", page_url, e)
+        return []
+
+    links = find_document_links(resp.text)
+    if not links:
+        logger.info("SberB2B %s: документов на карточке нет", purchase_number)
+        return []
+
+    target_dir = Path(target_dir) if target_dir else (config.DOCUMENTS_DIR / safe_filename(purchase_number))
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    saved: list = []
+    for url, name in links:
+        try:
+            r = requests.get(url, headers=_page_headers(), cookies=cookies,
+                            timeout=30, proxies=config.source_proxies())
+            if r.status_code != 200 or not r.content:
+                logger.info("SberB2B: документ не скачан %s: HTTP %s", url, r.status_code)
+                continue
+            fname = safe_filename(name) or safe_filename(url.rsplit("/", 1)[-1]) or "document"
+            path = target_dir / fname
+            path.write_bytes(r.content)
+            saved.append(path)
+            logger.info("SberB2B: скачан документ %s (%d байт)", fname, len(r.content))
+        except requests.RequestException as e:
+            logger.warning("SberB2B: ошибка скачивания %s: %s", url, e)
+        _sleep(0.3)
+    return saved
+
+
 if __name__ == "__main__":
     # Самотест (с российского IP): python -m sources.sberb2b "сайт"
     import sys

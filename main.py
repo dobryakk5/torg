@@ -1051,17 +1051,19 @@ def run_stage2(
             is_tenderplan = (tender.get("platform") or "") == "Tenderplan"
             is_eat = (tender.get("platform") or "") == "ЕАТ"
             is_zakazrf = (tender.get("platform") or "") == "БП ZakazRF"
+            is_sberb2b = (tender.get("platform") or "") == "SberB2B"
             is_eis = ((tender.get("platform") or "ЕИС") == "ЕИС") or (is_tenderplan and _is_eis_number(pnum))
 
             # Для ЕИС-тендеров (включая пришедшие через Tenderplan с ЕИС-номером)
             # тянем zakupki.gov.ru. Для коммерческих Tenderplan и ЕАТ (Angular SPA
             # с анти-ботом, common-info-URL для них не строится) — не тянем: их
             # primary_text из Stage 1 уже содержит спецификацию/условия поставки.
-            if (is_tenderplan and not _is_eis_number(pnum)) or is_eat or is_zakazrf:
+            if (is_tenderplan and not _is_eis_number(pnum)) or is_eat or is_zakazrf or is_sberb2b:
                 source_label = (
                     "коммерческий Tenderplan-тендер" if is_tenderplan
                     else "лот ЕАТ" if is_eat
-                    else "запрос доставки ZakazRF"
+                    else "запрос доставки ZakazRF" if is_zakazrf
+                    else "заявка SberB2B"
                 )
                 logger.info("%s: %s, страницу ЕИС не тянем", pnum, source_label)
             else:
@@ -1227,6 +1229,38 @@ def run_stage2(
                         logger.info("%s: ЕАТ — детали лота не получены (антибот/куки)", pnum)
                 else:
                     logger.warning("%s: ЕАТ — не удалось извлечь GUID лота из url=%s", pnum, tender.get("url", ""))
+
+            # SberB2B: документы блока «Документы» на карточке /needs/<номер>
+            # (договор, заявка, ТЗ) — прямые файлы /uploads/documents/..., отдаются
+            # той же сессии SFSESSID, что и поиск.
+            if is_sberb2b and config.DOWNLOAD_DOCUMENTS and not document_text:
+                from sources.sberb2b import download_documents as _download_sber_docs
+                sber_dir = config.DOCUMENTS_DIR / _safe_fn(pnum)
+                sber_files = _download_sber_docs(pnum, sber_dir)
+                docs_reported += len(sber_files)
+                if sber_files:
+                    docs_saved += len(sber_files)
+                    sber_files = prioritize_document_files(sber_files)
+                    document_text = collect_document_text(sber_files, config.MAX_DOCUMENT_TEXT_CHARS)
+                    if document_text.strip():
+                        docs_with_text += 1
+                    tender["document_count"] = len(sber_files)
+                    tender["documents_dir"] = str(sber_dir)
+                    tender["documents_hash"] = hash_files(sber_files)
+                    spec = extract_object_description_items(sber_files)
+                    if spec.get("items") and not db.list_tender_items(pnum):
+                        db.replace_tender_items(pnum, spec["items"])
+                    work_scope = extract_work_scope_from_files(sber_files)
+                    if work_scope:
+                        details = db.get_tender_details(pnum) or {}
+                        details["work_scope"] = work_scope
+                        db.save_tender_details(pnum, details)
+                        tender["details_json"] = details
+                    full_text_for_terms += "\n" + document_text
+                    scoring_text = "\n".join([document_text, scoring_text])
+                    logger.info("%s: SberB2B реально скачано документов %d", pnum, len(sber_files))
+                else:
+                    logger.info("%s: SberB2B — документов на карточке нет или не скачаны", pnum)
 
             terms = extract_financial_terms(full_text_for_terms)
             for key, value in terms.items():
