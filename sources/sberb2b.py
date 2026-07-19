@@ -32,6 +32,7 @@ import logging
 import random
 import re
 import time
+from datetime import datetime
 from typing import Any, Optional
 
 import requests
@@ -45,8 +46,16 @@ BASE_URL = "https://sberb2b.ru"
 BOOTSTRAP_URL = "https://sberb2b.ru/request/public-requests"
 PAGE_SIZE = 10
 
-_ISO_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})")
-_RU_DT_RE = re.compile(r"(\d{2}\.\d{2}\.\d{4})(?:\s+(\d{2}:\d{2}))?")
+# Время необязательно: заявки без времени приёма КП всё равно дают дату.
+_ISO_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?")
+_RU_DT_RE = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}:\d{2}))?")
+
+
+def _year_ok(year: int) -> bool:
+    """Отсекает нереальные годы. SberB2B для открытых заявок (сбор КП без жёсткого
+    срока) отдаёт дату-заглушку далеко в будущем (напр. 2091) — это не дедлайн."""
+    now = datetime.now().year
+    return now - 5 <= year <= now + 3
 
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -64,10 +73,15 @@ def _to_local_dt(raw: Any) -> str:
     m = _ISO_RE.match(s)
     if m:
         y, mo, d, hh, mm = m.groups()
-        return f"{d}.{mo}.{y} {hh}:{mm}"
+        if not _year_ok(int(y)):
+            return ""
+        return f"{d}.{mo}.{y} {hh}:{mm}" if hh and mm else f"{d}.{mo}.{y}"
     m = _RU_DT_RE.search(s)
     if m:
-        return f"{m.group(1)} {m.group(2)}" if m.group(2) else m.group(1)
+        d, mo, y, hhmm = m.groups()
+        if not _year_ok(int(y)):
+            return ""
+        return f"{d}.{mo}.{y} {hhmm}" if hhmm else f"{d}.{mo}.{y}"
     return ""
 
 
