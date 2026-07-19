@@ -237,7 +237,9 @@ def _map_item(item: dict[str, Any]) -> Optional[dict[str, Any]]:
         "law_type": "ЗМО",
         "deadline": deadline,
         "published_at": published,
-        "url": f"{BASE_URL}/request/public-requests/{uid}",
+        # Публичная карточка заявки живёт на /needs/<номер>, а не на
+        # /request/public-requests/<номер> (последний — служебный ростер/API).
+        "url": f"{BASE_URL}/needs/{uid}",
         "platform": "SberB2B",
         "primary_text": primary_text,
     }
