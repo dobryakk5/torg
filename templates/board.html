@@ -107,24 +107,30 @@ document.querySelectorAll('.cards[data-stage]:not([data-locked])').forEach(funct
       if (oldStage === newStage) return;
 
       const purchaseNumber = card.dataset.purchaseNumber;
+      const toLabelEl = toCol.closest('.col').querySelector('.col-hd span');
+      const toLabel = toLabelEl ? toLabelEl.textContent : newStage;
 
-      card.addEventListener('htmx:afterRequest', function handler(e) {
-        card.removeEventListener('htmx:afterRequest', handler);
-        if (e.detail.successful) {
-          updateCount(oldStage, -1);
-          updateCount(newStage, 1);
-        } else {
-          // откат карточки на исходное место при ошибке сохранения
-          const ref = fromCol.children[oldIndex] || null;
-          fromCol.insertBefore(card, ref);
-          alert('Не удалось сохранить стадию — попробуйте ещё раз');
-        }
-      });
+      const comment = window.prompt('Комментарий к переходу в «' + toLabel + '»:', '');
+      if (comment === null) {
+        // отмена — вернуть карточку на исходное место, запрос не отправляем
+        const ref = fromCol.children[oldIndex] || null;
+        fromCol.insertBefore(card, ref);
+        return;
+      }
 
-      htmx.ajax('POST', '/api/tender/' + purchaseNumber + '/workflow', {
-        values: { work_stage: newStage },
-        swap: 'none',
-        source: card,
+      fetch('/api/tender/' + encodeURIComponent(purchaseNumber) + '/workflow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ work_stage: newStage, comment: comment }),
+      }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        updateCount(oldStage, -1);
+        updateCount(newStage, 1);
+      }).catch(function () {
+        // откат карточки на исходное место при ошибке сохранения
+        const ref = fromCol.children[oldIndex] || null;
+        fromCol.insertBefore(card, ref);
+        alert('Не удалось сохранить стадию — попробуйте ещё раз');
       });
     }
   });

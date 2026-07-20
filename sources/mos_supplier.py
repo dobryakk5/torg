@@ -292,6 +292,95 @@ def search_mos(
     return tenders
 
 
+# ── Документы котировочной сессии ────────────────────────────────────────────
+# Карточка аукциона отдаёт список файлов, качаются по id из хранилища:
+#   GET newapi/api/Auction/Get?auctionId=<id>      → {"files":[{id,name}], ...}
+#   GET newapi/api/FileStorage/Download?id=<fileId> → бинарь файла
+AUCTION_GET_URL   = f"{BASE_URL}/newapi/api/Auction/Get"
+FILE_DOWNLOAD_URL = f"{BASE_URL}/newapi/api/FileStorage/Download"
+
+
+def _auction_id(purchase_number: str, url: str = "") -> str:
+    """Числовой id котировочной сессии из url (/auction/<id>) или из
+    purchase_number ('MOS-Auction10253141' → 10253141)."""
+    m = re.search(r"/auction/(\d+)", url or "")
+    if m:
+        return m.group(1)
+    m = re.search(r"(\d{4,})", purchase_number or "")
+    return m.group(1) if m else ""
+
+
+def _get_auction(auction_id: str, retries: int = 3) -> Optional[dict[str, Any]]:
+    for attempt in range(retries):
+        try:
+            resp = requests.get(AUCTION_GET_URL, params={"auctionId": auction_id},
+                                headers=HEADERS, timeout=25, proxies=config.source_proxies())
+            if resp.status_code == 200:
+                return resp.json()
+            logger.warning("ПП Москвы Auction/Get %s HTTP %s", auction_id, resp.status_code)
+        except (requests.RequestException, ValueError) as e:
+            logger.warning("ПП Москвы Auction/Get ошибка (попытка %d): %s", attempt + 1, e)
+        _sleep(attempt + 1)
+    return None
+
+
+def _download_file(file_id: Any, retries: int = 3) -> Optional[bytes]:
+    for attempt in range(retries):
+        try:
+            resp = requests.get(FILE_DOWNLOAD_URL, params={"id": file_id},
+                                headers=HEADERS, timeout=40, proxies=config.source_proxies())
+            if resp.status_code == 200 and resp.content:
+                return resp.content
+            logger.info("ПП Москвы файл %s HTTP %s", file_id, resp.status_code)
+        except requests.RequestException as e:
+            logger.warning("ПП Москвы скачивание %s ошибка (попытка %d): %s", file_id, attempt + 1, e)
+        _sleep(attempt + 1)
+    return None
+
+
+def download_documents(purchase_number: str, target_dir=None, url: str = "") -> list:
+    """Скачивает документы котировочной сессии (ТЗ, проект контракта, описание)
+    в target_dir. Возвращает список сохранённых Path. Пустой список — не ошибка
+    (у сессии может не быть вложений или id не извлёкся)."""
+    from pathlib import Path
+    from document_processor import safe_filename
+
+    auction_id = _auction_id(purchase_number, url)
+    if not auction_id:
+        logger.info("ПП Москвы %s: не извлёк id аукциона (url=%s)", purchase_number, url)
+        return []
+
+    detail = _get_auction(auction_id)
+    # files — основные документы, licenseFiles — лицензионные (если есть).
+    files = list((detail or {}).get("files") or []) + list((detail or {}).get("licenseFiles") or [])
+    if not files:
+        logger.info("ПП Москвы %s: документов на карточке нет", purchase_number)
+        return []
+
+    target_dir = Path(target_dir) if target_dir else (config.DOCUMENTS_DIR / safe_filename(purchase_number))
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    saved: list = []
+    seen_ids: set = set()
+    for f in files:
+        if not isinstance(f, dict):
+            continue
+        fid = f.get("id")
+        if fid in (None, "") or fid in seen_ids:
+            continue
+        seen_ids.add(fid)
+        content = _download_file(fid)
+        if not content:
+            continue
+        name = str(f.get("name") or f"file_{fid}").strip()
+        path = target_dir / (safe_filename(name) or f"file_{fid}")
+        path.write_bytes(content)
+        saved.append(path)
+        logger.info("ПП Москвы: скачан документ %s (%d байт)", name, len(content))
+        _sleep(0.3)
+    return saved
+
+
 if __name__ == "__main__":
     # Самотест (с российского IP): python -m sources.mos_supplier "сайт"
     import sys

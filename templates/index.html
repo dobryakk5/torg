@@ -852,7 +852,9 @@ tr:hover .fbar-label { color: var(--dim); }
                 <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="manual_decline" onclick="rejectLotFromList(this);event.stopPropagation()" title="Решил не брать">−</button>
               </div>
               {% else %}
-              <span class="exclude-mark" title="{{ 'Решил не брать' if t.rejection_reason == 'manual_decline' else 'Не мой профиль' }}">{{ '−' if t.rejection_reason == 'manual_decline' else 'X' }}</span>
+              {% set reason_titles = {'manual_decline': 'Решил не брать', 'failed': 'Не прошел'} %}
+              {% set reason_marks = {'manual_decline': '−', 'failed': '✗'} %}
+              <span class="exclude-mark" title="{{ reason_titles.get(t.rejection_reason, 'Не мой профиль') }}">{{ reason_marks.get(t.rejection_reason, 'X') }}</span>
               {% endif %}
             </td>
 

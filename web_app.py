@@ -60,13 +60,19 @@ WORK_STAGES = [
     {"key": "lead",      "label": "Интересно",      "color": "neutral", "active": True},
     {"key": "preparing", "label": "Готовлю заявку",  "color": "blue",    "active": True},
     {"key": "submitted", "label": "Заявка подана",   "color": "purple",  "active": True},
-    {"key": "bidding",   "label": "Идут торги",      "color": "orange",  "active": True},
     {"key": "won",       "label": "Выиграл",         "color": "green",   "active": True},
     {"key": "executing", "label": "Исполнение",      "color": "green",   "active": True},
     {"key": "done",      "label": "Закрыт",          "color": "gray",    "active": False},
-    {"key": "lost",      "label": "Проиграл",        "color": "red",     "active": False},
+    {"key": "failed",    "label": "Не прошел",       "color": "red",     "active": False},
 ]
 WORK_STAGE_KEYS = {s["key"] for s in WORK_STAGES}
+
+# Причины отказа (используются в /api/tender/{n}/reject и на доске при переходе в «Не прошел»)
+REJECTION_REASONS = {
+    "not_my_profile": "Не мой профиль",
+    "manual_decline": "Решил не брать",
+    "failed":         "Не прошел",
+}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2007,18 +2013,31 @@ def _work_due_state(work_due) -> str:
 
 @app.post("/api/tender/{purchase_number}/workflow")
 async def api_tender_workflow(purchase_number: str, request: Request):
-    """Обновляет lifecycle-поля тендера (стадия/срок/заметка). Стадия валидируется."""
+    """Обновляет lifecycle-поля тендера (стадия/срок/заметка). Стадия валидируется.
+
+    Смена стадии логируется в decisions (аудит переходов на доске). Переход в
+    стадию «failed» дополнительно помечает тендер как отказной (третий вид
+    отказа, наряду с not_my_profile/manual_decline). Уход со стадии «failed»
+    на любую другую снимает этот отказ.
+    """
     tender = db.get_tender(purchase_number)
     if not tender:
         raise HTTPException(404, "Тендер не найден")
     data = await request.json()
+    old_stage = tender.get("work_stage")
 
     fields: dict = {}
+    new_stage: str | None = None
+    stage_changed = False
     if "work_stage" in data:
         stage = (data.get("work_stage") or "").strip()
         if stage and stage not in WORK_STAGE_KEYS:
             raise HTTPException(400, f"Неизвестная стадия: {stage}")
         fields["work_stage"] = stage  # "" → снять с доски (NULL в БД)
+        new_stage = stage or None
+        stage_changed = new_stage != old_stage
+
+    comment = (data.get("comment") or "").strip()
     if "work_due" in data:
         due = (data.get("work_due") or "").strip()
         if due and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", due):
@@ -2026,11 +2045,25 @@ async def api_tender_workflow(purchase_number: str, request: Request):
         fields["work_due"] = due or None
     if "work_note" in data:
         fields["work_note"] = (data.get("work_note") or "")[:2000]
+    elif stage_changed and comment:
+        fields["work_note"] = comment[:2000]
 
     if not fields:
         raise HTTPException(400, "Нет полей для обновления")
 
     db.set_workflow(purchase_number, fields)
+
+    # Комментарий для аудита: явный comment (с доски) важнее work_note (из карточки тендера)
+    effective_comment = comment or fields.get("work_note", "")
+
+    if stage_changed:
+        if new_stage == "failed":
+            db.set_decision(purchase_number, "rejected", effective_comment or REJECTION_REASONS["failed"], rejection_reason="failed")
+        else:
+            db.log_stage_change(purchase_number, new_stage or "", effective_comment)
+            if old_stage == "failed" and tender.get("rejection_reason") == "failed":
+                db.clear_decision(purchase_number)
+
     updated = db.get_tender(purchase_number) or {}
     return JSONResponse(content={"ok": True, "workflow": {
         "work_stage": updated.get("work_stage"),
@@ -2052,17 +2085,13 @@ async def api_tender_reject(purchase_number: str, request: Request):
     except Exception:
         data = {}
     reason = data.get("reason") or "manual_decline"
-    comments = {
-        "not_my_profile": "Не мой профиль",
-        "manual_decline": "Решил не брать",
-    }
-    if reason not in comments:
+    if reason not in REJECTION_REASONS:
         raise HTTPException(400, "Неизвестная причина отказа")
 
     db.set_decision(
         purchase_number,
         "rejected",
-        comments[reason],
+        REJECTION_REASONS[reason],
         rejection_reason=reason,
     )
     db.set_workflow(purchase_number, {"work_stage": "", "work_due": None})

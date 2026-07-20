@@ -1899,6 +1899,33 @@ def set_decision(
         )
 
 
+def log_stage_change(purchase_number: str, stage_key: str, comment: str = "") -> None:
+    """Пишет аудит-строку о смене стадии на доске работы в таблицу decisions."""
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO decisions (purchase_number, decision, comment, created_at) VALUES (%s, %s, %s, %s)",
+            (purchase_number, f"stage:{stage_key}" if stage_key else "stage:none", comment, _now()),
+        )
+
+
+def clear_decision(purchase_number: str) -> None:
+    """Снимает decision/rejection_reason (например, при уходе со стадии «failed»).
+
+    status сбрасывается в NULL — при следующей пере-оценке (stage1/stage2)
+    он будет пересчитан заново (см. _save_filter_result_once: NULL относится
+    к «пайплайновым» значениям и не считается зафиксированным вручную).
+    """
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """UPDATE tenders
+                  SET decision = NULL, status = NULL, rejection_reason = NULL, updated_at = %s
+                WHERE purchase_number = %s""",
+            (_now(), purchase_number),
+        )
+
+
 def log_run(mode: str, started_at: str, found: int = 0, processed: int = 0, notified: int = 0, errors: str = "") -> None:
     _with_db_retries("log_run", lambda: _log_run_once(mode, started_at, found, processed, notified, errors))
 
