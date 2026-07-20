@@ -1384,8 +1384,26 @@ def run_llm(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
                 or ""
             )
 
+            # В Telegram шлём только ЗМО (если включён NOTIFY_ONLY_ZMO). Остальные
+            # площадки разбираются и остаются в веб-панели, но не спамят в чат.
+            is_zmo = (tender.get("law_type") or "") == "ЗМО"
+            notify_platform_ok = is_zmo or not config.NOTIFY_ONLY_ZMO
+            notify_candidate = (
+                detail_score >= config.MIN_DETAILED_SCORE_FOR_NOTIFY
+                and (tender.get("filter_decision") or "") != "NO-GO"
+                and not tender.get("notified_at")
+                and notify_platform_ok
+            )
+            has_docs = (
+                int(tender.get("document_count") or 0) > 0
+                or bool(str(tender.get("document_text_full") or "").strip())
+            )
+
             llm_analysis = None
-            wants_llm = detail_score >= config.MIN_SCORE_FOR_LLM
+            # Кандидат на отправку с документами обязан пройти LLM-проверку ТЗ
+            # (стоп-факторы: вендор-лок, статус партнёра, «под своего»), даже если
+            # его скор ниже LLM-порога — иначе в чат уйдёт лот с непрочитанным ТЗ.
+            wants_llm = detail_score >= config.MIN_SCORE_FOR_LLM or (notify_candidate and has_docs)
             if llm_configured and wants_llm:
                 try:
                     llm_analysis = analyze_tender(tender, scoring_text)
@@ -1405,20 +1423,15 @@ def run_llm(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
             llm_verdict = _verdict(llm_analysis).upper() if llm_analysis else ""
             llm_rejected = llm_verdict == "ПРОПУСТИТЬ"
 
-            # В Telegram шлём только ЗМО (если включён NOTIFY_ONLY_ZMO). Остальные
-            # площадки разбираются и остаются в веб-панели, но не спамят в чат.
-            is_zmo = (tender.get("law_type") or "") == "ЗМО"
-            notify_platform_ok = is_zmo or not config.NOTIFY_ONLY_ZMO
-
-            should_notify = (
-                detail_score >= config.MIN_DETAILED_SCORE_FOR_NOTIFY
-                and (tender.get("filter_decision") or "") != "NO-GO"
-                and not tender.get("notified_at")
-                and not llm_rejected
-                and notify_platform_ok
-            )
+            # Лот с документами не уходит в чат, пока модель не прочла ТЗ: при
+            # сбое провайдера он остаётся в очереди (mark_analyzed=False) и будет
+            # отправлен следующим прогоном уже с проверкой стоп-факторов.
+            llm_failed = llm_configured and wants_llm and not llm_analysis
+            should_notify = notify_candidate and not llm_rejected and not (llm_failed and has_docs)
             if llm_rejected and not tender.get("notified_at"):
                 logger.info("%s: LLM-вердикт ПРОПУСТИТЬ — не отправляю (отсеяно по ТЗ)", pnum)
+            elif llm_failed and has_docs and notify_candidate:
+                logger.info("%s: LLM не ответил, ТЗ не проверено — отправка отложена до следующего прогона", pnum)
             notified = False
             if should_notify:
                 if dry_run:

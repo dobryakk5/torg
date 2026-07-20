@@ -164,7 +164,7 @@ def format_tender_message(tender: dict, score: int, score_reasons: list[str], ll
         lines.append(f"🛠 <b>Что нужно:</b> {_esc(todo[:220])}")
 
     if llm_analysis:
-        from llm_analyzer import extract_verdict
+        from llm_analyzer import extract_stop_factors, extract_verdict
 
         verdict = extract_verdict(llm_analysis)
         verdict_emoji = {
@@ -173,6 +173,16 @@ def format_tender_message(tender: dict, score: int, score_reasons: list[str], ll
             "ПРОПУСТИТЬ": "🔴",
         }.get(verdict.upper(), "⚪")
         lines.append(f"🤖 Claude: {verdict_emoji} {_esc(verdict)}")
+
+        # Сомнения из документов (вендор-лок, статус партнёра и т.п.) — прямо
+        # в уведомлении, чтобы решение «пас» принималось без похода в панель.
+        stops = extract_stop_factors(llm_analysis)
+        if stops:
+            lines.append("⚠️ <b>Стоп-факторы:</b>")
+            for s in stops[:3]:
+                lines.append(f"  • {_esc(s[:180])}")
+            if len(stops) > 3:
+                lines.append(f"  • …и ещё {len(stops) - 3} (см. панель)")
 
     return "\n".join(lines)
 
