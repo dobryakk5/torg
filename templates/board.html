@@ -25,7 +25,13 @@ html,body { margin:0; background:var(--bg); color:var(--text); font-family:var(-
 .col.c-green  .col-hd { color:var(--go); }
 .col.c-red    .col-hd { color:var(--nogo); }
 .col.c-orange .col-hd, .col.c-purple .col-hd, .col.c-blue .col-hd { color:var(--accent); }
-.card { background:var(--surf2); border:1px solid var(--border); border-radius:8px; padding:.6rem .7rem; margin-bottom:.6rem; }
+.cards { min-height:28px; }
+.cards:empty::after { content:'—'; color:var(--dim); font-size:.68rem; }
+.card { background:var(--surf2); border:1px solid var(--border); border-radius:8px; padding:.6rem .7rem; margin-bottom:.6rem; cursor:grab; }
+.card:active { cursor:grabbing; }
+.card.card-ghost { opacity:.35; border-color:var(--accent); }
+.card.card-chosen { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+.card.card-drag { box-shadow:0 4px 14px rgba(0,0,0,.4); }
 .card a.t { color:var(--text); text-decoration:none; font-size:.82rem; line-height:1.35; display:block; }
 .card a.t:hover { color:var(--accent); }
 .card .meta { font-size:.68rem; color:var(--dim); margin-top:.35rem; line-height:1.5; }
@@ -50,10 +56,11 @@ html,body { margin:0; background:var(--bg); color:var(--text); font-family:var(-
   {% else %}
   <div class="cols">
     {% for col in columns %}
-    <div class="col c-{{ col.color }}">
+    <div class="col c-{{ col.color }}" data-stage="{{ col.key }}">
       <div class="col-hd"><span>{{ col.label }}</span><span class="c-cnt">{{ col.tenders|length }}</span></div>
+      <div class="cards" data-stage="{{ col.key }}"{% if col.key == '_other' %} data-locked="1"{% endif %}>
       {% for t in col.tenders %}
-      <div class="card">
+      <div class="card" data-purchase-number="{{ t.purchase_number }}">
         <a class="t" href="/tender/{{ t.purchase_number }}">{{ t.title or t.purchase_number }}</a>
         <div class="meta">
           {% if t.customer %}🏛 {{ t.customer[:60] }}<br>{% endif %}
@@ -67,11 +74,61 @@ html,body { margin:0; background:var(--bg); color:var(--text); font-family:var(-
         {% if t.work_note %}<div class="note">{{ t.work_note[:160] }}</div>{% endif %}
       </div>
       {% endfor %}
-      {% if not col.tenders %}<div style="color:var(--dim);font-size:.68rem">—</div>{% endif %}
+      </div>
     </div>
     {% endfor %}
   </div>
   {% endif %}
 </div>
+
+<script src="/static/vendor/htmx.min.js"></script>
+<script src="/static/vendor/sortable.min.js"></script>
+<script>
+function updateCount(stageKey, delta) {
+  const cnt = document.querySelector('.col[data-stage="' + stageKey + '"] .c-cnt');
+  if (cnt) cnt.textContent = String(Number(cnt.textContent) + delta);
+}
+
+document.querySelectorAll('.cards[data-stage]:not([data-locked])').forEach(function (el) {
+  new Sortable(el, {
+    group: 'board',
+    draggable: '.card',
+    animation: 150,
+    ghostClass: 'card-ghost',
+    chosenClass: 'card-chosen',
+    dragClass: 'card-drag',
+    onEnd: function (evt) {
+      const card = evt.item;
+      const fromCol = evt.from;
+      const toCol = evt.to;
+      const oldStage = fromCol.dataset.stage;
+      const newStage = toCol.dataset.stage;
+      const oldIndex = evt.oldIndex;
+      if (oldStage === newStage) return;
+
+      const purchaseNumber = card.dataset.purchaseNumber;
+
+      card.addEventListener('htmx:afterRequest', function handler(e) {
+        card.removeEventListener('htmx:afterRequest', handler);
+        if (e.detail.successful) {
+          updateCount(oldStage, -1);
+          updateCount(newStage, 1);
+        } else {
+          // откат карточки на исходное место при ошибке сохранения
+          const ref = fromCol.children[oldIndex] || null;
+          fromCol.insertBefore(card, ref);
+          alert('Не удалось сохранить стадию — попробуйте ещё раз');
+        }
+      });
+
+      htmx.ajax('POST', '/api/tender/' + purchaseNumber + '/workflow', {
+        values: { work_stage: newStage },
+        swap: 'none',
+        source: card,
+      });
+    }
+  });
+});
+</script>
 </body>
 </html>

@@ -38,6 +38,7 @@ from tls_bootstrap import NATIVE_TRUSTSTORE_ACTIVE
 
 from fastapi import FastAPI, Request, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import config
@@ -47,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Тендерный монитор", version="3.0.0")
 templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
 <rect width="64" height="64" rx="12" fill="#06060B"/>

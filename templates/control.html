@@ -121,6 +121,24 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
   .settings-form{grid-template-columns:1fr}
   .jobs-grid{grid-template-columns:1fr 1fr}
 }
+
+/* Кликабельные цифры истории запусков + модалка детали прогона */
+.num-click{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.num-click:hover{color:var(--accent)}
+.run-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;
+  align-items:center;justify-content:center;z-index:1000;padding:1rem}
+.run-modal-backdrop.open{display:flex}
+.run-modal{background:var(--surf);border:1px solid var(--border2);border-radius:10px;
+  max-width:780px;width:100%;max-height:85vh;overflow:auto;padding:1.25rem 1.5rem}
+.run-modal h3{font-size:.9rem;margin-bottom:.85rem;color:var(--text)}
+.run-modal .close-x{float:right;cursor:pointer;color:var(--dim);font-size:1.1rem;line-height:1}
+.run-modal-stats{display:flex;gap:1.1rem;flex-wrap:wrap;margin-bottom:1rem;font-size:.8rem;color:var(--dim)}
+.run-modal-stats b{color:var(--accent);font-family:var(--mono)}
+.run-modal-sub{font-size:.65rem;color:var(--dim);text-transform:uppercase;
+  letter-spacing:.06em;margin-bottom:.4rem}
+.run-modal pre{background:var(--bg);border:1px solid var(--border);border-radius:6px;
+  padding:.75rem;font-family:var(--mono);font-size:.72rem;white-space:pre-wrap;
+  word-break:break-word;color:var(--text)}
 </style>
 {% include "_theme.html" %}
 </head>
@@ -494,9 +512,15 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
       </thead>
       <tbody>
         {% for r in runs %}
-        <tr>
+        {% set stage = r.mode or r.stage or r.run_type or '' %}
+        <tr class="run-row"
+            data-mode="{{ stage }}"
+            data-started="{{ (r.started_at | string)[:19] if r.started_at else '' }}"
+            data-found="{{ r.found or 0 }}"
+            data-processed="{{ r.processed or 0 }}"
+            data-notified="{{ r.notified or 0 }}"
+            data-errors="{{ r.errors or '' }}">
           <td>
-            {% set stage = r.stage or r.run_type or '' %}
             {% if 'stage1' in stage %}<span class="tag tag-1">Stage1</span>
             {% elif 'stage2' in stage %}<span class="tag tag-2">Stage2</span>
             {% elif 'stage3' in stage %}<span class="tag tag-3">Stage3</span>
@@ -505,11 +529,12 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
             {% else %}<span class="tag" style="background:rgba(72,85,104,.3);color:var(--dim)">{{ stage[:8] }}</span>{% endif %}
           </td>
           <td class="mono muted">{{ (r.started_at | string)[:19] if r.started_at else '—' }}</td>
-          <td class="mono">{{ r.found or '—' }}</td>
-          <td class="mono">{{ r.processed or '—' }}</td>
-          <td class="mono">{{ r.notified or '—' }}</td>
-          <td class="muted" style="font-size:.7rem;max-width:200px">
-            {{ (r.errors or '')[:80] or '—' }}
+          <td class="mono num-click" onclick="openRunModal(this.closest('tr'))">{{ r.found or '—' }}</td>
+          <td class="mono num-click" onclick="openRunModal(this.closest('tr'))">{{ r.processed or '—' }}</td>
+          <td class="mono num-click" onclick="openRunModal(this.closest('tr'))">{{ r.notified or '—' }}</td>
+          <td class="muted num-click" style="font-size:.7rem;max-width:200px"
+              onclick="openRunModal(this.closest('tr'))">
+            {{ (r.errors or '')[:80] or '—' }}{% if (r.errors or '')|length > 80 %}…{% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -522,7 +547,48 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
 
 </div>
 
+<!-- ── Модалка детали прогона (клик по цифре в истории) ─────────────── -->
+<div class="run-modal-backdrop" id="runModal" onclick="if(event.target===this)closeRunModal()">
+  <div class="run-modal">
+    <span class="close-x" onclick="closeRunModal()">✕</span>
+    <h3 id="runModalTitle"></h3>
+    <div class="run-modal-stats" id="runModalStats"></div>
+    <div id="runModalErrorsWrap">
+      <div class="run-modal-sub">Ошибки по лотам</div>
+      <pre id="runModalErrors"></pre>
+    </div>
+  </div>
+</div>
+
 <script>
+// ── Модалка детали прогона: полный список ошибок по лотам ─────────────────
+// errors в БД склеены через "; " (main.run_stage2), поэтому режем по нему.
+function openRunModal(tr) {
+  const d = tr.dataset;
+  document.getElementById('runModalTitle').textContent =
+    `Прогон: ${d.mode || '—'}` + (d.started ? ` · ${d.started}` : '');
+  const errs = (d.errors || '').trim();
+  const list = errs ? errs.split('; ').filter(Boolean) : [];
+  document.getElementById('runModalStats').innerHTML =
+    `<span>Найдено <b>${d.found}</b></span>` +
+    `<span>Обработано <b>${d.processed}</b></span>` +
+    `<span>Отправлено <b>${d.notified}</b></span>` +
+    `<span>Ошибок <b>${list.length}</b></span>`;
+  const wrap = document.getElementById('runModalErrorsWrap');
+  if (list.length) {
+    wrap.style.display = '';
+    document.getElementById('runModalErrors').textContent =
+      list.map((e, i) => `${i + 1}. ${e}`).join('\n\n');
+  } else {
+    wrap.style.display = 'none';
+  }
+  document.getElementById('runModal').classList.add('open');
+}
+function closeRunModal() {
+  document.getElementById('runModal').classList.remove('open');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRunModal(); });
+
 // ── Статус задач: polling каждые 3 секунды ───────────────────────────────
 async function pollStatus() {
   try {

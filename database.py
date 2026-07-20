@@ -987,7 +987,7 @@ def _save_novice_explain_once(purchase_number: str, explain: dict[str, Any],
                       novice_explain_created_at = NOW(),
                       updated_at = NOW()
                 WHERE purchase_number = %s""",
-            (json.dumps(explain or {}, ensure_ascii=False, default=str),
+            (json.dumps(strip_nul(explain or {}), ensure_ascii=False, default=str),
              cache_hash, model, purchase_number),
         )
 
@@ -1013,7 +1013,7 @@ def _save_tender_details_once(purchase_number: str, details: dict[str, Any]) -> 
                    updated_at = NOW()
              WHERE purchase_number = %s
             """,
-            (json.dumps(details or {}, ensure_ascii=False, default=str), purchase_number),
+            (json.dumps(strip_nul(details or {}), ensure_ascii=False, default=str), purchase_number),
         )
 
 
@@ -2541,7 +2541,7 @@ def upsert_customer(data: dict[str, Any]) -> None:
             "last_arbitration_date": data.get("last_arbitration_date"),
             "reliability_score":     data.get("reliability_score", 3),
             "notes":                 data.get("notes"),
-            "raw_json":              json.dumps(data.get("raw_json") or {}, ensure_ascii=False),
+            "raw_json":              json.dumps(strip_nul(data.get("raw_json") or {}), ensure_ascii=False),
         })
 
 
