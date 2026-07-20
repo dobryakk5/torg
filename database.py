@@ -2887,35 +2887,38 @@ def scoring_rule_delete(row_id: int) -> None:
 
 
 def scoring_rules_seed(force: bool = False) -> int:
-    """Засевает scoring_rules из filter_engine.DEFAULT_BUCKETS.
+    """Досевает в scoring_rules фразы из filter_engine.DEFAULT_BUCKETS,
+    которых там ещё нет (по паре dim+bucket и точному term).
 
-    Идемпотентно: если таблица непуста и force=False — ничего не делает.
+    Идемпотентно и не трогает пользовательские правки: существующие записи
+    (включая изменённые unless/require/active) не перезаписываются — добавляются
+    только новые дефолтные фразы, появившиеся в коде после первого засева.
     Вызывается из init_db.py (load_defaults) и из API /api/rules/seed.
     """
+    from filter_engine import DEFAULT_BUCKETS
     try:
         with _conn() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT COUNT(*) FROM scoring_rules")
-            count = cur.fetchone()[0]
+            cur.execute("SELECT dim, bucket, term FROM scoring_rules")
+            existing = {(int(d), b, t) for d, b, t in cur.fetchall()}
     except Exception as exc:
         logger.warning("scoring_rules_seed: таблица недоступна: %s", exc)
         return 0
-    if count and not force:
-        logger.info("scoring_rules уже содержит %d записей, seed пропущен", count)
-        return 0
 
-    from filter_engine import DEFAULT_BUCKETS
     inserted = 0
     with _conn() as conn:
         cur = conn.cursor()
         for (dim, bucket), terms in DEFAULT_BUCKETS.items():
             for i, term in enumerate(terms, start=1):
+                if (int(dim), bucket, term) in existing:
+                    continue
                 cur.execute(
                     "INSERT INTO scoring_rules (dim, bucket, term, sort) VALUES (%s, %s, %s, %s)",
                     (int(dim), bucket, term, i * 10),
                 )
                 inserted += 1
-    logger.info("scoring_rules: засеяно %d правил из дефолтов", inserted)
+    if inserted:
+        logger.info("scoring_rules: досеяно %d новых дефолтных фраз", inserted)
     return inserted
 
 
