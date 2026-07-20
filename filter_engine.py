@@ -81,9 +81,13 @@ DEFAULT_BUCKETS: dict[tuple[int, str], list[str]] = {
     ],
     # ── Ф4 Сроки и SLA ─────────────────────────────────────────────────────
     (4, "hard"): [
-        "24/7", "круглосуточно", "ежедневно", "в выходные", "праздничные дни",
+        "24/7", "24х7|24x7|24×7", "круглосуточно", "ежедневно", "в выходные",
+        "праздничные дни", "без выходных",
         "не более 1 часа", "не более одного часа", "в течение 1 часа", "в течение одного часа",
         "аварийное восстановление", "выезд специалиста", "срок реакции",
+        "время реакции", "время решения|время устранения",
+        # SLA-доступность в процентах: «Доступность, % | 99,7» (wildcard-корзина)
+        "доступность*99|доступности*99",
     ],
     (4, "calm"): [
         "в рабочие дни", "в рабочее время", "не более 3 рабочих дней", "не более 5 рабочих дней",
@@ -92,7 +96,10 @@ DEFAULT_BUCKETS: dict[tuple[int, str], list[str]] = {
     # ── Ф5 Требования к участнику ──────────────────────────────────────────
     (5, "hard"): [
         "лицензия фстэк", "лицензии фстэк",
-        "лицензия фсб", "лицензии фсб",
+        # все падежи: «действующую лицензию ФСБ России на … шифровальных средств»
+        "лицензия фсб", "лицензии фсб", "лицензию фсб|лицензией фсб",
+        # криптография/СКЗИ: и требование к участнику, и работа в защищённой сети
+        "шифровальн", "криптографическ", "скзи", "vipnet|випнет",
         "государственная тайна", "гостайна",
         "членство в сро",
         "наличие допуска сро",
@@ -164,7 +171,7 @@ DEFAULT_BUCKETS: dict[tuple[int, str], list[str]] = {
 }
 
 # Корзины, где фразы матчатся как wildcard (символ "*" → .{0,40}).
-WILDCARD_BUCKETS: set[tuple[int, str]] = {(3, "bounded")}
+WILDCARD_BUCKETS: set[tuple[int, str]] = {(3, "bounded"), (4, "hard")}
 
 # Человекочитаемые имена корзин — для UI-редактора и подсказок.
 BUCKET_LABELS: dict[str, str] = {
@@ -373,7 +380,12 @@ def run_filters(tender: dict[str, Any], text: str = "", stage: str = "stage2") -
     stop_factors: list[str] = []
     for f in filters:
         if f.stop_factor:
-            signal = f.signals[0] if f.signals else f.name
+            # Показываем ПРИЧИНУ блокировки (сигнал «✗ …»), а не первый попавшийся
+            # сигнал: иначе стоп Ф4 подписывался «✓ спокойный режим: в рабочие дни».
+            signal = next(
+                (s for s in f.signals if s.lstrip().startswith("✗")),
+                f.signals[0] if f.signals else f.name,
+            )
             stop_factors.append(f"Ф{f.number} {f.name}: {signal}")
 
     decision = _decision(total, stop_factors, stage=stage, filters=filters)
@@ -626,11 +638,19 @@ def _filter_sla(tender: dict[str, Any], text: str, stage: str) -> FilterScore:
         score -= min(3, len(hard))
         signals += [f"⚠ жесткий SLA: {x}" for x in hard[:5]]
 
-    hard_sla_stop = ("24/7" in hard or "круглосуточно" in hard) and any(
-        any(mark in x for mark in ("1 часа", "одного часа")) for x in hard
+    # Стоп: круглосуточный режим ВМЕСТЕ с часовым нормативом решения или
+    # гарантированной доступностью в процентах (напр. 24х7 + «решение за 1 час»
+    # или 24х7 + «доступность 99,7%») — такой SLA в одиночку не вытянуть.
+    roundclock = any(
+        t in hard for t in ("24/7", "24х7|24x7|24×7", "круглосуточно", "без выходных")
     )
-    stop = hard_sla_stop
-    return FilterScore(4, name, score, signals or ["SLA явно не найден"], stop_factor=stop)
+    one_hour = any(any(mark in x for mark in ("1 часа", "одного часа")) for x in hard)
+    availability = any("доступност" in x for x in hard)
+    hard_sla_stop = roundclock and (one_hour or availability)
+    if hard_sla_stop:
+        detail = "решение за час" if one_hour else "гарантированная доступность в %"
+        signals.insert(0, f"✗ неподъёмный SLA: круглосуточный режим + {detail}")
+    return FilterScore(4, name, score, signals or ["SLA явно не найден"], stop_factor=hard_sla_stop)
 
 
 def _filter_requirements(tender: dict[str, Any], text: str, stage: str) -> FilterScore:
@@ -1070,6 +1090,9 @@ _ONSITE_RE = re.compile(
     r"|на\s+территори\w*\s+заказчик"
     r"|по\s+месту\s+нахождени\w*\s+заказчик"
     r"|очн\w*\s+(?:обследован|присутстви|визит)"
+    # «выполняется Исполнителем очно», «установка/обучение очно». Отдельное слово:
+    # «заочно/срочно/точно» не матчатся (\b), «очно-заочной формы» отсекает (?!-).
+    r"|\bочно\b(?!-)"
     r"|монтаж\w*\s+на\s+объект"
     r"|работ\w*\s+на\s+объект\w*\s+заказчик",
     re.I,
