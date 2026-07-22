@@ -703,23 +703,36 @@ async def search_page(request: Request):
     })
 
 
+RUNS_PAGE_SIZE = 30
+
+
 @app.get("/control", response_class=HTMLResponse)
-async def control_page(request: Request):
+async def control_page(request: Request, run_page: int = 1):
     settings = db.get_all_settings()
     stats    = db.get_stats_extended()
     job_status = JobRunner.status()
 
-    # Последние 20 запусков из таблицы runs
+    # История запусков — с пагинацией (после агрегации Stage1 по каналам строк
+    # стало на порядок меньше на прогон, но история за много дней всё равно
+    # длинная, а 20 записей без пагинации отрезали её слишком быстро).
+    run_page = max(1, run_page)
+    runs: list[dict] = []
+    runs_total = 0
     try:
         import psycopg2.extras
         with db._conn() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT count(*) FROM runs")
+            runs_total = cur.fetchone()[0]
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute(
-                "SELECT * FROM runs ORDER BY started_at DESC LIMIT 20"
+                "SELECT * FROM runs ORDER BY started_at DESC LIMIT %s OFFSET %s",
+                (RUNS_PAGE_SIZE, (run_page - 1) * RUNS_PAGE_SIZE),
             )
             runs = [dict(r) for r in cur.fetchall()]
     except Exception:
         runs = []
+    runs_total_pages = max(1, (runs_total + RUNS_PAGE_SIZE - 1) // RUNS_PAGE_SIZE)
 
     return templates.TemplateResponse(request, "control.html", {
         "settings":   settings,
@@ -727,6 +740,9 @@ async def control_page(request: Request):
         "jobs":       JobRunner.JOBS,
         "job_status": job_status,
         "runs":       runs,
+        "runs_page":  run_page,
+        "runs_total_pages": runs_total_pages,
+        "runs_total": runs_total,
     })
 
 

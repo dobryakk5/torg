@@ -500,7 +500,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
   </div>
 
   <!-- ── История запусков ────────────────────────────────────── -->
-  <div class="card full">
+  <div class="card full" id="history">
     <h2>📋 История запусков</h2>
     {% if runs %}
     <table>
@@ -542,6 +542,17 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
     </table>
     {% else %}
     <p style="color:var(--dimmer);font-style:italic;padding:.5rem 0">Запусков пока не было.</p>
+    {% endif %}
+    {% if runs_total_pages and runs_total_pages > 1 %}
+    <div style="display:flex;align-items:center;gap:.6rem;margin-top:.8rem;font-size:.8rem">
+      {% if runs_page > 1 %}
+      <a class="btn-save" style="text-decoration:none" href="/control?run_page={{ runs_page - 1 }}#history">← Новее</a>
+      {% endif %}
+      <span style="color:var(--dimmer)">Страница {{ runs_page }} из {{ runs_total_pages }} · всего запусков: {{ runs_total }}</span>
+      {% if runs_page < runs_total_pages %}
+      <a class="btn-save" style="text-decoration:none" href="/control?run_page={{ runs_page + 1 }}#history">Старее →</a>
+      {% endif %}
+    </div>
     {% endif %}
   </div>
 

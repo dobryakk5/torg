@@ -142,23 +142,6 @@ def _save_watermark(had_errors: bool, dry_run: bool) -> None:
     logger.info("Stage1 инкремент: метка сдвинута на %s", today)
 
 
-def _stage1_phase_mode(
-    kind: str,
-    value: str,
-    days_back: int | None,
-    pages: int,
-    date_from: str | None = None,
-    date_to: str | None = None,
-    auto_active: bool = False,
-) -> str:
-    value = re.sub(r"\s+", " ", value).strip()
-    laws = "".join([("44" if config.SEARCH_44FZ else ""), ("223" if config.SEARCH_223FZ else "")])
-    return (
-        f"stage1:{kind}:{value}:period={_stage1_period_label(days_back, date_from, date_to, auto_active)}:pages={pages}:"
-        f"price={config.PRICE_MIN}-{config.PRICE_MAX}:fz={laws or 'none'}"
-    )
-
-
 def _apply_profile_filter(
     tenders: list[dict],
     profiles: list["sp.Profile"],
@@ -271,6 +254,64 @@ def _process_stage1_tenders(
     return saved, newly_counted, primary_candidates
 
 
+def _run_stage1_channel(
+    *,
+    channel_slug: str,
+    channel_title: str,
+    keywords: list[str],
+    search_fn,
+    profiles: list["sp.Profile"],
+    dry_run: bool,
+    seen_this_run: set[str],
+    skip_completed_today: bool,
+    errors: list[str],
+    filter_fn=None,
+    only_new: bool = False,
+) -> tuple[int, int, int]:
+    """Гоняет канал по списку ключевых фраз и пишет В RUNS ОДНУ строку на весь
+    канал (найдено/обработано суммарно по всем фразам), а не по строке на
+    каждую фразу — иначе история запусков захлёбывается в десятках дублей
+    одного и того же канала за один проход Stage 1.
+
+    «processed» = кандидаты, ушедшие в очередь на Stage 2 (primary_score выше
+    порога), а не просто число сохранённых в БД карточек.
+    """
+    if not keywords:
+        return 0, 0, 0   # фраз для канала нет (пустой профиль) — логировать нечего
+    phase_mode = f"stage1:{channel_slug}"
+    if skip_completed_today and db.was_stage_completed_today(phase_mode):
+        logger.info("%s уже готов сегодня — пропускаю канал", channel_title)
+        return 0, 0, 0
+
+    started_at = datetime.now().isoformat(timespec="seconds")
+    fn_filter = filter_fn or (lambda t: _apply_profile_filter(t, profiles))
+    total_found = total_saved = total_unique = total_candidates = 0
+
+    for keyword in keywords:
+        try:
+            tenders = search_fn(keyword)
+            db.reconnect_db()
+            tenders, dropped = fn_filter(tenders)
+            if dropped:
+                logger.info("Профильный фильтр отсеял %d карточек %s по '%s'", dropped, channel_title, keyword)
+            phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
+                tenders, f"{channel_slug}:{keyword}", dry_run, seen_this_run, only_new=only_new,
+            )
+            total_found += len(tenders)
+            total_saved += phase_saved
+            total_unique += phase_unique
+            total_candidates += phase_candidates
+        except Exception as exc:
+            msg = f"Ошибка {channel_title}-поиска по '{keyword}': {exc}"
+            logger.error(msg)
+            errors.append(msg)
+            continue
+
+    db.log_run(phase_mode, started_at, found=total_found, processed=total_candidates, notified=0, errors="")
+    logger.info("%s: найдено %d, кандидатов на этап 2: %d", channel_title, total_found, total_candidates)
+    return total_saved, total_unique, total_candidates
+
+
 def run_stage1(
     dry_run: bool = False,
     skip_completed_today: bool = False,
@@ -360,61 +401,21 @@ def run_stage1(
     )
 
     # ── Канал 1: поиск по ключевым словам (плюс-фразы активных профилей) ───
-    for profile, keyword in eis_query_pairs:
-        label = f"{profile.name}:{keyword}" if profile else keyword
-        phase_started_at = datetime.now().isoformat(timespec="seconds")
-        phase_mode = _stage1_phase_mode("keyword", label, d_back, pages, d_from, d_to, auto_active)
-        if skip_completed_today and db.was_stage_completed_today(phase_mode):
-            logger.info("Поиск '%s' уже готов сегодня — пропускаю", label)
-            continue
-        try:
-            tenders = search_eis(
-                keyword=keyword,
-                price_from=p_min,
-                price_to=p_max,
-                fz44=use_44,
-                fz223=use_223,
-                pages=pages,
-                days_back=d_back,
-                date_from=d_from,
-                date_to=d_to,
-            )
-            db.reconnect_db()
-            tenders, dropped = _apply_profile_filter(tenders, profiles)
-            if dropped:
-                logger.info("Профильный фильтр отсеял %d карточек по запросу '%s'", dropped, label)
-            phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
-                tenders,
-                label,
-                dry_run,
-                seen_this_run,
-            )
-            saved += phase_saved
-            unique_saved += phase_unique
-            primary_candidates += phase_candidates
-            db.log_run(phase_mode, phase_started_at, found=len(tenders), processed=phase_saved, notified=0, errors="")
-        except Exception as exc:
-            msg = f"Ошибка поиска по '{label}': {exc}"
-            logger.error(msg)
-            errors.append(msg)
-            continue
-
-    # ── Канал 2: поиск по ОКПД2 — опциональный канал КАЖДОГО профиля ───────
-    # (пусто okpd2_codes у профиля = профиль в этом канале не участвует).
-    if use_okpd2:
-        for profile in profiles:
-            if not profile.okpd2_codes:
-                continue
-            phase_started_at = datetime.now().isoformat(timespec="seconds")
-            okpd2_value = ",".join(profile.okpd2_codes)
-            phase_mode = _stage1_phase_mode("okpd2", f"{profile.name}:{okpd2_value}", d_back, pages, d_from, d_to, auto_active)
-            if skip_completed_today and db.was_stage_completed_today(phase_mode):
-                logger.info("ОКПД2-поиск %s (%s) уже готов сегодня — пропускаю", profile.okpd2_codes, profile.name)
-                continue
-            before_unique = len(seen_this_run)
+    # Одна строка в runs на весь канал (не на каждую фразу профиля) — см.
+    # docstring _run_stage1_channel.
+    eis_phase_mode = "stage1:eis"
+    if not eis_query_pairs:
+        pass   # канал явно отключён (keywords=[] у точечных *-only запусков) — не логируем
+    elif skip_completed_today and db.was_stage_completed_today(eis_phase_mode):
+        logger.info("ЕИС по ключевым словам уже готов сегодня — пропускаю канал")
+    else:
+        eis_started_at = datetime.now().isoformat(timespec="seconds")
+        eis_found = eis_candidates = 0
+        for profile, keyword in eis_query_pairs:
+            label = f"{profile.name}:{keyword}" if profile else keyword
             try:
-                okpd2_tenders = search_eis_by_okpd2(
-                    okpd2_codes=profile.okpd2_codes,
+                tenders = search_eis(
+                    keyword=keyword,
                     price_from=p_min,
                     price_to=p_max,
                     fz44=use_44,
@@ -425,54 +426,110 @@ def run_stage1(
                     date_to=d_to,
                 )
                 db.reconnect_db()
-                okpd2_tenders, dropped = _apply_profile_filter(okpd2_tenders, profiles)
+                tenders, dropped = _apply_profile_filter(tenders, profiles)
                 if dropped:
-                    logger.info("Профильный фильтр отсеял %d карточек по ОКПД2 (%s)", dropped, profile.name)
+                    logger.info("Профильный фильтр отсеял %d карточек по запросу '%s'", dropped, label)
                 phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
-                    okpd2_tenders,
-                    f"okpd2:{profile.name}",
+                    tenders,
+                    label,
                     dry_run,
                     seen_this_run,
                 )
                 saved += phase_saved
                 unique_saved += phase_unique
                 primary_candidates += phase_candidates
-                logger.info("ОКПД2-канал (%s) добавил %d новых тендеров", profile.name, len(seen_this_run) - before_unique)
-                db.log_run(phase_mode, phase_started_at, found=len(okpd2_tenders), processed=phase_saved, notified=0, errors="")
+                eis_found += len(tenders)
+                eis_candidates += phase_candidates
             except Exception as exc:
-                logger.error("Ошибка ОКПД2-поиска (%s): %s", profile.name, exc)
-                errors.append(f"ОКПД2 ({profile.name}): {exc}")
-
-    # ── Канал 3: B2B-Center (коммерческие закупки и 223-ФЗ вне ЕИС) ──────────
-    if use_b2b:
-        from sources.b2b_center import search_b2b
-        b2b_pages = getattr(config, "B2B_SEARCH_PAGES", 1)
-        for profile, keyword in eis_query_pairs:
-            label = f"{profile.name}:{keyword}" if profile else keyword
-            phase_started_at = datetime.now().isoformat(timespec="seconds")
-            kw_clean = re.sub(r"\s+", " ", label).strip()
-            phase_mode = f"stage1:b2b:{kw_clean}:pages={b2b_pages}"
-            if skip_completed_today and db.was_stage_completed_today(phase_mode):
-                logger.info("B2B-поиск '%s' уже готов сегодня — пропускаю", label)
-                continue
-            try:
-                b2b_tenders = search_b2b(keyword, price_from=p_min, price_to=p_max, pages=b2b_pages)
-                db.reconnect_db()
-                b2b_tenders, dropped = _apply_profile_filter(b2b_tenders, profiles)
-                if dropped:
-                    logger.info("Профильный фильтр отсеял %d карточек B2B по запросу '%s'", dropped, label)
-                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
-                    b2b_tenders, f"b2b:{label}", dry_run, seen_this_run,
-                )
-                saved += phase_saved
-                unique_saved += phase_unique
-                primary_candidates += phase_candidates
-                db.log_run(phase_mode, phase_started_at, found=len(b2b_tenders), processed=phase_saved, notified=0, errors="")
-            except Exception as exc:
-                msg = f"Ошибка B2B-поиска по '{label}': {exc}"
+                msg = f"Ошибка поиска по '{label}': {exc}"
                 logger.error(msg)
                 errors.append(msg)
                 continue
+        db.log_run(eis_phase_mode, eis_started_at, found=eis_found, processed=eis_candidates, notified=0, errors="")
+        logger.info("ЕИС (ключевые слова): найдено %d, кандидатов на этап 2: %d", eis_found, eis_candidates)
+
+    # ── Канал 2: поиск по ОКПД2 — опциональный канал КАЖДОГО профиля ───────
+    # (пусто okpd2_codes у профиля = профиль в этом канале не участвует).
+    # Одна строка в runs на весь канал (не на каждый профиль).
+    if use_okpd2:
+        okpd2_phase_mode = "stage1:okpd2"
+        if skip_completed_today and db.was_stage_completed_today(okpd2_phase_mode):
+            logger.info("ОКПД2-канал уже готов сегодня — пропускаю")
+        else:
+            okpd2_started_at = datetime.now().isoformat(timespec="seconds")
+            okpd2_found = okpd2_candidates = 0
+            for profile in profiles:
+                if not profile.okpd2_codes:
+                    continue
+                before_unique = len(seen_this_run)
+                try:
+                    okpd2_tenders = search_eis_by_okpd2(
+                        okpd2_codes=profile.okpd2_codes,
+                        price_from=p_min,
+                        price_to=p_max,
+                        fz44=use_44,
+                        fz223=use_223,
+                        pages=pages,
+                        days_back=d_back,
+                        date_from=d_from,
+                        date_to=d_to,
+                    )
+                    db.reconnect_db()
+                    okpd2_tenders, dropped = _apply_profile_filter(okpd2_tenders, profiles)
+                    if dropped:
+                        logger.info("Профильный фильтр отсеял %d карточек по ОКПД2 (%s)", dropped, profile.name)
+                    phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
+                        okpd2_tenders,
+                        f"okpd2:{profile.name}",
+                        dry_run,
+                        seen_this_run,
+                    )
+                    saved += phase_saved
+                    unique_saved += phase_unique
+                    primary_candidates += phase_candidates
+                    okpd2_found += len(okpd2_tenders)
+                    okpd2_candidates += phase_candidates
+                    logger.info("ОКПД2-канал (%s) добавил %d новых тендеров", profile.name, len(seen_this_run) - before_unique)
+                except Exception as exc:
+                    logger.error("Ошибка ОКПД2-поиска (%s): %s", profile.name, exc)
+                    errors.append(f"ОКПД2 ({profile.name}): {exc}")
+            db.log_run(okpd2_phase_mode, okpd2_started_at, found=okpd2_found, processed=okpd2_candidates, notified=0, errors="")
+            logger.info("ОКПД2: найдено %d, кандидатов на этап 2: %d", okpd2_found, okpd2_candidates)
+
+    # ── Канал 3: B2B-Center (коммерческие закупки и 223-ФЗ вне ЕИС) ──────────
+    # Одна строка в runs на весь канал (не на каждую фразу профиля).
+    if use_b2b:
+        from sources.b2b_center import search_b2b
+        b2b_pages = getattr(config, "B2B_SEARCH_PAGES", 1)
+        b2b_phase_mode = "stage1:b2b"
+        if skip_completed_today and db.was_stage_completed_today(b2b_phase_mode):
+            logger.info("B2B-канал уже готов сегодня — пропускаю")
+        else:
+            b2b_started_at = datetime.now().isoformat(timespec="seconds")
+            b2b_found = b2b_candidates = 0
+            for profile, keyword in eis_query_pairs:
+                label = f"{profile.name}:{keyword}" if profile else keyword
+                try:
+                    b2b_tenders = search_b2b(keyword, price_from=p_min, price_to=p_max, pages=b2b_pages)
+                    db.reconnect_db()
+                    b2b_tenders, dropped = _apply_profile_filter(b2b_tenders, profiles)
+                    if dropped:
+                        logger.info("Профильный фильтр отсеял %d карточек B2B по запросу '%s'", dropped, label)
+                    phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
+                        b2b_tenders, f"b2b:{label}", dry_run, seen_this_run,
+                    )
+                    saved += phase_saved
+                    unique_saved += phase_unique
+                    primary_candidates += phase_candidates
+                    b2b_found += len(b2b_tenders)
+                    b2b_candidates += phase_candidates
+                except Exception as exc:
+                    msg = f"Ошибка B2B-поиска по '{label}': {exc}"
+                    logger.error(msg)
+                    errors.append(msg)
+                    continue
+            db.log_run(b2b_phase_mode, b2b_started_at, found=b2b_found, processed=b2b_candidates, notified=0, errors="")
+            logger.info("B2B-Center: найдено %d, кандидатов на этап 2: %d", b2b_found, b2b_candidates)
 
     # Витрины (каналы 4-7) с точным полнотекстовым поиском: фразы — всегда из
     # активных профилей (короткие, ≤2 слова), НЕЗАВИСИМО от override keywords
@@ -485,31 +542,15 @@ def run_stage1(
         from sources.spb_estore import search_spb
         spb_pages = getattr(config, "SPB_SEARCH_PAGES", 2)
         spb_keywords = getattr(config, "SPB_SEARCH_KEYWORDS", None) or storefront_kw_fallback
-        for keyword in spb_keywords:
-            phase_started_at = datetime.now().isoformat(timespec="seconds")
-            kw_clean = re.sub(r"\s+", " ", keyword).strip()
-            phase_mode = f"stage1:spb:{kw_clean}:pages={spb_pages}"
-            if skip_completed_today and db.was_stage_completed_today(phase_mode):
-                logger.info("ЭМ СПб-поиск '%s' уже готов сегодня — пропускаю", keyword)
-                continue
-            try:
-                spb_tenders = search_spb(keyword, price_from=p_min, price_to=p_max, pages=spb_pages)
-                db.reconnect_db()
-                spb_tenders, dropped = _apply_profile_filter(spb_tenders, profiles)
-                if dropped:
-                    logger.info("Профильный фильтр отсеял %d карточек ЭМ СПб по '%s'", dropped, keyword)
-                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
-                    spb_tenders, f"spb:{keyword}", dry_run, seen_this_run,
-                )
-                saved += phase_saved
-                unique_saved += phase_unique
-                primary_candidates += phase_candidates
-                db.log_run(phase_mode, phase_started_at, found=len(spb_tenders), processed=phase_saved, notified=0, errors="")
-            except Exception as exc:
-                msg = f"Ошибка ЭМ СПб-поиска по '{keyword}': {exc}"
-                logger.error(msg)
-                errors.append(msg)
-                continue
+        phase_saved, phase_unique, phase_candidates = _run_stage1_channel(
+            channel_slug="spb", channel_title="ЭМ СПб", keywords=spb_keywords,
+            search_fn=lambda kw: search_spb(kw, price_from=p_min, price_to=p_max, pages=spb_pages),
+            profiles=profiles, dry_run=dry_run, seen_this_run=seen_this_run,
+            skip_completed_today=skip_completed_today, errors=errors,
+        )
+        saved += phase_saved
+        unique_saved += phase_unique
+        primary_candidates += phase_candidates
 
     # ── Канал 5: ЕАТ «Берёзка» (федеральные закупки малого объёма) ──────────
     if use_eat:
@@ -520,38 +561,20 @@ def run_stage1(
             or getattr(config, "SPB_SEARCH_KEYWORDS", None)
             or storefront_kw_fallback
         )
-        for keyword in eat_keywords:
-            phase_started_at = datetime.now().isoformat(timespec="seconds")
-            kw_clean = re.sub(r"\s+", " ", keyword).strip()
-            phase_mode = f"stage1:eat:{kw_clean}:pages={eat_pages}"
-            if skip_completed_today and db.was_stage_completed_today(phase_mode):
-                logger.info("ЕАТ-поиск '%s' уже готов сегодня — пропускаю", keyword)
-                continue
-            try:
-                eat_tenders = search_eat(keyword, price_from=p_min, price_to=p_max, pages=eat_pages)
-                db.reconnect_db()
-                eat_tenders, dropped = sp.filter_and_tag(
-                    eat_tenders, profiles=profiles, keep_unmatched=True,
-                )
-                if dropped:
-                    logger.info(
-                        "Профильный фильтр понизил score %d карточек ЕАТ по '%s'",
-                        dropped, keyword,
-                    )
-                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
-                    eat_tenders, f"eat:{keyword}", dry_run, seen_this_run,
-                )
-                saved += phase_saved
-                unique_saved += phase_unique
-                primary_candidates += phase_candidates
-                db.log_run(phase_mode, phase_started_at, found=len(eat_tenders), processed=phase_saved, notified=0, errors="")
-            except Exception as exc:
-                msg = f"Ошибка ЕАТ-поиска по '{keyword}': {exc}"
-                logger.error(msg)
-                errors.append(msg)
-                continue
+        phase_saved, phase_unique, phase_candidates = _run_stage1_channel(
+            channel_slug="eat", channel_title="ЕАТ", keywords=eat_keywords,
+            search_fn=lambda kw: search_eat(kw, price_from=p_min, price_to=p_max, pages=eat_pages),
+            profiles=profiles, dry_run=dry_run, seen_this_run=seen_this_run,
+            skip_completed_today=skip_completed_today, errors=errors,
+            filter_fn=lambda t: sp.filter_and_tag(t, profiles=profiles, keep_unmatched=True),
+        )
+        saved += phase_saved
+        unique_saved += phase_unique
+        primary_candidates += phase_candidates
 
     # ── Канал 6: Портал поставщиков Москвы (котировочные сессии / потребности) ──
+    # Портал поставщиков ищем в форме живого фильтра фронтенда: глобальные
+    # PRICE_MIN/PRICE_MAX к queryDto этого канала не добавляем.
     if use_mos:
         from sources.mos_supplier import search_mos
         mos_pages = getattr(config, "MOS_SEARCH_PAGES", 1)
@@ -560,33 +583,15 @@ def run_stage1(
             or getattr(config, "SPB_SEARCH_KEYWORDS", None)
             or storefront_kw_fallback
         )
-        for keyword in mos_keywords:
-            phase_started_at = datetime.now().isoformat(timespec="seconds")
-            kw_clean = re.sub(r"\s+", " ", keyword).strip()
-            phase_mode = f"stage1:mos:{kw_clean}:pages={mos_pages}"
-            if skip_completed_today and db.was_stage_completed_today(phase_mode):
-                logger.info("ПП Москвы-поиск '%s' уже готов сегодня — пропускаю", keyword)
-                continue
-            try:
-                # Портал поставщиков ищем в форме живого фильтра фронтенда:
-                # глобальные PRICE_MIN/PRICE_MAX к queryDto этого канала не добавляем.
-                mos_tenders = search_mos(keyword, pages=mos_pages)
-                db.reconnect_db()
-                mos_tenders, dropped = _apply_profile_filter(mos_tenders, profiles)
-                if dropped:
-                    logger.info("Профильный фильтр отсеял %d карточек ПП Москвы по '%s'", dropped, keyword)
-                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
-                    mos_tenders, f"mos:{keyword}", dry_run, seen_this_run,
-                )
-                saved += phase_saved
-                unique_saved += phase_unique
-                primary_candidates += phase_candidates
-                db.log_run(phase_mode, phase_started_at, found=len(mos_tenders), processed=phase_saved, notified=0, errors="")
-            except Exception as exc:
-                msg = f"Ошибка ПП Москвы-поиска по '{keyword}': {exc}"
-                logger.error(msg)
-                errors.append(msg)
-                continue
+        phase_saved, phase_unique, phase_candidates = _run_stage1_channel(
+            channel_slug="mos", channel_title="ПП Москвы", keywords=mos_keywords,
+            search_fn=lambda kw: search_mos(kw, pages=mos_pages),
+            profiles=profiles, dry_run=dry_run, seen_this_run=seen_this_run,
+            skip_completed_today=skip_completed_today, errors=errors,
+        )
+        saved += phase_saved
+        unique_saved += phase_unique
+        primary_candidates += phase_candidates
 
     # ── Канал 7: Электронный магазин Московской области (ЗМО) ────────────────
     if use_mosreg:
@@ -597,31 +602,15 @@ def run_stage1(
             or getattr(config, "SPB_SEARCH_KEYWORDS", None)
             or storefront_kw_fallback
         )
-        for keyword in mosreg_keywords:
-            phase_started_at = datetime.now().isoformat(timespec="seconds")
-            kw_clean = re.sub(r"\s+", " ", keyword).strip()
-            phase_mode = f"stage1:mosreg:{kw_clean}:pages={mosreg_pages}"
-            if skip_completed_today and db.was_stage_completed_today(phase_mode):
-                logger.info("ЭМ МО-поиск '%s' уже готов сегодня — пропускаю", keyword)
-                continue
-            try:
-                mosreg_tenders = search_mosreg(keyword, price_from=p_min, price_to=p_max, pages=mosreg_pages)
-                db.reconnect_db()
-                mosreg_tenders, dropped = _apply_profile_filter(mosreg_tenders, profiles)
-                if dropped:
-                    logger.info("Профильный фильтр отсеял %d карточек ЭМ МО по '%s'", dropped, keyword)
-                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
-                    mosreg_tenders, f"mosreg:{keyword}", dry_run, seen_this_run,
-                )
-                saved += phase_saved
-                unique_saved += phase_unique
-                primary_candidates += phase_candidates
-                db.log_run(phase_mode, phase_started_at, found=len(mosreg_tenders), processed=phase_saved, notified=0, errors="")
-            except Exception as exc:
-                msg = f"Ошибка ЭМ МО-поиска по '{keyword}': {exc}"
-                logger.error(msg)
-                errors.append(msg)
-                continue
+        phase_saved, phase_unique, phase_candidates = _run_stage1_channel(
+            channel_slug="mosreg", channel_title="ЭМ МО", keywords=mosreg_keywords,
+            search_fn=lambda kw: search_mosreg(kw, price_from=p_min, price_to=p_max, pages=mosreg_pages),
+            profiles=profiles, dry_run=dry_run, seen_this_run=seen_this_run,
+            skip_completed_today=skip_completed_today, errors=errors,
+        )
+        saved += phase_saved
+        unique_saved += phase_unique
+        primary_candidates += phase_candidates
 
     # ── Канал 8: Бизнес-площадка ZakazRF (запросы доставки) ────────────────
     if use_zakazrf:
@@ -632,33 +621,15 @@ def run_stage1(
             or getattr(config, "SPB_SEARCH_KEYWORDS", None)
             or storefront_kw_fallback
         )
-        for keyword in zakazrf_keywords:
-            phase_started_at = datetime.now().isoformat(timespec="seconds")
-            kw_clean = re.sub(r"\s+", " ", keyword).strip()
-            phase_mode = f"stage1:zakazrf:{kw_clean}:pages={zakazrf_pages}"
-            if skip_completed_today and db.was_stage_completed_today(phase_mode):
-                logger.info("БП ZakazRF-поиск '%s' уже готов сегодня — пропускаю", keyword)
-                continue
-            try:
-                zakazrf_tenders = search_zakazrf(keyword, pages=zakazrf_pages)
-                db.reconnect_db()
-                zakazrf_tenders, dropped = _apply_profile_filter(zakazrf_tenders, profiles)
-                if dropped:
-                    logger.info("Профильный фильтр отсеял %d карточек БП ZakazRF по '%s'", dropped, keyword)
-                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
-                    zakazrf_tenders, f"zakazrf:{keyword}", dry_run, seen_this_run,
-                )
-                saved += phase_saved
-                unique_saved += phase_unique
-                primary_candidates += phase_candidates
-                db.log_run(
-                    phase_mode, phase_started_at, found=len(zakazrf_tenders),
-                    processed=phase_saved, notified=0, errors="",
-                )
-            except Exception as exc:
-                msg = f"Ошибка БП ZakazRF-поиска по '{keyword}': {exc}"
-                logger.error(msg)
-                errors.append(msg)
+        phase_saved, phase_unique, phase_candidates = _run_stage1_channel(
+            channel_slug="zakazrf", channel_title="БП ZakazRF", keywords=zakazrf_keywords,
+            search_fn=lambda kw: search_zakazrf(kw, pages=zakazrf_pages),
+            profiles=profiles, dry_run=dry_run, seen_this_run=seen_this_run,
+            skip_completed_today=skip_completed_today, errors=errors,
+        )
+        saved += phase_saved
+        unique_saved += phase_unique
+        primary_candidates += phase_candidates
 
     # ── Канал 9: РТС-Тендер (витрина ЗМО market.rts-tender.ru) ─────────────────
     if use_rts:
@@ -669,31 +640,15 @@ def run_stage1(
             or getattr(config, "SPB_SEARCH_KEYWORDS", None)
             or storefront_kw_fallback
         )
-        for keyword in rts_keywords:
-            phase_started_at = datetime.now().isoformat(timespec="seconds")
-            kw_clean = re.sub(r"\s+", " ", keyword).strip()
-            phase_mode = f"stage1:rts:{kw_clean}:pages={rts_pages}"
-            if skip_completed_today and db.was_stage_completed_today(phase_mode):
-                logger.info("РТС-Тендер-поиск '%s' уже готов сегодня — пропускаю", keyword)
-                continue
-            try:
-                rts_tenders = search_rts(keyword, price_from=p_min, price_to=p_max, pages=rts_pages)
-                db.reconnect_db()
-                rts_tenders, dropped = _apply_profile_filter(rts_tenders, profiles)
-                if dropped:
-                    logger.info("Профильный фильтр отсеял %d карточек РТС-Тендер по '%s'", dropped, keyword)
-                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
-                    rts_tenders, f"rts:{keyword}", dry_run, seen_this_run,
-                )
-                saved += phase_saved
-                unique_saved += phase_unique
-                primary_candidates += phase_candidates
-                db.log_run(phase_mode, phase_started_at, found=len(rts_tenders), processed=phase_saved, notified=0, errors="")
-            except Exception as exc:
-                msg = f"Ошибка РТС-Тендер-поиска по '{keyword}': {exc}"
-                logger.error(msg)
-                errors.append(msg)
-                continue
+        phase_saved, phase_unique, phase_candidates = _run_stage1_channel(
+            channel_slug="rts", channel_title="РТС-Тендер", keywords=rts_keywords,
+            search_fn=lambda kw: search_rts(kw, price_from=p_min, price_to=p_max, pages=rts_pages),
+            profiles=profiles, dry_run=dry_run, seen_this_run=seen_this_run,
+            skip_completed_today=skip_completed_today, errors=errors,
+        )
+        saved += phase_saved
+        unique_saved += phase_unique
+        primary_candidates += phase_candidates
 
     # ── Канал 10: SberB2B (публичные заявки sberb2b.ru) ────────────────────────
     if use_sberb2b:
@@ -704,31 +659,15 @@ def run_stage1(
             or getattr(config, "SPB_SEARCH_KEYWORDS", None)
             or storefront_kw_fallback
         )
-        for keyword in sberb2b_keywords:
-            phase_started_at = datetime.now().isoformat(timespec="seconds")
-            kw_clean = re.sub(r"\s+", " ", keyword).strip()
-            phase_mode = f"stage1:sberb2b:{kw_clean}:pages={sberb2b_pages}"
-            if skip_completed_today and db.was_stage_completed_today(phase_mode):
-                logger.info("SberB2B-поиск '%s' уже готов сегодня — пропускаю", keyword)
-                continue
-            try:
-                sberb2b_tenders = search_sberb2b(keyword, price_from=p_min, price_to=p_max, pages=sberb2b_pages)
-                db.reconnect_db()
-                sberb2b_tenders, dropped = _apply_profile_filter(sberb2b_tenders, profiles)
-                if dropped:
-                    logger.info("Профильный фильтр отсеял %d карточек SberB2B по '%s'", dropped, keyword)
-                phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
-                    sberb2b_tenders, f"sberb2b:{keyword}", dry_run, seen_this_run,
-                )
-                saved += phase_saved
-                unique_saved += phase_unique
-                primary_candidates += phase_candidates
-                db.log_run(phase_mode, phase_started_at, found=len(sberb2b_tenders), processed=phase_saved, notified=0, errors="")
-            except Exception as exc:
-                msg = f"Ошибка SberB2B-поиска по '{keyword}': {exc}"
-                logger.error(msg)
-                errors.append(msg)
-                continue
+        phase_saved, phase_unique, phase_candidates = _run_stage1_channel(
+            channel_slug="sberb2b", channel_title="SberB2B", keywords=sberb2b_keywords,
+            search_fn=lambda kw: search_sberb2b(kw, price_from=p_min, price_to=p_max, pages=sberb2b_pages),
+            profiles=profiles, dry_run=dry_run, seen_this_run=seen_this_run,
+            skip_completed_today=skip_completed_today, errors=errors,
+        )
+        saved += phase_saved
+        unique_saved += phase_unique
+        primary_candidates += phase_candidates
 
     # ── Канал 11: Tenderplan ───────────────────────────────────────────────────
     if use_tenderplan:
@@ -750,14 +689,14 @@ def run_stage1(
                 saved += phase_saved
                 unique_saved += phase_unique
                 primary_candidates += phase_candidates
-                db.log_run(phase_mode, phase_started_at, found=len(tp_tenders), processed=phase_saved, notified=0, errors="")
+                db.log_run(phase_mode, phase_started_at, found=len(tp_tenders), processed=phase_candidates, notified=0, errors="")
             except Exception as exc:
                 msg = f"Ошибка Tenderplan-канала: {exc}"
                 logger.error(msg)
                 errors.append(msg)
 
     logger.info("Этап 1 завершён: найдено %d, кандидатов на этап 2: %d", unique_saved, primary_candidates)
-    db.log_run("stage1", started_at, found=unique_saved, processed=saved, notified=0, errors="; ".join(errors))
+    db.log_run("stage1", started_at, found=unique_saved, processed=primary_candidates, notified=0, errors="; ".join(errors))
     if incremental:
         _save_watermark(had_errors=bool(errors), dry_run=dry_run)
     return unique_saved, primary_candidates
