@@ -2826,18 +2826,22 @@ def get_llm_daily_requests(date_key: str) -> int:
         return 0
 
 
-def set_llm_rate_limited(date_key: str) -> None:
-    """Отмечает, что провайдер РЕАЛЬНО отказал по лимиту (429, ретраи исчерпаны)
-    хотя бы раз сегодня. В отличие от LLM_REQUESTS_<date> (наш собственный
-    счётчик-оценка), это факт от самого провайдера — на него и опираемся, чтобы
-    прекратить попытки на сегодня, а не гадать по own budget.
+def set_llm_rate_limited(date_key: str, model: str) -> None:
+    """Отмечает, что КОНКРЕТНАЯ модель РЕАЛЬНО отказала по лимиту (429, ретраи
+    исчерпаны) хотя бы раз сегодня. Флаг per-модельный (не общий на день) —
+    у бесплатных моделей на OpenRouter независимые «плавающие» лимиты, отказ
+    одной не означает исчерпание резервных. В отличие от LLM_REQUESTS_<date>
+    (наш собственный счётчик-оценка), это факт от самого провайдера.
     """
-    set_setting(f"LLM_RATE_LIMITED_{date_key}", "1", "LLM: провайдер отказал по лимиту сегодня (авто)")
+    set_setting(
+        f"LLM_RATE_LIMITED_{date_key}_{model}", "1",
+        f"LLM: модель {model} отказала по лимиту сегодня (авто)",
+    )
 
 
-def is_llm_rate_limited(date_key: str) -> bool:
-    """True, если сегодня уже был подтверждённый отказ провайдера по лимиту (429)."""
-    return bool(get_setting(f"LLM_RATE_LIMITED_{date_key}"))
+def is_llm_rate_limited(date_key: str, model: str) -> bool:
+    """True, если эта модель сегодня уже дала подтверждённый отказ по лимиту (429)."""
+    return bool(get_setting(f"LLM_RATE_LIMITED_{date_key}_{model}"))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
