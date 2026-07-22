@@ -125,10 +125,11 @@ LLM_HTTP_TIMEOUT      = int(os.getenv("LLM_HTTP_TIMEOUT", "60"))
 OPENROUTER_FALLBACK_MODELS = [
     m.strip() for m in os.getenv("OPENROUTER_FALLBACK_MODELS", "").split(",") if m.strip()
 ]
-# Дневной лимит запросов к OpenRouter (общий на триаж+анализ). Бесплатные модели:
-# ~50/день без пополнения баланса, 1000/день при балансе от $10. Защита от того,
-# чтобы фоновый цикл впустую сжигал квоту, когда она уже исчерпана.
-LLM_DAILY_REQUEST_LIMIT = int(os.getenv("LLM_DAILY_REQUEST_LIMIT", "900"))
+# Дневной лимит запросов к OpenRouter (общий на триаж+анализ) — МЯГКИЙ ориентир,
+# не блокирует запросы после превышения (см. llm_provider.py: жёсткая остановка
+# только при реальном 429 от провайдера). Бесплатные модели: ~50/день без
+# пополнения баланса, 1000/день при балансе от $10.
+LLM_DAILY_REQUEST_LIMIT = int(os.getenv("LLM_DAILY_REQUEST_LIMIT", "1000"))
 
 # --- Диапазон цен (₽) ---
 # PRICE_MIN/PRICE_MAX — границы ПОИСКА в ЕИС (что вообще скачиваем).

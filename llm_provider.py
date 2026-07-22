@@ -12,8 +12,10 @@ HTTP API, поэтому ходим обычным requests, без лишних
     моделей с плавающими лимитами;
   - если модель не поддерживает response_format=json_object (HTTP 400),
     повторяет запрос без него;
-  - уважает суточный лимит запросов (config.LLM_DAILY_REQUEST_LIMIT), общий
-    для всех процессов через таблицу settings (database.increment_llm_daily_requests).
+  - config.LLM_DAILY_REQUEST_LIMIT — МЯГКИЙ ориентир (лог-предупреждение после
+    превышения, не блокирует запросы); жёсткая остановка на сегодня — только
+    при реальном отказе провайдера (429 после исчерпания ретраев), общая для
+    всех процессов через settings (database.set_llm_rate_limited/is_llm_rate_limited).
 """
 
 from __future__ import annotations
@@ -97,7 +99,12 @@ def _daily_key() -> str:
 
 
 def daily_limit_reached() -> bool:
-    """True, если суточный лимит запросов к LLM уже исчерпан (0/отрицательный = без лимита)."""
+    """True, если наш ОРИЕНТИРОВОЧНЫЙ счётчик запросов перевалил за настроенный
+    порог (0/отрицательный = без лимита). Это МЯГКИЙ сигнал: сам по себе он
+    больше не блокирует запросы (см. complete()) — только логируется. Жёсткая
+    остановка — только по факту реального отказа провайдера, см.
+    _rate_limited_today().
+    """
     limit = _daily_limit()
     if limit <= 0:
         return False
@@ -117,6 +124,44 @@ def _bump_daily_count() -> int:
         return 0
 
 
+def _rate_limited_today() -> bool:
+    """True, если провайдер СЕГОДНЯ уже реально отказал по лимиту (429, ретраи
+    исчерпаны) хотя бы раз. Это единственная причина прекращать попытки —
+    в отличие от daily_limit_reached() (наша грубая оценка), это факт от
+    самого провайдера.
+    """
+    try:
+        from database import is_llm_rate_limited
+        return is_llm_rate_limited(_daily_key())
+    except Exception:
+        return False
+
+
+def _mark_rate_limited_today() -> None:
+    try:
+        from database import set_llm_rate_limited
+        set_llm_rate_limited(_daily_key())
+    except Exception:
+        pass
+
+
+# Лог о превышении мягкого порога — не чаще раза в процесс на дату, иначе на
+# очереди из полусотни лотов одно и то же предупреждение засоряет журнал.
+_soft_limit_warned_date: str | None = None
+
+
+def _warn_soft_limit_once() -> None:
+    global _soft_limit_warned_date
+    today = _daily_key()
+    if _soft_limit_warned_date == today:
+        return
+    _soft_limit_warned_date = today
+    logger.warning(
+        "LLM: превышен мягкий суточный ориентир (%d запросов) — продолжаю пробовать, "
+        "остановлюсь только при реальном отказе провайдера (429)", _daily_limit(),
+    )
+
+
 def complete(
     system: str,
     user: str,
@@ -129,25 +174,29 @@ def complete(
 
     Для OpenRouter при отказе `model` (после внутренних ретраев на 429/5xx)
     пробует по очереди модели из OPENROUTER_FALLBACK_MODELS.
+
+    Дневной лимит (config.LLM_DAILY_REQUEST_LIMIT) — МЯГКИЙ ориентир: после
+    него запросы не блокируются, а продолжаются (лишь предупреждение в лог).
+    Единственная жёсткая остановка на сегодня — реальный отказ провайдера
+    (429, после исчерпания ретраев): она прекращает и перебор фолбэк-моделей
+    в этом вызове, и попытки во всех следующих вызовах до конца суток.
     """
     if not is_configured():
         logger.info("LLM не сконфигурирован (нет ключа для провайдера %s) — шаг пропущен", provider())
         return None
 
-    if daily_limit_reached():
-        logger.warning(
-            "LLM: суточный лимит запросов (%d) уже исчерпан — пропускаю до завтра", _daily_limit(),
-        )
+    if _rate_limited_today():
+        logger.info("LLM: сегодня уже был отказ провайдера по лимиту (429) — пропускаю до завтра")
         return None
+
+    if daily_limit_reached():
+        _warn_soft_limit_once()
 
     models_to_try = [model] + (
         [m for m in _fallback_models() if m != model] if provider() != "anthropic" else []
     )
 
     for idx, candidate_model in enumerate(models_to_try):
-        if idx > 0 and daily_limit_reached():
-            logger.warning("LLM: суточный лимит исчерпан во время фолбэка на %s — прекращаю", candidate_model)
-            return None
         try:
             if provider() == "anthropic":
                 text = _complete_anthropic(system, user, candidate_model, max_tokens, temperature)
@@ -155,11 +204,20 @@ def complete(
                 text = _complete_openrouter(system, user, candidate_model, max_tokens, temperature, json_mode)
         except Exception as exc:
             logger.error("Ошибка LLM (%s, %s): %s", provider(), candidate_model, exc)
+            if getattr(exc, "status_code", None) == 429:
+                # anthropic SDK бросает APIStatusError с .status_code вместо HTTP-ответа,
+                # который можно было бы разобрать, как у OpenRouter (_complete_openrouter).
+                _mark_rate_limited_today()
             text = None
         if text:
             if idx > 0:
                 logger.info("LLM: ответила резервная модель %s (после %d неудачных)", candidate_model, idx)
             return text
+        if _rate_limited_today():
+            # Провайдер только что подтвердил реальный отказ по лимиту —
+            # дальнейшие фолбэки в этом вызове тоже не имеют смысла пробовать.
+            logger.warning("LLM: реальный отказ по лимиту (429) на %s — прекращаю на сегодня", candidate_model)
+            return None
         if idx < len(models_to_try) - 1:
             logger.warning("LLM: модель %s не дала результата, переключаюсь на резервную", candidate_model)
     return None
@@ -237,7 +295,14 @@ def _complete_openrouter(
             time.sleep(wait)
             continue
 
-        logger.error("OpenRouter %s: HTTP %s: %s", model, resp.status_code, resp.text[:300])
+        if resp.status_code == 429:
+            # Ретраи исчерпаны, провайдер всё ещё отвечает 429 — это и есть
+            # РЕАЛЬНЫЙ отказ по лимиту (в отличие от нашей грубой оценки
+            # daily_limit_reached()). Фиксируем на весь день.
+            logger.error("OpenRouter %s: HTTP 429 после %d попыток — реальный отказ по лимиту", model, max_attempts)
+            _mark_rate_limited_today()
+        else:
+            logger.error("OpenRouter %s: HTTP %s: %s", model, resp.status_code, resp.text[:300])
         return None
 
     return None
