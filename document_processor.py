@@ -245,16 +245,11 @@ def extract_text_from_file(path: Path) -> str:
 
 def _extract_plain(path: Path) -> str:
     raw = path.read_bytes()
-    for enc in ("utf-8", "cp1251", "latin-1"):
-        try:
-            text = raw.decode(enc, errors="ignore")
-            if path.suffix.lower() in {".html", ".htm", ".xml"}:
-                soup = BeautifulSoup(text, "html.parser")
-                return soup.get_text("\n", strip=True)
-            return text
-        except Exception:
-            continue
-    return ""
+    text = _decode_text_bytes(raw)
+    if path.suffix.lower() in {".html", ".htm", ".xml"}:
+        soup = BeautifulSoup(text, "html.parser")
+        return soup.get_text("\n", strip=True)
+    return text
 
 
 def _extract_docx(path: Path) -> str:
@@ -273,15 +268,47 @@ def _extract_docx(path: Path) -> str:
     return "\n".join(parts)
 
 
+def _looks_utf16(raw: bytes) -> bool:
+    """Detect UTF-16 without a BOM by the alternating NUL-byte pattern."""
+    sample = raw[:4096]
+    if len(sample) < 4:
+        return False
+    even = sample[0::2]
+    odd = sample[1::2]
+    even_nuls = even.count(0) / max(1, len(even))
+    odd_nuls = odd.count(0) / max(1, len(odd))
+    return max(even_nuls, odd_nuls) >= 0.25 and min(even_nuls, odd_nuls) <= 0.05
+
+
+def _decode_text_bytes(raw: bytes) -> str:
+    """Decode Russian document text without silently dropping source bytes.
+
+    ``errors='ignore'`` must not be used while detecting an encoding: it makes
+    every candidate appear successful and can discard all Cyrillic characters.
+    """
+    if not raw:
+        return ""
+
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16")
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return raw.decode("utf-8-sig")
+
+    if _looks_utf16(raw):
+        even_nuls = raw[:4096:2].count(0)
+        odd_nuls = raw[1:4096:2].count(0)
+        return raw.decode("utf-16be" if even_nuls > odd_nuls else "utf-16le")
+
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        # Documents from Russian procurement systems commonly use Windows-1251.
+        # Unlike Latin-1 it maps bytes 0xC0..0xFF to Cyrillic letters.
+        return raw.decode("cp1251", errors="replace")
+
+
 def _decode_command_output(raw: bytes) -> str:
-    for enc in ("utf-8", "cp1251", "utf-16le", "latin-1"):
-        try:
-            text = raw.decode(enc, errors="ignore")
-            if text.strip():
-                return text
-        except Exception:
-            continue
-    return ""
+    return _decode_text_bytes(raw)
 
 
 def _run_text_command(cmd: list[str], timeout: int = 45) -> str:
@@ -350,7 +377,13 @@ def _extract_office_text(path: Path) -> str:
     text = _extract_with_libreoffice(path)
     if text.strip():
         return text
-    return _extract_plain(path)
+    # A legacy DOC/ODT is a binary container, not plain text. Reading its raw
+    # bytes as UTF-8/CP1251 stores binary garbage in document_text_full.
+    logger.warning(
+        "Нет конвертера для %s; установите antiword, catdoc или libreoffice",
+        path.name,
+    )
+    return ""
 
 
 def _extract_pdf(path: Path) -> str:
