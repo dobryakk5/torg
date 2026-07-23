@@ -1371,20 +1371,33 @@ def run_llm(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
                 or bool(str(tender.get("document_text_full") or "").strip())
             )
 
-            llm_analysis = None
             # Кандидат на отправку с документами обязан пройти LLM-проверку ТЗ
             # (стоп-факторы: вендор-лок, статус партнёра, «под своего»), даже если
             # его скор ниже LLM-порога — иначе в чат уйдёт лот с непрочитанным ТЗ.
             wants_llm = detail_score >= config.MIN_SCORE_FOR_LLM or (notify_candidate and has_docs)
-            if llm_configured and wants_llm:
+
+            # Разбор мог быть выполнен прошлым прогоном, но отправка в Telegram тогда
+            # сорвалась — лот вернулся в очередь с llm_analyzed_at=NULL и сохранённым
+            # текстом разбора. Переиспользуем его, не тратя новый LLM-запрос. Только
+            # пока Stage2 не переобработал лот после разбора (llm_analyzed_at IS NULL):
+            # если переобработал, сохранённый текст устарел и нужен свежий разбор.
+            prior_analysis = str(tender.get("llm_analysis") or "").strip()
+            reuse_prior = bool(prior_analysis) and tender.get("llm_analyzed_at") is None
+
+            llm_analysis = None
+            if reuse_prior:
+                llm_analysis = prior_analysis
+                logger.info("%s: переиспользую сохранённый LLM-разбор (прошлая отправка не удалась)", pnum)
+            elif llm_configured and wants_llm:
                 try:
                     llm_analysis = analyze_tender(tender, scoring_text)
                     if llm_analysis:
                         analyzed += 1
                 except Exception as exc:
                     logger.warning("Ошибка LLM-анализа %s: %s", pnum, exc)
-            # Лот считается разобранным, если модель ответила или разбор ему не
-            # полагался по скору. Сбой провайдера оставляет лот в очереди.
+            # Лот считается разобранным, если модель ответила (или разбор
+            # переиспользован) или разбор ему не полагался по скору. Сбой
+            # провайдера оставляет лот в очереди.
             mark_analyzed = bool(llm_analysis) or not wants_llm
 
             # LLM прочитал полное ТЗ и может отсеять то, что фильтр по карточке
@@ -1423,11 +1436,21 @@ def run_llm(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
             if notified:
                 notified_count += 1
 
+            # Отправка в Telegram сорвалась (сеть/таймаут), хотя лот её достоин —
+            # НЕ помечаем разобранным, иначе он выпадет из очереди навсегда с
+            # notified_at=NULL, а потраченный LLM-запрос пропадёт. Оставляем в
+            # очереди: следующий прогон переотправит по сохранённому разбору
+            # (reuse_prior выше — без повторного LLM-вызова).
+            if should_notify and not dry_run and not notified:
+                mark_analyzed = False
+                logger.warning("%s: отправка в Telegram не удалась — оставляю в очереди на переотправку", pnum)
+
             if not dry_run:
                 db.save_llm_analysis(
                     pnum,
                     llm_analysis or "",
-                    model=llm_provider.deep_model() if llm_analysis else "",
+                    # На переиспользовании модель не звали — не перетираем llm_model.
+                    model=llm_provider.deep_model() if (llm_analysis and not reuse_prior) else "",
                     notified=notified,
                     mark_analyzed=mark_analyzed,
                 )
