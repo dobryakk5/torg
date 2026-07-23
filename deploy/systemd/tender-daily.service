@@ -1,5 +1,5 @@
 [Unit]
-Description=Тендерный монитор — полный дневной цикл (ЕИС+B2B+ОКПД2+Tenderplan+ЗМО, разбор, Telegram)
+Description=Тендерный монитор — дневной СБОР карточек (ЕИС+B2B+ОКПД2+Tenderplan+ЗМО, без stage2/llm)
 After=network-online.target postgresql.service
 Wants=network-online.target
 
@@ -9,10 +9,14 @@ User=__USER__
 Group=__GROUP__
 WorkingDirectory=__PROJECT_DIR__
 Environment=PATH=__PYTHON_BIN_DIR__:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-# flock -w 3000: ждём общий лок до 50 мин (если крутится короткий ЗМО-тик),
-# затем берём сами. Дневной прогон обязателен — ждём, а не пропускаем.
-ExecStart=/usr/bin/flock -w 3000 /tmp/tender-pipeline.lock __PYTHON__ main.py --once
-TimeoutStartSec=5400
+# Только сбор карточек (--stage1), БЕЗ stage2/llm: раньше здесь был --once,
+# который держал общий лок ~час (сбор+скачивание ТЗ+LLM по всей базе) и на это
+# время убивал 15-минутный ЗМО-конвейер. Теперь тяжёлую обработку (stage2+llm+
+# отправку по ВСЕМ площадкам, по ближайшему дедлайну — ЗМО первыми) непрерывно
+# тянет tender-zmo. Дневной прогон лишь докидывает в базу ЕИС/B2B/Tenderplan.
+# flock -w: короткий сбор ждёт освобождения лока и быстро отпускает.
+ExecStart=/usr/bin/flock -w 600 /tmp/tender-pipeline.lock __PYTHON__ main.py --stage1
+TimeoutStartSec=1800
 Nice=10
 
 [Install]

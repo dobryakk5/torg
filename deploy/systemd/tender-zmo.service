@@ -9,10 +9,13 @@ User=__USER__
 Group=__GROUP__
 WorkingDirectory=__PROJECT_DIR__
 Environment=PATH=__PYTHON_BIN_DIR__:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-# flock -n: если идёт дневной полный прогон (общий лок) — этот 15-мин тик
-# пропускается, следующий через 15 минут. Так не наслаиваемся на БД.
-ExecStart=/usr/bin/flock -n /tmp/tender-pipeline.lock __PYTHON__ main.py --zmo
-TimeoutStartSec=600
+# flock -n -E 0: если лок занят (короткий дневной сбор) — тик пропускается
+# ЧИСТО (exit 0, не «failure» в systemd), следующий через 15 минут. Обычно
+# лок свободен: дневной сбор теперь короткий, тяжёлую обработку тянем мы сами.
+# Основная нагрузка: этот цикл делает stage2+llm+отправку по ВСЕМ площадкам,
+# по ближайшему дедлайну (ЗМО первыми) — поэтому таймаут щедрый.
+ExecStart=/usr/bin/flock -n -E 0 /tmp/tender-pipeline.lock __PYTHON__ main.py --zmo
+TimeoutStartSec=1800
 Nice=5
 
 [Install]
