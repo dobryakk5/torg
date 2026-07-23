@@ -633,6 +633,9 @@ tr:hover .fbar-label { color: var(--dim); }
     <button class="tab tab-rejected {% if active == 'REJECTED' %}active{% endif %}" onclick="showTab('REJECTED')">
       Отказ <span class="cnt">{{ rejected_tenders|length }}</span>
     </button>
+    <button class="tab {% if active == 'UNSENT' %}active{% endif %}" onclick="showTab('UNSENT')" title="ЗМО, обработанные Stage 2, но НЕ отправленные в Telegram (не NO-GO)">
+      🔕 Не отправлены <span class="cnt">{{ processed_unsent|length }}</span>
+    </button>
     <button type="button" class="tab" style="margin-left:auto;opacity:.85;font-size:.65rem" onclick="openManualTenderModal()">
       +Тендер
     </button>
@@ -775,6 +778,12 @@ tr:hover .fbar-label { color: var(--dim); }
       <div class="dot dot-rejected"></div>
       <h2>ОТКАЗ — {{ tenders|length }} тендеров</h2>
     </div>
+    {% elif tab_id == 'UNSENT' %}
+    <div class="section-hdr">
+      <div class="dot dot-rejected"></div>
+      <h2>ОБРАБОТАНЫ, НО НЕ ОТПРАВЛЕНЫ — {{ tenders|length }} ЗМО</h2>
+      <span style="font-size:.7rem;color:var(--dim);margin-left:.6rem">прошли Stage 2 (не NO-GO), но в Telegram не ушли — с причиной</span>
+    </div>
     {% endif %}
     {% if not tenders %}
     <div class="empty">— Нет тендеров в этой категории —</div>
@@ -795,6 +804,7 @@ tr:hover .fbar-label { color: var(--dim); }
             <th class="col-price hide-sm"><button class="sort-btn" onclick="sortBy('price');event.stopPropagation()">НМЦК, тыс.р.{% if sort_by == 'price' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th>
             <th class="col-days hide-sm"><button class="sort-btn" onclick="sortBy('deadline');event.stopPropagation()">ДНЕЙ{% if sort_by == 'deadline' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th>
             <th class="col-deadline hide-sm">СРОК</th>
+            {% if tab_id == 'UNSENT' %}<th style="width:14rem">ПОЧЕМУ НЕ ОТПРАВЛЕН</th>{% endif %}
           </tr>
         </thead>
         <tbody>
@@ -905,6 +915,11 @@ tr:hover .fbar-label { color: var(--dim); }
 
             <!-- Deadline -->
             <td class="date-cell hide-sm">{{ t.deadline | fmt_datetime }}</td>
+
+            {% if tab_id == 'UNSENT' %}
+            <!-- Почему не отправлен -->
+            <td style="font-size:.68rem;color:var(--dim);white-space:normal">{{ t.unsent_reason or '—' }}</td>
+            {% endif %}
 
           </tr>
           {% endfor %}
@@ -1250,6 +1265,7 @@ tr:hover .fbar-label { color: var(--dim); }
   </div>
 
   {{ render_table(rejected_tenders, 'REJECTED') }}
+  {{ render_table(processed_unsent, 'UNSENT') }}
 
 </main>
 

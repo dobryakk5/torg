@@ -2072,6 +2072,9 @@ def get_top_tenders(
     active_only: bool = True,
     manual_decision: Optional[str] = None,
     include_rejected: bool = False,
+    notified: Optional[bool] = None,          # True=только отправленные, False=только НЕ отправленные
+    require_detail_checked: bool = False,     # только прошедшие Stage 2 (detail_checked_at)
+    exclude_decisions: Optional[list[str]] = None,  # исключить filter_decision (напр. ['NO-GO'])
 ) -> list[dict[str, Any]]:
     """
     Возвращает тендеры с оценками всех 8 фильтров в одном SQL-запросе (без N+1).
@@ -2088,6 +2091,15 @@ def get_top_tenders(
     if decision:
         conditions.append("t.filter_decision = %s")
         params.append(decision)
+    for d in (exclude_decisions or []):
+        conditions.append("t.filter_decision IS DISTINCT FROM %s")
+        params.append(d)
+    if notified is True:
+        conditions.append("t.notified_at IS NOT NULL")
+    elif notified is False:
+        conditions.append("t.notified_at IS NULL")
+    if require_detail_checked:
+        conditions.append("t.detail_checked_at IS NOT NULL")
     if manual_decision:
         conditions.append("t.decision = %s")
         params.append(manual_decision)

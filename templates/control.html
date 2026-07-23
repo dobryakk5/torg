@@ -520,8 +520,15 @@ td{padding:7px 10px;border-bottom:1px solid var(--border);
             data-processed="{{ r.processed or 0 }}"
             data-notified="{{ r.notified or 0 }}"
             data-errors="{{ r.errors or '' }}">
+          {% set src_names = {
+            'eis':'ЕИС · ключевые слова','okpd2':'ЕИС · ОКПД2','b2b':'B2B-Center',
+            'spb':'ЭМ СПб','eat':'ЕАТ «Берёзка»','mos':'ПП Москвы','mosreg':'ЭМ МО',
+            'zakazrf':'БП ZakazRF','rts':'РТС-Тендер','sberb2b':'SberB2B','tenderplan':'Tenderplan'} %}
+          {% set src = stage.split(':')[1] if (':' in stage) else '' %}
           <td>
             {% if 'stage1' in stage %}<span class="tag tag-1">Stage1</span>
+              {% if src %}<span style="margin-left:.35rem;font-size:.72rem;color:var(--text)">{{ src_names.get(src, src) }}</span>
+              {% else %}<span style="margin-left:.35rem;font-size:.72rem;color:var(--dim)">все источники (сводка)</span>{% endif %}
             {% elif 'stage2' in stage %}<span class="tag tag-2">Stage2</span>
             {% elif 'stage3' in stage %}<span class="tag tag-3">Stage3</span>
             {% elif stage == 'llm' %}<span class="tag" style="background:rgba(129,140,248,.1);color:var(--accent)">LLM</span>

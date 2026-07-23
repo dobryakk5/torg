@@ -599,6 +599,23 @@ for name, fn in [("fmt_price",fmt_price),("fmt_date",fmt_date),("fmt_datetime",f
 # Страницы
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _unsent_reason(t: dict, notify_min: int) -> str:
+    """Почему обработанный ЗМО-лот НЕ ушёл в Telegram (для списка «не отправлены»)."""
+    if db.deadline_is_expired(t.get("deadline")):
+        return "⏳ просрочен (дедлайн прошёл до отправки)"
+    verdict = str(t.get("llm_verdict") or "").upper()
+    if "ПРОПУСТИТЬ" in verdict:
+        return "🛑 LLM по ТЗ: не наш профиль (ПРОПУСТИТЬ)"
+    score = t.get("detail_score")
+    if score is not None and int(score) < int(notify_min):
+        return f"📉 детальный скор {score} < порога {notify_min}"
+    if not verdict:
+        return "⏱ ждёт LLM-разбора (в очереди)"
+    # Разобран (СМОТРЕТЬ/ОСТОРОЖНО), не просрочен, скор ок — но не отправлен:
+    # отправка сорвалась и ждёт переотправки следующим прогоном.
+    return "⚠️ отправка не удалась — в очереди на переотправку"
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(
     request: Request,
@@ -642,6 +659,24 @@ async def index(
         include_rejected=True,
         **fkw,
     )
+    # «Обработаны, но не отправлены» — ЗМО, прошедшие Stage 2 и НЕ ушедшие в
+    # Telegram (не NO-GO). Показываем причину, почему не ушёл, чтобы видеть, что
+    # воронка отсеяла/придержала. active_only=False: включаем и просроченные
+    # (с пометкой), чтобы было видно упущенное.
+    processed_unsent = db.get_top_tenders(
+        decision=None,
+        law_type="ЗМО",
+        exclude_decisions=["NO-GO"],
+        notified=False,
+        require_detail_checked=True,
+        active_only=False,
+        sort_by="deadline", order="desc",
+        limit=300,
+    )
+    _notify_min = config.get_runtime("MIN_DETAILED_SCORE_FOR_NOTIFY", config.MIN_DETAILED_SCORE_FOR_NOTIFY)
+    for t in processed_unsent:
+        t["unsent_reason"] = _unsent_reason(t, _notify_min)
+
     all_tenders = [t for rows in groups.values() for t in rows]
     reverse = order == "desc"
     if sort_by == "price":
@@ -656,6 +691,7 @@ async def index(
         "stats": stats, "groups": groups,
         "all_tenders": all_tenders,
         "rejected_tenders": rejected_tenders,
+        "processed_unsent": processed_unsent,
         "active": (decision or "ALL").upper(),
         "search_phrases": search_phrases if isinstance(search_phrases, list) else [],
         "search_profiles": db.search_profiles_list(),
