@@ -2075,6 +2075,13 @@ def get_top_tenders(
     notified: Optional[bool] = None,          # True=только отправленные, False=только НЕ отправленные
     require_detail_checked: bool = False,     # только прошедшие Stage 2 (detail_checked_at)
     exclude_decisions: Optional[list[str]] = None,  # исключить filter_decision (напр. ['NO-GO'])
+    decisions: Optional[list[str]] = None,    # мульти-фильтр по filter_decision (GO/CAUTION/NO-GO)
+    score_min: Optional[int] = None,          # мин. filter_total (0–40)
+    score_max: Optional[int] = None,          # макс. filter_total (0–40)
+    days_min: Optional[int] = None,           # мин. дней до дедлайна (может быть отрицательным)
+    days_max: Optional[int] = None,           # макс. дней до дедлайна
+    statuses: Optional[list[str]] = None,     # мульти-фильтр по этапу воронки:
+                                               # raw | processed | sent | rejected
 ) -> list[dict[str, Any]]:
     """
     Возвращает тендеры с оценками всех 8 фильтров в одном SQL-запросе (без N+1).
@@ -2091,6 +2098,10 @@ def get_top_tenders(
     if decision:
         conditions.append("t.filter_decision = %s")
         params.append(decision)
+    decisions_list = [d for d in (decisions or []) if d]
+    if decisions_list:
+        conditions.append("t.filter_decision = ANY(%s)")
+        params.append(decisions_list)
     for d in (exclude_decisions or []):
         conditions.append("t.filter_decision IS DISTINCT FROM %s")
         params.append(d)
@@ -2100,13 +2111,41 @@ def get_top_tenders(
         conditions.append("t.notified_at IS NULL")
     if require_detail_checked:
         conditions.append("t.detail_checked_at IS NOT NULL")
+    statuses_list = [s for s in (statuses or []) if s]
+    rejected_requested = "rejected" in statuses_list
     if manual_decision:
         conditions.append("t.decision = %s")
         params.append(manual_decision)
-    elif not include_rejected:
+    elif not include_rejected and not rejected_requested:
         conditions.append("t.decision IS DISTINCT FROM 'rejected'")
+
+    if statuses_list:
+        status_preds = {
+            "raw":       "t.detail_checked_at IS NULL",
+            "processed": "(t.detail_checked_at IS NOT NULL AND t.notified_at IS NULL)",
+            "sent":      "t.notified_at IS NOT NULL",
+            "rejected":  "t.decision = 'rejected'",
+        }
+        picked = [status_preds[s] for s in statuses_list if s in status_preds]
+        if picked:
+            conditions.append("(" + " OR ".join(picked) + ")")
+
     if active_only:
         conditions.append(_active_or_unknown_deadline_sql("t.deadline"))
+    if days_min is not None or days_max is not None:
+        deadline_diff = f"(({_deadline_timestamp_sql('t.deadline')})::date - (NOW())::date)"
+        if days_min is not None:
+            conditions.append(f"({deadline_diff} IS NULL OR {deadline_diff} >= %s)")
+            params.append(days_min)
+        if days_max is not None:
+            conditions.append(f"({deadline_diff} IS NULL OR {deadline_diff} <= %s)")
+            params.append(days_max)
+    if score_min is not None:
+        conditions.append("t.filter_total >= %s")
+        params.append(score_min)
+    if score_max is not None:
+        conditions.append("t.filter_total <= %s")
+        params.append(score_max)
     if price_min is not None:
         conditions.append("t.price >= %s")
         params.append(price_min)
@@ -2189,6 +2228,7 @@ def get_top_tenders(
             t.detail_score, t.total_score, t.filter_total, t.filter_decision,
             t.filter_stop, t.llm_verdict, t.notified_at, t.decision,
             t.rejection_reason, t.status, t.created_at, t.published_at, t.matched_keywords,
+            t.detail_checked_at,
             t.llm_triage_verdict, t.llm_triage_fit, t.llm_triage_resale,
             t.llm_triage_category, t.llm_triage_reason,
             t.profile_id, t.profile_score, t.matched_profiles, t.platform,

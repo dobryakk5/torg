@@ -616,83 +616,71 @@ def _unsent_reason(t: dict, notify_min: int) -> str:
     return "⚠️ отправка не удалась — в очереди на переотправку"
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index(
-    request: Request,
-    decision: Optional[str]   = None,
-    law:      Optional[str]   = None,
-    kw:       Optional[str]   = None,
-    profile_id: Optional[int] = None,
-    platform: list[str] = Query(default=[]),
-    q:        Optional[str]   = None,
-    exclude_kw: list[str] = Query(default=[]),
-    price_from: Optional[float] = None,
-    price_to:   Optional[float] = None,
-    f1_min: Optional[int] = Query(None,ge=1,le=5),
-    f2_min: Optional[int] = Query(None,ge=1,le=5),
-    f3_min: Optional[int] = Query(None,ge=1,le=5),
-    f4_min: Optional[int] = Query(None,ge=1,le=5),
-    f5_min: Optional[int] = Query(None,ge=1,le=5),
-    f6_min: Optional[int] = Query(None,ge=1,le=5),
-    f7_min: Optional[int] = Query(None,ge=1,le=5),
-    f8_min: Optional[int] = Query(None,ge=1,le=5),
-    sort_by: str = "score",
-    order: str = "desc",
-    limit: int = Query(300,ge=1,le=1000),
-):
-    stats = db.get_stats_extended()
+# Этап воронки лота (столбец СТАТУС в единой таблице + фильтр по нему).
+FUNNEL_STATUS_LABELS = {
+    "raw":       "не обработан",
+    "processed": "обработан, не отправлен",
+    "sent":      "отправлен",
+    "rejected":  "отказ",
+}
+
+
+def _funnel_status(t: dict) -> str:
+    """Этап воронки: rejected > sent > processed > raw (первое подходящее)."""
+    if (t.get("decision") or "") == "rejected":
+        return "rejected"
+    if t.get("notified_at"):
+        return "sent"
+    if t.get("detail_checked_at"):
+        return "processed"
+    return "raw"
+
+
+def _tenders_context(
+    decision: list[str], status: list[str], law: Optional[str], kw: Optional[str],
+    profile_id: Optional[int], platform: list[str], q: Optional[str], exclude_kw: list[str],
+    price_from: Optional[float], price_to: Optional[float],
+    f1_min: Optional[int], f2_min: Optional[int], f3_min: Optional[int], f4_min: Optional[int],
+    f5_min: Optional[int], f6_min: Optional[int], f7_min: Optional[int], f8_min: Optional[int],
+    score_min: Optional[int], score_max: Optional[int],
+    days_min: Optional[int], days_max: Optional[int],
+    sort_by: str, order: str, limit: int,
+) -> dict:
+    """Общая выборка + контекст для единой таблицы тендеров (страница `/` и партиал `/partials/tenders`)."""
+    decisions = [d.upper() for d in decision if d]
+    statuses = [s for s in status if s]
+    law = law or None
+    kw = kw or None
+    q = q or None
     sort_by = sort_by if sort_by in {"score", "price", "phrase", "date", "deadline"} else "score"
     order = order if order in {"asc", "desc"} else "desc"
-    fkw = dict(price_min=price_from, price_max=price_to, law_type=law,
-               matched_keyword=kw or None,
-               profile_id=profile_id,
-               platforms=platform,
-               q=q or None,
-               exclude_keywords=exclude_kw,
-               f1_min=f1_min, f2_min=f2_min, f3_min=f3_min, f4_min=f4_min,
-               f5_min=f5_min, f6_min=f6_min, f7_min=f7_min, f8_min=f8_min,
-               sort_by=sort_by, order=order, limit=limit)
-    groups = {k: db.get_top_tenders(decision=k, **fkw) for k in ("GO","CAUTION","NO-GO")}
-    rejected_tenders = db.get_top_tenders(
-        decision=None,
-        manual_decision="rejected",
-        include_rejected=True,
-        **fkw,
-    )
-    # «Обработаны, но не отправлены» — ЗМО, прошедшие Stage 2 и НЕ ушедшие в
-    # Telegram (не NO-GO). Показываем причину, почему не ушёл, чтобы видеть, что
-    # воронка отсеяла/придержала. active_only=False: включаем и просроченные
-    # (с пометкой), чтобы было видно упущенное.
-    processed_unsent = db.get_top_tenders(
-        decision=None,
-        law_type="ЗМО",
-        exclude_decisions=["NO-GO"],
-        notified=False,
-        require_detail_checked=True,
-        active_only=False,
-        sort_by="deadline", order="desc",
-        limit=300,
-    )
-    _notify_min = config.get_runtime("MIN_DETAILED_SCORE_FOR_NOTIFY", config.MIN_DETAILED_SCORE_FOR_NOTIFY)
-    for t in processed_unsent:
-        t["unsent_reason"] = _unsent_reason(t, _notify_min)
 
-    all_tenders = [t for rows in groups.values() for t in rows]
-    reverse = order == "desc"
-    if sort_by == "price":
-        all_tenders.sort(key=lambda t: (t.get("price") is None, t.get("price") or 0), reverse=reverse)
-    elif sort_by == "phrase":
-        all_tenders.sort(key=lambda t: (t.get("matched_keywords") or "").lower(), reverse=reverse)
-    else:
-        all_tenders.sort(key=lambda t: (t.get("filter_total") or 0), reverse=reverse)
-    fmins = {f"f{n}_min": locals().get(f"f{n}_min") or 1 for n in range(1,9)}
+    # Просроченные по умолчанию скрыты; явный отрицательный days_min — способ их вернуть.
+    active_only = not (days_min is not None and days_min < 0)
+
+    tenders = db.get_top_tenders(
+        decision=None, decisions=decisions or None,
+        price_min=price_from, price_max=price_to, law_type=law,
+        matched_keyword=kw, profile_id=profile_id,
+        platforms=platform, q=q, exclude_keywords=exclude_kw,
+        f1_min=f1_min, f2_min=f2_min, f3_min=f3_min, f4_min=f4_min,
+        f5_min=f5_min, f6_min=f6_min, f7_min=f7_min, f8_min=f8_min,
+        score_min=score_min, score_max=score_max,
+        days_min=days_min, days_max=days_max,
+        statuses=statuses or None,
+        active_only=active_only,
+        sort_by=sort_by, order=order, limit=limit,
+    )
+    notify_min = config.get_runtime("MIN_DETAILED_SCORE_FOR_NOTIFY", config.MIN_DETAILED_SCORE_FOR_NOTIFY)
+    for t in tenders:
+        t["funnel_status"] = _funnel_status(t)
+        if t["funnel_status"] == "processed" and (t.get("law_type") or "") == "ЗМО":
+            t["unsent_reason"] = _unsent_reason(t, notify_min)
+
     search_phrases = config.get_runtime("SEARCH_KEYWORDS", config.SEARCH_KEYWORDS)
-    return templates.TemplateResponse(request, "index.html", {
-        "stats": stats, "groups": groups,
-        "all_tenders": all_tenders,
-        "rejected_tenders": rejected_tenders,
-        "processed_unsent": processed_unsent,
-        "active": (decision or "ALL").upper(),
+    return {
+        "tenders": tenders,
+        "funnel_status_labels": FUNNEL_STATUS_LABELS,
         "search_phrases": search_phrases if isinstance(search_phrases, list) else [],
         "search_profiles": db.search_profiles_list(),
         "all_platforms": db.get_distinct_platforms(),
@@ -701,18 +689,95 @@ async def index(
         "active_profile_id": profile_id or "",
         "active_q": q or "",
         "excluded_keywords": exclude_kw,
+        "active_decisions": decisions,
+        "active_statuses": statuses,
+        "active_law": law or "",
+        "active_score_min": score_min,
+        "active_score_max": score_max,
+        "active_days_min": days_min,
+        "active_days_max": days_max,
         "sort_by": sort_by,
         "sort_order": order,
-        "current_filters": dict(
-            decision=(decision or "ALL").upper(), law=law or "", kw=kw or "",
-            profile_id=profile_id or "",
-            exclude_kw=exclude_kw,
-            price_from=int(price_from) if price_from else "",
-            price_to=int(price_to)   if price_to   else "",
-            sort_by=sort_by, order=order,
-            **fmins,
-        ),
-    })
+    }
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index(
+    request: Request,
+    decision: list[str] = Query(default=[]),
+    status:   list[str] = Query(default=[]),
+    law:      Optional[str]   = None,
+    kw:       Optional[str]   = None,
+    profile_id: Optional[int] = None,
+    platform: list[str] = Query(default=[]),
+    q:        Optional[str]   = None,
+    exclude_kw: list[str] = Query(default=[]),
+    price_from: Optional[float] = None,
+    price_to:   Optional[float] = None,
+    f1_min: Optional[int] = Query(None, ge=1, le=5),
+    f2_min: Optional[int] = Query(None, ge=1, le=5),
+    f3_min: Optional[int] = Query(None, ge=1, le=5),
+    f4_min: Optional[int] = Query(None, ge=1, le=5),
+    f5_min: Optional[int] = Query(None, ge=1, le=5),
+    f6_min: Optional[int] = Query(None, ge=1, le=5),
+    f7_min: Optional[int] = Query(None, ge=1, le=5),
+    f8_min: Optional[int] = Query(None, ge=1, le=5),
+    score_min: Optional[int] = Query(None, ge=0, le=40),
+    score_max: Optional[int] = Query(None, ge=0, le=40),
+    days_min: Optional[int] = None,
+    days_max: Optional[int] = None,
+    sort_by: str = "score",
+    order:   str = "desc",
+    limit:   int = Query(300, ge=1, le=1000),
+):
+    ctx = _tenders_context(
+        decision, status, law, kw, profile_id, platform, q, exclude_kw,
+        price_from, price_to,
+        f1_min, f2_min, f3_min, f4_min, f5_min, f6_min, f7_min, f8_min,
+        score_min, score_max, days_min, days_max,
+        sort_by, order, limit,
+    )
+    ctx["stats"] = db.get_stats_extended()
+    return templates.TemplateResponse(request, "index.html", ctx)
+
+
+@app.get("/partials/tenders", response_class=HTMLResponse)
+async def partial_tenders(
+    request: Request,
+    decision: list[str] = Query(default=[]),
+    status:   list[str] = Query(default=[]),
+    law:      Optional[str]   = None,
+    kw:       Optional[str]   = None,
+    profile_id: Optional[int] = None,
+    platform: list[str] = Query(default=[]),
+    q:        Optional[str]   = None,
+    exclude_kw: list[str] = Query(default=[]),
+    price_from: Optional[float] = None,
+    price_to:   Optional[float] = None,
+    f1_min: Optional[int] = Query(None, ge=1, le=5),
+    f2_min: Optional[int] = Query(None, ge=1, le=5),
+    f3_min: Optional[int] = Query(None, ge=1, le=5),
+    f4_min: Optional[int] = Query(None, ge=1, le=5),
+    f5_min: Optional[int] = Query(None, ge=1, le=5),
+    f6_min: Optional[int] = Query(None, ge=1, le=5),
+    f7_min: Optional[int] = Query(None, ge=1, le=5),
+    f8_min: Optional[int] = Query(None, ge=1, le=5),
+    score_min: Optional[int] = Query(None, ge=0, le=40),
+    score_max: Optional[int] = Query(None, ge=0, le=40),
+    days_min: Optional[int] = None,
+    days_max: Optional[int] = None,
+    sort_by: str = "score",
+    order:   str = "desc",
+    limit:   int = Query(300, ge=1, le=1000),
+):
+    ctx = _tenders_context(
+        decision, status, law, kw, profile_id, platform, q, exclude_kw,
+        price_from, price_to,
+        f1_min, f2_min, f3_min, f4_min, f5_min, f6_min, f7_min, f8_min,
+        score_min, score_max, days_min, days_max,
+        sort_by, order, limit,
+    )
+    return templates.TemplateResponse(request, "_tenders_table.html", ctx)
 
 
 @app.get("/analytics", response_class=HTMLResponse)

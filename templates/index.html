@@ -113,16 +113,10 @@ body::before {
   letter-spacing: .04em;
 }
 .tab:hover { color: var(--text); }
-.tab.active { color: var(--text); border-bottom-color: var(--accent); }
 .tab .cnt {
   font-size: .65rem; padding: .1rem .35rem;
   border-radius: 99px; background: var(--surf3);
 }
-.tab.active.tab-go      { color: var(--go);      border-bottom-color: var(--go);      }
-.tab.active.tab-go .cnt { background: var(--go-bg); }
-.tab.active.tab-caut    { color: var(--caution);  border-bottom-color: var(--caution); }
-.tab.active.tab-nogo    { color: var(--nogo);     border-bottom-color: var(--nogo);    }
-.tab.active.tab-rejected{ color: var(--dim);      border-bottom-color: var(--dim);     }
 
 /* ── Main ── */
 .main {
@@ -579,6 +573,27 @@ tr:hover .fbar-label { color: var(--dim); }
   thead th.hide-sm, tbody td.hide-sm { display: none; }
   .col-title { width: auto; }
 }
+
+/* ── Column filters (единая таблица) ── */
+.col-filters-row {
+  display: flex; flex-wrap: wrap; gap: 1rem;
+  align-items: center;
+  padding: .6rem .8rem;
+  margin-bottom: .9rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surf);
+}
+.cf-group { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.cf-check { display: inline-flex; align-items: center; gap: .25rem; cursor: pointer; }
+.cf-select { min-width: 110px; }
+.cf-num { width: 64px; flex: 0 0 auto; min-width: 0; }
+.col-status { width: 130px; }
+.status-mark { font-weight: 600; letter-spacing: .02em; }
+.status-raw       { color: var(--dimmer); }
+.status-processed { color: var(--caution); }
+.status-sent      { color: var(--go); }
+.status-rejected  { color: var(--dim); }
 </style>
 {% include "_theme.html" %}
 </head>
@@ -618,25 +633,7 @@ tr:hover .fbar-label { color: var(--dim); }
 <!-- ── Tabs ───────────────────────────────────────────────────────────── -->
 <nav class="tabs-wrap">
   <div class="tabs">
-    <button class="tab {% if active == 'ALL' %}active{% endif %}" onclick="showTab('ALL')">
-      ВСЕ <span class="cnt">{{ all_tenders|length }}</span>
-    </button>
-    <button class="tab tab-go {% if active == 'GO' %}active{% endif %}" onclick="showTab('GO')">
-      GO <span class="cnt">{{ groups.GO|length }}</span>
-    </button>
-    <button class="tab tab-caut {% if active == 'CAUTION' %}active{% endif %}" onclick="showTab('CAUTION')">
-      CAUTION <span class="cnt">{{ groups.CAUTION|length }}</span>
-    </button>
-    <button class="tab tab-nogo {% if active == 'NO-GO' %}active{% endif %}" onclick="showTab('NO-GO')">
-      NO-GO <span class="cnt">{{ groups['NO-GO']|length }}</span>
-    </button>
-    <button class="tab tab-rejected {% if active == 'REJECTED' %}active{% endif %}" onclick="showTab('REJECTED')">
-      Отказ <span class="cnt">{{ rejected_tenders|length }}</span>
-    </button>
-    <button class="tab {% if active == 'UNSENT' %}active{% endif %}" onclick="showTab('UNSENT')" title="ЗМО, обработанные Stage 2, но НЕ отправленные в Telegram (не NO-GO)">
-      🔕 Не отправлены <span class="cnt">{{ processed_unsent|length }}</span>
-    </button>
-    <button type="button" class="tab" style="margin-left:auto;opacity:.85;font-size:.65rem" onclick="openManualTenderModal()">
+    <button type="button" class="tab" style="opacity:.85;font-size:.65rem" onclick="openManualTenderModal()">
       +Тендер
     </button>
     <a href="/board" class="tab" style="text-decoration:none;opacity:.65;font-size:.65rem">
@@ -770,507 +767,34 @@ tr:hover .fbar-label { color: var(--dim); }
   </div>
 
 
-  <!-- Macro for a tender table -->
-  {% macro render_table(tenders, tab_id) %}
-  <div id="tab-{{ tab_id }}" class="tab-panel" style="display:none">
-    {% if tab_id == 'REJECTED' %}
-    <div class="section-hdr">
-      <div class="dot dot-rejected"></div>
-      <h2>ОТКАЗ — {{ tenders|length }} тендеров</h2>
-    </div>
-    {% elif tab_id == 'UNSENT' %}
-    <div class="section-hdr">
-      <div class="dot dot-rejected"></div>
-      <h2>ОБРАБОТАНЫ, НО НЕ ОТПРАВЛЕНЫ — {{ tenders|length }} ЗМО</h2>
-      <span style="font-size:.7rem;color:var(--dim);margin-left:.6rem">прошли Stage 2 (не NO-GO), но в Telegram не ушли — с причиной</span>
-    </div>
-    {% endif %}
-    {% if not tenders %}
-    <div class="empty">— Нет тендеров в этой категории —</div>
-    {% else %}
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="col-num">#</th>
-            <th class="col-score">БАЛЛ</th>
-            <th class="col-decision">РЕШЕНИЕ</th>
-            <th class="col-title">НАЗВАНИЕ</th>
-            <th class="col-search"><button class="sort-btn" onclick="sortBy('phrase');event.stopPropagation()">ПОИСКОВАЯ ФРАЗА{% if sort_by == 'phrase' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th>
-            <th class="col-exclude">X&nbsp;&nbsp;−</th>
-            <th class="col-eis">ИСТ.</th>
-            <th class="col-open">ЛОТ</th>
-            <th class="col-filters hide-sm">ФИЛЬТРЫ</th>
-            <th class="col-price hide-sm"><button class="sort-btn" onclick="sortBy('price');event.stopPropagation()">НМЦК, тыс.р.{% if sort_by == 'price' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th>
-            <th class="col-days hide-sm"><button class="sort-btn" onclick="sortBy('deadline');event.stopPropagation()">ДНЕЙ{% if sort_by == 'deadline' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th>
-            <th class="col-deadline hide-sm">СРОК</th>
-            {% if tab_id == 'UNSENT' %}<th style="width:14rem">ПОЧЕМУ НЕ ОТПРАВЛЕН</th>{% endif %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for t in tenders %}
-          {% set dec = t.filter_decision or '' %}
-          {% set dc  = dec | decision_class %}
-          <tr onclick="location.href='/tender/{{ t.purchase_number }}'">
-
-            <td style="color:var(--dimmer);font-size:.65rem">{{ loop.index }}</td>
-
-            <!-- Score -->
-            <td class="score-cell">
-              {% if t.filter_total is not none %}
-              {% set pct = (t.filter_total / 40 * 100)|int %}
-              {% set sc_color = '#22C55E' if pct >= 80 else ('#F59E0B' if pct >= 55 else '#EF4444') %}
-              <span class="score-num" style="color:{{ sc_color }}">
-                {{ t.filter_total }}<span class="score-max">/40</span>
-              </span>
-              {% else %}
-              <span style="color:var(--dimmer); font-size:.7rem">—</span>
-              {% endif %}
-            </td>
-
-            <!-- Decision -->
-            <td>
-              {% if dec %}
-              <span class="badge badge-{{ dc }}">{{ dec }}</span>
-              {% else %}
-              <span class="badge badge-unknown">—</span>
-              {% endif %}
-              {% if t.llm_verdict %}
-              <div style="font-size:.6rem;color:var(--dim);margin-top:3px">{{ t.llm_verdict }}</div>
-              {% endif %}
-            </td>
-
-            <!-- Title -->
-            <td class="title-cell">
-              <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
-            </td>
-            {% set row_phrase = active_kw %}
-            {% if not row_phrase and t.matched_keywords %}{% set row_phrase = t.matched_keywords.split(';')[0] %}{% endif %}
-            <td class="phrase-cell" title="{{ (t.matched_keywords or '') | replace(';', ', ') }}">
-              {{ row_phrase or '—' }}
-              {% if t.matched_profiles %}
-              {% set best_profile = t.matched_profiles | sort(attribute='score', reverse=true) | first %}
-              <div style="font-size:.58rem;color:var(--dim);margin-top:2px" title="{{ (best_profile.phrases or []) | map(attribute='phrase') | join(', ') }}">
-                🔎 {{ best_profile.profile_name }} ({{ best_profile.score }})
-              </div>
-              {% endif %}
-            </td>
-            <td class="exclude-cell">
-              {% if tab_id != 'REJECTED' %}
-              <div class="exclude-actions">
-                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="not_my_profile" onclick="rejectLotFromList(this);event.stopPropagation()" title="Не мой профиль">X</button>
-                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="manual_decline" onclick="rejectLotFromList(this);event.stopPropagation()" title="Решил не брать">−</button>
-              </div>
-              {% else %}
-              {% set reason_titles = {'manual_decline': 'Решил не брать', 'failed': 'Не прошел'} %}
-              {% set reason_marks = {'manual_decline': '−', 'failed': '✗'} %}
-              <span class="exclude-mark" title="{{ reason_titles.get(t.rejection_reason, 'Не мой профиль') }}">{{ reason_marks.get(t.rejection_reason, 'X') }}</span>
-              {% endif %}
-            </td>
-
-            <!-- EIS link -->
-            <td class="link-cell">
-              {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
-              {% if eis_url %}
-              <a href="{{ eis_url }}" target="_blank" rel="noopener noreferrer" class="lot-link src" title="Открыть источник: {{ t.platform or 'ЕИС' }}" onclick="event.stopPropagation()">{{ t.platform | platform_short }}</a>
-              {% else %}
-              <span style="color:var(--dimmer);font-size:.65rem">—</span>
-              {% endif %}
-            </td>
-            <td class="link-cell">
-              <a href="/tender/{{ t.purchase_number }}" target="_blank" rel="noopener noreferrer" class="lot-link internal" title="Открыть лот в новой вкладке" onclick="event.stopPropagation()">↗</a>
-            </td>
-
-            <!-- Filter mini bars -->
-            <td class="hide-sm">
-              {% set fs = t.get('filter_scores', []) %}
-              {% if fs %}
-              <div class="filter-bars">
-                {% for f in fs %}
-                {% set h = (f.score / 5 * 22)|int %}
-                {% set c = f.score | score_color %}
-                <div class="fbar" title="{{ f.signals or f.filter_name or ('Ф' ~ f.filter_number) }}">
-                  <div class="fbar-block" style="height:{{ h }}px;background:{{ c }};opacity:.85"></div>
-                  <div class="fbar-label">{{ f.filter_number }}</div>
-                </div>
-                {% endfor %}
-              </div>
-              {% else %}
-              <span style="color:var(--dimmer);font-size:.65rem">нет данных</span>
-              {% endif %}
-            </td>
-
-            <!-- Price -->
-            <td class="price-cell hide-sm">{{ t.price | fmt_price }}</td>
-
-            <!-- Days left -->
-            <td class="days-cell hide-sm">
-              {% set dleft = t.deadline | days_left %}
-              {% if dleft is none %}
-              <span style="color:var(--dimmer)">—</span>
-              {% else %}
-              <span style="color:{{ 'var(--nogo)' if dleft <= 2 else ('var(--caution)' if dleft <= 7 else 'var(--go)') }}">{{ dleft }}</span>
-              {% endif %}
-            </td>
-
-            <!-- Deadline -->
-            <td class="date-cell hide-sm">{{ t.deadline | fmt_datetime }}</td>
-
-            {% if tab_id == 'UNSENT' %}
-            <!-- Почему не отправлен -->
-            <td style="font-size:.68rem;color:var(--dim);white-space:normal">{{ t.unsent_reason or '—' }}</td>
-            {% endif %}
-
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% endif %}
-  </div>
-  {% endmacro %}
-
-  <!-- ALL tab -->
-  <div id="tab-ALL" class="tab-panel">
-    <div class="section-hdr">
-      <div class="dot dot-all"></div>
-      <h2>ВСЕ ТЕНДЕРЫ — {{ all_tenders|length }}</h2>
-    </div>
-    {% if not all_tenders %}
-    <div class="empty">— Нет данных. Запусти монитор: <code>python main.py --once</code> —</div>
-    {% else %}
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="col-num">#</th>
-            <th class="col-score">БАЛЛ</th>
-            <th class="col-decision">РЕШЕНИЕ</th>
-            <th class="col-title">НАЗВАНИЕ</th>
-            <th class="col-search"><button class="sort-btn" onclick="sortBy('phrase');event.stopPropagation()">ПОИСКОВАЯ ФРАЗА{% if sort_by == 'phrase' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th>
-            <th class="col-exclude">X&nbsp;&nbsp;−</th>
-            <th class="col-eis">ИСТ.</th>
-            <th class="col-open">ЛОТ</th>
-            <th class="col-filters hide-sm">ФИЛЬТРЫ</th>
-            <th class="col-price hide-sm"><button class="sort-btn" onclick="sortBy('price');event.stopPropagation()">НМЦК, тыс.р.{% if sort_by == 'price' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th>
-            <th class="col-days hide-sm"><button class="sort-btn" onclick="sortBy('deadline');event.stopPropagation()">ДНЕЙ{% if sort_by == 'deadline' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th>
-            <th class="col-deadline hide-sm">СРОК</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for t in all_tenders %}
-          {% set dec = t.filter_decision or '' %}
-          {% set dc  = dec | decision_class %}
-          <tr onclick="location.href='/tender/{{ t.purchase_number }}'">
-            <td style="color:var(--dimmer);font-size:.65rem">{{ loop.index }}</td>
-            <td class="score-cell">
-              {% if t.filter_total is not none %}
-              {% set sc_color = '#22C55E' if t.filter_total >= 33 else ('#F59E0B' if t.filter_total >= 24 else '#EF4444') %}
-              <span class="score-num" style="color:{{ sc_color }}">
-                {{ t.filter_total }}<span class="score-max">/40</span>
-              </span>
-              {% else %}
-              <span style="color:var(--dimmer);font-size:.7rem">—</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if dec %}<span class="badge badge-{{ dc }}">{{ dec }}</span>{% else %}<span class="badge badge-unknown">—</span>{% endif %}
-              {% if t.llm_verdict %}<div style="font-size:.6rem;color:var(--dim);margin-top:3px">{{ t.llm_verdict }}</div>{% endif %}
-            </td>
-            <td class="title-cell">
-              <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
-            </td>
-            {% set row_phrase = active_kw %}
-            {% if not row_phrase and t.matched_keywords %}{% set row_phrase = t.matched_keywords.split(';')[0] %}{% endif %}
-            <td class="phrase-cell" title="{{ (t.matched_keywords or '') | replace(';', ', ') }}">
-              {{ row_phrase or '—' }}
-              {% if t.matched_profiles %}
-              {% set best_profile = t.matched_profiles | sort(attribute='score', reverse=true) | first %}
-              <div style="font-size:.58rem;color:var(--dim);margin-top:2px" title="{{ (best_profile.phrases or []) | map(attribute='phrase') | join(', ') }}">
-                🔎 {{ best_profile.profile_name }} ({{ best_profile.score }})
-              </div>
-              {% endif %}
-            </td>
-            <td class="exclude-cell">
-              <div class="exclude-actions">
-                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="not_my_profile" onclick="rejectLotFromList(this);event.stopPropagation()" title="Не мой профиль">X</button>
-                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="manual_decline" onclick="rejectLotFromList(this);event.stopPropagation()" title="Решил не брать">−</button>
-              </div>
-            </td>
-            <td class="link-cell">
-              {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
-              {% if eis_url %}
-              <a href="{{ eis_url }}" target="_blank" rel="noopener noreferrer" class="lot-link src" title="Открыть источник: {{ t.platform or 'ЕИС' }}" onclick="event.stopPropagation()">{{ t.platform | platform_short }}</a>
-              {% else %}
-              <span style="color:var(--dimmer);font-size:.65rem">—</span>
-              {% endif %}
-            </td>
-            <td class="link-cell">
-              <a href="/tender/{{ t.purchase_number }}" target="_blank" rel="noopener noreferrer" class="lot-link internal" title="Открыть лот в новой вкладке" onclick="event.stopPropagation()">↗</a>
-            </td>
-            <td class="hide-sm">
-              {% if t.get('filter_scores') %}
-              <div class="filter-bars">
-                {% for f in t.filter_scores %}
-                {% set h = (f.score / 5 * 22)|int %}
-                <div class="fbar" title="{{ f.signals or f.filter_name or ('Ф' ~ f.filter_number) }}">
-                  <div class="fbar-block" style="height:{{ h }}px;background:{{ f.score | score_color }};opacity:.85"></div>
-                  <div class="fbar-label">{{ f.filter_number }}</div>
-                </div>
-                {% endfor %}
-              </div>
-              {% else %}
-              <span style="color:var(--dimmer);font-size:.65rem">—</span>
-              {% endif %}
-            </td>
-            <td class="price-cell hide-sm">{{ t.price | fmt_price }}</td>
-            <td class="days-cell hide-sm">
-              {% set dleft = t.deadline | days_left %}
-              {% if dleft is none %}<span style="color:var(--dimmer)">—</span>
-              {% else %}<span style="color:{{ 'var(--nogo)' if dleft <= 2 else ('var(--caution)' if dleft <= 7 else 'var(--go)') }}">{{ dleft }}</span>{% endif %}
-            </td>
-            <td class="date-cell hide-sm">{{ t.deadline | fmt_datetime }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% endif %}
-  </div>
-
-  <!-- GO -->
-  <div id="tab-GO" class="tab-panel" style="display:none">
-    <div class="section-hdr">
-      <div class="dot dot-go"></div>
-      <h2>GO — {{ groups.GO|length }} тендеров</h2>
-    </div>
-    {% if not groups.GO %}
-    <div class="empty">— Нет тендеров GO —</div>
-    {% else %}
-    <div class="tbl-wrap">
-      <table>
-        <thead><tr>
-          <th class="col-num">#</th><th class="col-score">БАЛЛ</th>
-          <th class="col-title">НАЗВАНИЕ</th><th class="col-search"><button class="sort-btn" onclick="sortBy('phrase');event.stopPropagation()">ПОИСКОВАЯ ФРАЗА{% if sort_by == 'phrase' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-exclude">X&nbsp;&nbsp;−</th><th class="col-eis">ИСТ.</th><th class="col-open">ЛОТ</th><th class="col-filters hide-sm">ФИЛЬТРЫ</th>
-          <th class="col-price hide-sm"><button class="sort-btn" onclick="sortBy('price');event.stopPropagation()">НМЦК, тыс.р.{% if sort_by == 'price' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-days hide-sm"><button class="sort-btn" onclick="sortBy('deadline');event.stopPropagation()">ДНЕЙ{% if sort_by == 'deadline' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-deadline hide-sm">СРОК</th>
-        </tr></thead>
-        <tbody>
-          {% for t in groups.GO %}
-          <tr onclick="location.href='/tender/{{ t.purchase_number }}'">
-            <td style="color:var(--dimmer);font-size:.65rem">{{ loop.index }}</td>
-            <td class="score-cell">
-              <span class="score-num" style="color:var(--go)">{{ t.filter_total or '—' }}<span class="score-max">/40</span></span>
-            </td>
-            <td class="title-cell">
-              <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
-            </td>
-            {% set row_phrase = active_kw %}
-            {% if not row_phrase and t.matched_keywords %}{% set row_phrase = t.matched_keywords.split(';')[0] %}{% endif %}
-            <td class="phrase-cell" title="{{ (t.matched_keywords or '') | replace(';', ', ') }}">
-              {{ row_phrase or '—' }}
-              {% if t.matched_profiles %}
-              {% set best_profile = t.matched_profiles | sort(attribute='score', reverse=true) | first %}
-              <div style="font-size:.58rem;color:var(--dim);margin-top:2px" title="{{ (best_profile.phrases or []) | map(attribute='phrase') | join(', ') }}">
-                🔎 {{ best_profile.profile_name }} ({{ best_profile.score }})
-              </div>
-              {% endif %}
-            </td>
-            <td class="exclude-cell">
-              <div class="exclude-actions">
-                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="not_my_profile" onclick="rejectLotFromList(this);event.stopPropagation()" title="Не мой профиль">X</button>
-                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="manual_decline" onclick="rejectLotFromList(this);event.stopPropagation()" title="Решил не брать">−</button>
-              </div>
-            </td>
-            <td class="link-cell">
-              {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
-              {% if eis_url %}
-              <a href="{{ eis_url }}" target="_blank" rel="noopener noreferrer" class="lot-link src" title="Открыть источник: {{ t.platform or 'ЕИС' }}" onclick="event.stopPropagation()">{{ t.platform | platform_short }}</a>
-              {% else %}
-              <span style="color:var(--dimmer);font-size:.65rem">—</span>
-              {% endif %}
-            </td>
-            <td class="link-cell">
-              <a href="/tender/{{ t.purchase_number }}" target="_blank" rel="noopener noreferrer" class="lot-link internal" title="Открыть лот в новой вкладке" onclick="event.stopPropagation()">↗</a>
-            </td>
-            <td class="hide-sm">
-              {% if t.get('filter_scores') %}
-              <div class="filter-bars">
-                {% for f in t.filter_scores %}
-                <div class="fbar" title="{{ f.signals or f.filter_name or ('Ф' ~ f.filter_number) }}">
-                  <div class="fbar-block" style="height:{{ (f.score/5*22)|int }}px;background:{{ f.score|score_color }};opacity:.85"></div>
-                  <div class="fbar-label">{{ f.filter_number }}</div>
-                </div>
-                {% endfor %}
-              </div>
-              {% endif %}
-            </td>
-            <td class="price-cell hide-sm">{{ t.price | fmt_price }}</td>
-            <td class="days-cell hide-sm">{% set dleft = t.deadline | days_left %}{% if dleft is none %}<span style="color:var(--dimmer)">—</span>{% else %}<span style="color:{{ 'var(--nogo)' if dleft <= 2 else ('var(--caution)' if dleft <= 7 else 'var(--go)') }}">{{ dleft }}</span>{% endif %}</td>
-            <td class="date-cell hide-sm">{{ t.deadline | fmt_datetime }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% endif %}
-  </div>
-
-  <!-- CAUTION -->
-  <div id="tab-CAUTION" class="tab-panel" style="display:none">
-    <div class="section-hdr">
-      <div class="dot dot-caution"></div>
-      <h2>CAUTION — {{ groups.CAUTION|length }} тендеров</h2>
-    </div>
-    {% if not groups.CAUTION %}
-    <div class="empty">— Нет тендеров CAUTION —</div>
-    {% else %}
-    <div class="tbl-wrap">
-      <table>
-        <thead><tr>
-          <th class="col-num">#</th><th class="col-score">БАЛЛ</th>
-          <th class="col-title">НАЗВАНИЕ</th><th class="col-search"><button class="sort-btn" onclick="sortBy('phrase');event.stopPropagation()">ПОИСКОВАЯ ФРАЗА{% if sort_by == 'phrase' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-exclude">X&nbsp;&nbsp;−</th><th class="col-eis">ИСТ.</th><th class="col-open">ЛОТ</th><th class="col-filters hide-sm">ФИЛЬТРЫ</th>
-          <th class="col-price hide-sm"><button class="sort-btn" onclick="sortBy('price');event.stopPropagation()">НМЦК, тыс.р.{% if sort_by == 'price' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-days hide-sm"><button class="sort-btn" onclick="sortBy('deadline');event.stopPropagation()">ДНЕЙ{% if sort_by == 'deadline' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-deadline hide-sm">СРОК</th>
-        </tr></thead>
-        <tbody>
-          {% for t in groups.CAUTION %}
-          <tr onclick="location.href='/tender/{{ t.purchase_number }}'">
-            <td style="color:var(--dimmer);font-size:.65rem">{{ loop.index }}</td>
-            <td class="score-cell">
-              <span class="score-num" style="color:var(--caution)">{{ t.filter_total or '—' }}<span class="score-max">/40</span></span>
-            </td>
-            <td class="title-cell">
-              <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
-            </td>
-            {% set row_phrase = active_kw %}
-            {% if not row_phrase and t.matched_keywords %}{% set row_phrase = t.matched_keywords.split(';')[0] %}{% endif %}
-            <td class="phrase-cell" title="{{ (t.matched_keywords or '') | replace(';', ', ') }}">
-              {{ row_phrase or '—' }}
-              {% if t.matched_profiles %}
-              {% set best_profile = t.matched_profiles | sort(attribute='score', reverse=true) | first %}
-              <div style="font-size:.58rem;color:var(--dim);margin-top:2px" title="{{ (best_profile.phrases or []) | map(attribute='phrase') | join(', ') }}">
-                🔎 {{ best_profile.profile_name }} ({{ best_profile.score }})
-              </div>
-              {% endif %}
-            </td>
-            <td class="exclude-cell">
-              <div class="exclude-actions">
-                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="not_my_profile" onclick="rejectLotFromList(this);event.stopPropagation()" title="Не мой профиль">X</button>
-                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="manual_decline" onclick="rejectLotFromList(this);event.stopPropagation()" title="Решил не брать">−</button>
-              </div>
-            </td>
-            <td class="link-cell">
-              {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
-              {% if eis_url %}
-              <a href="{{ eis_url }}" target="_blank" rel="noopener noreferrer" class="lot-link src" title="Открыть источник: {{ t.platform or 'ЕИС' }}" onclick="event.stopPropagation()">{{ t.platform | platform_short }}</a>
-              {% else %}
-              <span style="color:var(--dimmer);font-size:.65rem">—</span>
-              {% endif %}
-            </td>
-            <td class="link-cell">
-              <a href="/tender/{{ t.purchase_number }}" target="_blank" rel="noopener noreferrer" class="lot-link internal" title="Открыть лот в новой вкладке" onclick="event.stopPropagation()">↗</a>
-            </td>
-            <td class="hide-sm">
-              {% if t.get('filter_scores') %}
-              <div class="filter-bars">
-                {% for f in t.filter_scores %}
-                <div class="fbar" title="{{ f.signals or f.filter_name or ('Ф' ~ f.filter_number) }}">
-                  <div class="fbar-block" style="height:{{ (f.score/5*22)|int }}px;background:{{ f.score|score_color }};opacity:.85"></div>
-                  <div class="fbar-label">{{ f.filter_number }}</div>
-                </div>
-                {% endfor %}
-              </div>
-              {% endif %}
-            </td>
-            <td class="price-cell hide-sm">{{ t.price | fmt_price }}</td>
-            <td class="days-cell hide-sm">{% set dleft = t.deadline | days_left %}{% if dleft is none %}<span style="color:var(--dimmer)">—</span>{% else %}<span style="color:{{ 'var(--nogo)' if dleft <= 2 else ('var(--caution)' if dleft <= 7 else 'var(--go)') }}">{{ dleft }}</span>{% endif %}</td>
-            <td class="date-cell hide-sm">{{ t.deadline | fmt_datetime }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% endif %}
-  </div>
-
-  <!-- NO-GO -->
-  <div id="tab-NO-GO" class="tab-panel" style="display:none">
-    <div class="section-hdr">
-      <div class="dot dot-nogo"></div>
-      <h2>NO-GO — {{ groups['NO-GO']|length }} тендеров</h2>
-    </div>
-    {% if not groups['NO-GO'] %}
-    <div class="empty">— Нет тендеров NO-GO —</div>
-    {% else %}
-    <div class="tbl-wrap">
-      <table>
-        <thead><tr>
-          <th class="col-num">#</th><th class="col-score">БАЛЛ</th>
-          <th class="col-title">НАЗВАНИЕ</th><th class="col-search"><button class="sort-btn" onclick="sortBy('phrase');event.stopPropagation()">ПОИСКОВАЯ ФРАЗА{% if sort_by == 'phrase' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-exclude">X&nbsp;&nbsp;−</th><th class="col-eis">ИСТ.</th><th class="col-open">ЛОТ</th><th class="col-filters hide-sm">СТОП-ФАКТОРЫ</th>
-          <th class="col-price hide-sm"><button class="sort-btn" onclick="sortBy('price');event.stopPropagation()">НМЦК, тыс.р.{% if sort_by == 'price' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th><th class="col-days hide-sm"><button class="sort-btn" onclick="sortBy('deadline');event.stopPropagation()">ДНЕЙ{% if sort_by == 'deadline' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button></th>
-        </tr></thead>
-        <tbody>
-          {% for t in groups['NO-GO'] %}
-          <tr onclick="location.href='/tender/{{ t.purchase_number }}'">
-            <td style="color:var(--dimmer);font-size:.65rem">{{ loop.index }}</td>
-            <td class="score-cell">
-              <span class="score-num" style="color:var(--nogo)">{{ t.filter_total or '—' }}<span class="score-max">/40</span></span>
-            </td>
-            <td class="title-cell">
-              <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
-            </td>
-            {% set row_phrase = active_kw %}
-            {% if not row_phrase and t.matched_keywords %}{% set row_phrase = t.matched_keywords.split(';')[0] %}{% endif %}
-            <td class="phrase-cell" title="{{ (t.matched_keywords or '') | replace(';', ', ') }}">
-              {{ row_phrase or '—' }}
-              {% if t.matched_profiles %}
-              {% set best_profile = t.matched_profiles | sort(attribute='score', reverse=true) | first %}
-              <div style="font-size:.58rem;color:var(--dim);margin-top:2px" title="{{ (best_profile.phrases or []) | map(attribute='phrase') | join(', ') }}">
-                🔎 {{ best_profile.profile_name }} ({{ best_profile.score }})
-              </div>
-              {% endif %}
-            </td>
-            <td class="exclude-cell">
-              <div class="exclude-actions">
-                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="not_my_profile" onclick="rejectLotFromList(this);event.stopPropagation()" title="Не мой профиль">X</button>
-                <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="manual_decline" onclick="rejectLotFromList(this);event.stopPropagation()" title="Решил не брать">−</button>
-              </div>
-            </td>
-            <td class="link-cell">
-              {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
-              {% if eis_url %}
-              <a href="{{ eis_url }}" target="_blank" rel="noopener noreferrer" class="lot-link src" title="Открыть источник: {{ t.platform or 'ЕИС' }}" onclick="event.stopPropagation()">{{ t.platform | platform_short }}</a>
-              {% else %}
-              <span style="color:var(--dimmer);font-size:.65rem">—</span>
-              {% endif %}
-            </td>
-            <td class="link-cell">
-              <a href="/tender/{{ t.purchase_number }}" target="_blank" rel="noopener noreferrer" class="lot-link internal" title="Открыть лот в новой вкладке" onclick="event.stopPropagation()">↗</a>
-            </td>
-            <td class="hide-sm" style="max-width:280px">
-              {% set stops = t.filter_stop | parse_stop %}
-              {% for s in stops[:2] %}
-              <div style="font-size:.65rem;color:var(--nogo);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:270px" title="{{ s }}">{{ s }}</div>
-              {% else %}
-              <span style="color:var(--dimmer);font-size:.65rem">—</span>
-              {% endfor %}
-            </td>
-            <td class="price-cell hide-sm">{{ t.price | fmt_price }}</td>
-            <td class="days-cell hide-sm">{% set dleft = t.deadline | days_left %}{% if dleft is none %}<span style="color:var(--dimmer)">—</span>{% else %}<span style="color:{{ 'var(--nogo)' if dleft <= 2 else ('var(--caution)' if dleft <= 7 else 'var(--go)') }}">{{ dleft }}</span>{% endif %}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% endif %}
-  </div>
-
-  {{ render_table(rejected_tenders, 'REJECTED') }}
-  {{ render_table(processed_unsent, 'UNSENT') }}
+  {% include "_tenders_table.html" %}
 
 </main>
 
+<script src="/static/vendor/htmx.min.js"></script>
 <script>
-const ACTIVE_INIT = '{{ active }}';
+// ── Единая таблица тендеров: обновление без перезагрузки страницы ──────
+function _refreshTable() {
+  htmx.ajax('GET', '/partials/tenders' + window.location.search, { target: '#tenders-table', swap: 'outerHTML' });
+}
+function _applyParams(params) {
+  const qs = params.toString();
+  history.pushState(null, '', qs ? '/?' + qs : '/');
+  _refreshTable();
+}
+function applyCheckboxGroup(name) {
+  const params = new URLSearchParams(window.location.search);
+  params.delete(name);
+  document.querySelectorAll('input[name="' + name + '"]:checked').forEach(cb => params.append(name, cb.value));
+  _applyParams(params);
+}
+function applySingleParam(name, value) {
+  const params = new URLSearchParams(window.location.search);
+  params.delete(name);
+  if (value !== '' && value !== null && value !== undefined) params.set(name, value);
+  _applyParams(params);
+}
+window.addEventListener('popstate', _refreshTable);
 
 function openManualTenderModal() {
   const modal = document.getElementById('manualTenderModal');
@@ -1326,63 +850,22 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') closeManualTenderModal();
 });
 
-function showTab(name) {
-  document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
-  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-
-  const panel = document.getElementById('tab-' + name);
-  if (panel) panel.style.display = '';
-
-  const btn = document.querySelector(`[onclick="showTab('${name}')"]`);
-  if (btn) {
-    btn.classList.add('active');
-    // Fix active class suffix
-    if (name === 'GO')      btn.classList.add('tab-go');
-    if (name === 'CAUTION') btn.classList.add('tab-caut');
-    if (name === 'NO-GO')   btn.classList.add('tab-nogo');
-    if (name === 'REJECTED') btn.classList.add('tab-rejected');
-  }
-
-  const params = new URLSearchParams(window.location.search);
-  if (name === 'ALL') params.delete('decision');
-  else params.set('decision', name);
-  const qs = params.toString();
-  history.replaceState(null, '', qs ? '/?' + qs : '/');
-}
-
 // ── Фасет по поисковой фразе ───────────────────────────────────────────
-function _facetBaseUrl() {
-  return new URLSearchParams(window.location.search);
-}
 function applyKwFacet() {
   const kw = document.getElementById('kwFacet').value;
-  const params = _facetBaseUrl();
-  params.delete('kw');
-  if (kw) params.set('kw', kw);
-  const qs = params.toString();
-  location.href = qs ? '/?' + qs : '/';
+  applySingleParam('kw', kw);
 }
 function clearKwFacet() {
-  const params = _facetBaseUrl();
-  params.delete('kw');
-  const qs = params.toString();
-  location.href = qs ? '/?' + qs : '/';
+  applySingleParam('kw', '');
 }
 
 // ── Фасет по поисковому профилю ─────────────────────────────────────────
 function applyProfileFacet() {
   const pid = document.getElementById('profileFacet').value;
-  const params = _facetBaseUrl();
-  params.delete('profile_id');
-  if (pid) params.set('profile_id', pid);
-  const qs = params.toString();
-  location.href = qs ? '/?' + qs : '/';
+  applySingleParam('profile_id', pid);
 }
 function clearProfileFacet() {
-  const params = _facetBaseUrl();
-  params.delete('profile_id');
-  const qs = params.toString();
-  location.href = qs ? '/?' + qs : '/';
+  applySingleParam('profile_id', '');
 }
 
 // ── Мультиселект по источнику (platform) ────────────────────────────────
@@ -1391,17 +874,16 @@ function togglePlatformMenu(e) {
   document.getElementById('platformMs').classList.toggle('open');
 }
 function applyPlatformFacet() {
-  const params = _facetBaseUrl();
+  const params = new URLSearchParams(window.location.search);
   params.delete('platform');
   document.querySelectorAll('#platformMs .ms-cb:checked').forEach(cb => params.append('platform', cb.value));
-  const qs = params.toString();
-  location.href = qs ? '/?' + qs : '/';
+  _applyParams(params);
 }
 function clearPlatformFacet() {
-  const params = _facetBaseUrl();
+  document.querySelectorAll('#platformMs .ms-cb:checked').forEach(cb => cb.checked = false);
+  const params = new URLSearchParams(window.location.search);
   params.delete('platform');
-  const qs = params.toString();
-  location.href = qs ? '/?' + qs : '/';
+  _applyParams(params);
 }
 // Клик вне меню — закрыть
 document.addEventListener('click', (e) => {
@@ -1412,28 +894,21 @@ document.addEventListener('click', (e) => {
 // ── Свободный поиск по загруженным лотам (без скрейпинга) ───────────────
 function applyQSearch() {
   const q = document.getElementById('qSearch').value.trim();
-  const params = new URLSearchParams(window.location.search);
-  params.delete('q');
-  if (q) params.set('q', q);
-  const qs = params.toString();
-  location.href = qs ? '/?' + qs : '/';
+  applySingleParam('q', q);
 }
 function clearQSearch() {
-  const params = new URLSearchParams(window.location.search);
-  params.delete('q');
-  const qs = params.toString();
-  location.href = qs ? '/?' + qs : '/';
+  applySingleParam('q', '');
 }
 
 function addMinusPhrase() {
   const input = document.getElementById('minusPhrase');
   const phrase = (input.value || '').trim();
   if (!phrase) return;
+  input.value = '';
   const params = new URLSearchParams(window.location.search);
   const existing = params.getAll('exclude_kw');
   if (!existing.includes(phrase)) params.append('exclude_kw', phrase);
-  const qs = params.toString();
-  location.href = qs ? '/?' + qs : '/';
+  _applyParams(params);
 }
 function removeMinusPhrase(phrase) {
   if (!phrase) return;
@@ -1441,8 +916,7 @@ function removeMinusPhrase(phrase) {
   const kept = params.getAll('exclude_kw').filter(v => v !== phrase);
   params.delete('exclude_kw');
   kept.forEach(v => params.append('exclude_kw', v));
-  const qs = params.toString();
-  location.href = qs ? '/?' + qs : '/';
+  _applyParams(params);
 }
 
 async function rejectLotFromList(btn) {
@@ -1462,7 +936,7 @@ async function rejectLotFromList(btn) {
       const e = await r.json().catch(() => ({}));
       throw new Error(e.detail || ('HTTP ' + r.status));
     }
-    location.reload();
+    _refreshTable();
   } catch (err) {
     btn.disabled = false;
     btn.textContent = original;
@@ -1476,12 +950,8 @@ function sortBy(field) {
   const currentOrder = params.get('order') || 'desc';
   params.set('sort_by', field);
   params.set('order', current === field && currentOrder === 'asc' ? 'desc' : 'asc');
-  const qs = params.toString();
-  location.href = qs ? '/?' + qs : '/';
+  _applyParams(params);
 }
-
-// Init active tab
-document.addEventListener('DOMContentLoaded', () => showTab(ACTIVE_INIT));
 </script>
 </body>
 </html>
