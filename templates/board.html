@@ -27,7 +27,7 @@ html,body { margin:0; background:var(--bg); color:var(--text); font-family:var(-
 .col.c-orange .col-hd, .col.c-purple .col-hd, .col.c-blue .col-hd { color:var(--accent); }
 .cards { min-height:28px; }
 .cards:empty::after { content:'—'; color:var(--dim); font-size:.68rem; }
-.card { background:var(--surf2); border:1px solid var(--border); border-radius:8px; padding:.6rem .7rem; margin-bottom:.6rem; cursor:grab; }
+.card { background:var(--surf2); border:1px solid var(--border); border-radius:8px; padding:.6rem .7rem; margin-bottom:.6rem; cursor:grab; user-select:none; -webkit-user-select:none; }
 .card:active { cursor:grabbing; }
 .card.card-ghost { opacity:.35; border-color:var(--accent); }
 .card.card-chosen { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
@@ -94,6 +94,8 @@ document.querySelectorAll('.cards[data-stage]:not([data-locked])').forEach(funct
     group: 'board',
     draggable: '.card',
     animation: 150,
+    forceFallback: true,
+    fallbackTolerance: 3,
     ghostClass: 'card-ghost',
     chosenClass: 'card-chosen',
     dragClass: 'card-drag',
