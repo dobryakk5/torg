@@ -116,6 +116,9 @@ OPENROUTER_TRIAGE_MODEL = os.getenv("OPENROUTER_TRIAGE_MODEL", "openai/gpt-4o-mi
 OPENROUTER_DEEP_MODEL   = os.getenv("OPENROUTER_DEEP_MODEL",   "openai/gpt-4o")
 # Триаж по карточке (Stage 1): включён/выключен, лимит карточек за прогон, объём текста.
 LLM_TRIAGE_ENABLED    = os.getenv("LLM_TRIAGE_ENABLED", "1") != "0"
+# Адъюдикация фразовых стоп-факторов (Ф4–Ф7) моделью на Stage 2.5: если LLM
+# признаёт авто-стоп ложным, лот перестаёт быть NO-GO и может уйти в Telegram.
+LLM_STOP_ADJUDICATION_ENABLED = os.getenv("LLM_STOP_ADJUDICATION", "1") != "0"
 LLM_TRIAGE_MAX_CARDS  = int(os.getenv("LLM_TRIAGE_MAX_CARDS", "300"))
 LLM_TRIAGE_TEXT_CHARS = int(os.getenv("LLM_TRIAGE_TEXT_CHARS", "2500"))
 LLM_HTTP_TIMEOUT      = int(os.getenv("LLM_HTTP_TIMEOUT", "60"))

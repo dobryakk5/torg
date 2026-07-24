@@ -18,14 +18,16 @@ html,body { margin:0; background:var(--bg); color:var(--text); font-family:var(-
 .top h1 { font-size:1.1rem; margin:0; }
 .top .cnt { color:var(--dim); font-size:.8rem; }
 .empty { color:var(--dim); padding:3rem; text-align:center; font-size:.9rem; }
-.cols { display:flex; gap:.9rem; overflow-x:auto; padding-bottom:1rem; }
-.col { flex:0 0 270px; background:var(--surf); border:1px solid var(--border); border-radius:10px; padding:.7rem; }
+.cols { display:flex; gap:.9rem; overflow-x:auto; padding-bottom:1rem; align-items:stretch; }
+.col { flex:0 0 270px; background:var(--surf); border:1px solid var(--border); border-radius:10px; padding:.7rem; display:flex; flex-direction:column; }
 .col-hd { font-size:.72rem; letter-spacing:.05em; text-transform:uppercase; color:var(--dim); margin-bottom:.6rem; display:flex; justify-content:space-between; }
 .col-hd .c-cnt { color:var(--text); }
 .col.c-green  .col-hd { color:var(--go); }
 .col.c-red    .col-hd { color:var(--nogo); }
 .col.c-orange .col-hd, .col.c-purple .col-hd, .col.c-blue .col-hd { color:var(--accent); }
-.cards { min-height:28px; }
+/* .cards тянется на всю высоту столбца → вся колонка (а не тонкая полоска сверху)
+   становится зоной сброса карточки. Это чинило «карточка возвращается на место». */
+.cards { flex:1 1 auto; min-height:60px; }
 .cards:empty::after { content:'—'; color:var(--dim); font-size:.68rem; }
 .card { background:var(--surf2); border:1px solid var(--border); border-radius:8px; padding:.6rem .7rem; margin-bottom:.6rem; cursor:grab; user-select:none; -webkit-user-select:none; }
 .card:active { cursor:grabbing; }

@@ -401,6 +401,130 @@ def run_filters(tender: dict[str, Any], text: str = "", stage: str = "stage2") -
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# СЕМАНТИЧЕСКИЕ СТОП-ФАКТОРЫ → адъюдикация LLM
+# ══════════════════════════════════════════════════════════════════════════════
+# Часть стоп-факторов — «структурные» (объективные числа: цена > PRICE_HARD_MAX,
+# истёкший дедлайн, неподъёмное обеспечение) — их LLM не оспаривает. Другие
+# срабатывают ПО ФРАЗАМ-МАРКЕРАМ в тексте ТЗ (Ф4 SLA, Ф5 требования, Ф6 «под
+# своего», Ф7 перекуп) и потому склонны к ложным совпадениям: напр. «доступны
+# ежедневно, круглосуточно» про доступность контента → ложный SLA-стоп. Такие
+# стопы считаются ПРЕДВАРИТЕЛЬНЫМИ: полные предложения-триггеры выносятся и
+# отдаются LLM на Stage 2.5; если модель признаёт их не-блокерами, стоп снимается.
+
+SEMANTIC_STOP_FILTERS: tuple[int, ...] = (4, 5, 6, 7)
+
+# Корзины, чьи совпадения приводят к стоп-фактору соответствующего фильтра.
+_SEMANTIC_STOP_BUCKETS: dict[int, tuple[str, ...]] = {
+    4: ("hard",),
+    5: ("hard",),
+    6: ("signs",),
+    7: ("commodity",),
+}
+
+_SENT_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+|\n+")
+
+
+def _split_sentences(text: str) -> list[str]:
+    parts = _SENT_SPLIT_RE.split(text or "")
+    return [p.strip() for p in parts if p and p.strip()]
+
+
+def structural_stop_numbers(result: "FilterResult") -> list[int]:
+    """Номера фильтров со СТРУКТУРНЫМ стопом (LLM их не снимает)."""
+    return [
+        f.number for f in result.filters
+        if f.stop_factor and f.number not in SEMANTIC_STOP_FILTERS
+    ]
+
+
+def semantic_stop_numbers(result: "FilterResult") -> list[int]:
+    """Номера фильтров с фразовым (адъюдицируемым) стопом."""
+    return [
+        f.number for f in result.filters
+        if f.stop_factor and f.number in SEMANTIC_STOP_FILTERS
+    ]
+
+
+def is_semantic_only_stop(result: "FilterResult") -> bool:
+    """True, если решение NO-GO держится ТОЛЬКО на фразовых стопах Ф4–Ф7.
+
+    Такой лот — кандидат на адъюдикацию: если LLM снимет все семантические
+    стопы, его можно допустить к отправке. Если есть хоть один структурный
+    стоп — не трогаем, NO-GO остаётся жёстким.
+    """
+    return (
+        result.decision == "NO-GO"
+        and bool(semantic_stop_numbers(result))
+        and not structural_stop_numbers(result)
+    )
+
+
+def decision_if_stops_cleared(result: "FilterResult") -> str:
+    """Каким было бы решение, если снять фразовые стопы (структурных уже нет)."""
+    return _decision(result.total_score, [], stage=result.stage, filters=result.filters)
+
+
+def collect_stop_quotes(result: "FilterResult", raw_text: str) -> list[dict[str, Any]]:
+    """Выносит полные предложения-триггеры фразовых стоп-факторов.
+
+    Для каждого фильтра Ф4–Ф7 со стопом ищет в ИСХОДНОМ тексте ТЗ предложения,
+    в которых срабатывает соответствующая стоп-корзина (тем же матчером, что и
+    сам фильтр — с учётом стражей unless/require). Возвращает список словарей
+    ``{filter, filter_name, phrases, sentences}`` для передачи в LLM.
+    """
+    sentences = _split_sentences(raw_text)
+    norm_sentences = [(_normalize(s), s) for s in sentences]
+
+    quotes: list[dict[str, Any]] = []
+    for f in result.filters:
+        if not (f.stop_factor and f.number in SEMANTIC_STOP_FILTERS):
+            continue
+        buckets = _SEMANTIC_STOP_BUCKETS.get(f.number, ())
+        found_sentences: list[str] = []
+        phrases: list[str] = []
+        for norm_s, orig_s in norm_sentences:
+            matched: list[str] = []
+            for bucket in buckets:
+                matched += _match_bucket(norm_s, f.number, bucket)
+            if matched:
+                if orig_s not in found_sentences:
+                    found_sentences.append(orig_s)
+                for m in matched:
+                    if m not in phrases:
+                        phrases.append(m)
+
+        # Ф6: «в проект контракта вписан конкретный исполнитель» — регексный стоп,
+        # не корзинная фраза. Вытаскиваем предложение с найденной компанией.
+        if f.number == 6:
+            m = _NAMED_EXECUTOR_RE.search(raw_text or "")
+            if m:
+                frag = _sentence_around_span(raw_text, m.start(), m.end())
+                if frag and frag not in found_sentences:
+                    found_sentences.append(frag)
+                    phrases.append("вписанный исполнитель в проекте контракта")
+
+        if found_sentences:
+            quotes.append({
+                "filter": f.number,
+                "filter_name": f.name,
+                "phrases": phrases[:8],
+                "sentences": found_sentences[:4],
+            })
+    return quotes
+
+
+def _sentence_around_span(text: str, start: int, end: int) -> str:
+    """Возвращает предложение исходного текста, покрывающее диапазон [start,end)."""
+    left = max(
+        (text.rfind(ch, 0, start) for ch in ".!?…\n"),
+        default=-1,
+    )
+    right_candidates = [p for p in (text.find(ch, end) for ch in ".!?…\n") if p != -1]
+    right = min(right_candidates) if right_candidates else len(text)
+    return " ".join(text[left + 1:right + 1].split()).strip()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # ФИЛЬТРЫ
 # ══════════════════════════════════════════════════════════════════════════════
 

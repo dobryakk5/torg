@@ -60,6 +60,7 @@ import search_profiles as sp
 from winner_analytics   import run_update   as run_winner_update, classify_category, recommend_bid
 from customer_scorer    import run_new_customers, run_refresh_customers, get_customer_risk_label
 from change_detector    import check_once   as check_changes
+import filter_engine
 from filter_engine import run_stage1_filters, run_stage2_filters
 
 logging.basicConfig(
@@ -1371,10 +1372,40 @@ def run_llm(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
                 or bool(str(tender.get("document_text_full") or "").strip())
             )
 
+            # Фразовые стоп-факторы (Ф4–Ф7) — ПРЕДВАРИТЕЛЬНЫЕ: их может снять LLM.
+            # Пересчитываем фильтры по тексту ТЗ, и если NO-GO держится только на
+            # них (без структурных стопов), выносим предложения-триггеры на
+            # адъюдикацию модели. См. filter_engine.is_semantic_only_stop.
+            stop_quotes: list = []
+            prov_decision = ""
+            if config.LLM_STOP_ADJUDICATION_ENABLED and scoring_text.strip():
+                try:
+                    fr = run_stage2_filters(tender, scoring_text)
+                    if filter_engine.is_semantic_only_stop(fr):
+                        quotes = filter_engine.collect_stop_quotes(fr, scoring_text)
+                        if quotes:
+                            stop_quotes = quotes
+                            prov_decision = filter_engine.decision_if_stops_cleared(fr)
+                except Exception as exc:
+                    logger.warning("%s: сбор стоп-цитат не удался: %s", pnum, exc)
+
+            # Предварительный кандидат: NO-GO из-за фразовых стопов, но по баллам
+            # (без них) прошёл бы, скор и площадка подходят — станет полноценным
+            # кандидатом, если LLM признает стопы ложными.
+            provisional_candidate = (
+                bool(stop_quotes)
+                and prov_decision != "NO-GO"
+                and detail_score >= config.MIN_DETAILED_SCORE_FOR_NOTIFY
+                and not tender.get("notified_at")
+                and notify_platform_ok
+            )
+
             # Кандидат на отправку с документами обязан пройти LLM-проверку ТЗ
             # (стоп-факторы: вендор-лок, статус партнёра, «под своего»), даже если
             # его скор ниже LLM-порога — иначе в чат уйдёт лот с непрочитанным ТЗ.
-            wants_llm = detail_score >= config.MIN_SCORE_FOR_LLM or (notify_candidate and has_docs)
+            wants_llm = detail_score >= config.MIN_SCORE_FOR_LLM or (
+                (notify_candidate or provisional_candidate) and has_docs
+            )
 
             # Разбор мог быть выполнен прошлым прогоном, но отправка в Telegram тогда
             # сорвалась — лот вернулся в очередь с llm_analyzed_at=NULL и сохранённым
@@ -1390,7 +1421,7 @@ def run_llm(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
                 logger.info("%s: переиспользую сохранённый LLM-разбор (прошлая отправка не удалась)", pnum)
             elif llm_configured and wants_llm:
                 try:
-                    llm_analysis = analyze_tender(tender, scoring_text)
+                    llm_analysis = analyze_tender(tender, scoring_text, stop_quotes=stop_quotes)
                     if llm_analysis:
                         analyzed += 1
                 except Exception as exc:
@@ -1408,14 +1439,47 @@ def run_llm(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
             llm_verdict = _verdict(llm_analysis).upper() if llm_analysis else ""
             llm_rejected = llm_verdict == "ПРОПУСТИТЬ"
 
+            # Адъюдикация фразовых стопов: если LLM признал ВСЕ авто-стопы лота
+            # ложными, снимаем NO-GO — лот становится полноценным кандидатом на
+            # отправку и в веб-панели тоже перестаёт быть красным.
+            stops_cleared = False
+            if provisional_candidate and llm_analysis and not llm_rejected:
+                from llm_analyzer import stop_review_all_cleared as _stops_cleared
+                stops_cleared, _review = _stops_cleared(llm_analysis)
+                if stops_cleared:
+                    # Приводим in-memory лот к снятому решению, чтобы Telegram-
+                    # сообщение показывало не 🔴 NO-GO, а фактическое решение,
+                    # и убираем из причин строки про снятый стоп.
+                    tender["filter_decision"] = prov_decision
+                    detail_reasons = [
+                        r for r in detail_reasons
+                        if not r.lstrip().startswith("⛔") and "NO-GO" not in r
+                    ]
+                    detail_reasons.append(
+                        f"ℹ️ авто-стоп (Ф{','.join(map(str, filter_engine.semantic_stop_numbers(fr)))}) снят LLM — ложное совпадение фраз"
+                    )
+                    if not dry_run:
+                        db.apply_stop_clearance(
+                            pnum,
+                            prov_decision,
+                            filter_engine.semantic_stop_numbers(fr),
+                            note=f"снят на Stage 2.5 (было NO-GO → {prov_decision})",
+                        )
+                        logger.info("%s: LLM снял фразовые авто-стопы → %s", pnum, prov_decision)
+
+            # Полноценный кандидат = обычный ИЛИ предварительный со снятыми стопами.
+            effective_notify_candidate = notify_candidate or (provisional_candidate and stops_cleared)
+
             # Лот с документами не уходит в чат, пока модель не прочла ТЗ: при
             # сбое провайдера он остаётся в очереди (mark_analyzed=False) и будет
             # отправлен следующим прогоном уже с проверкой стоп-факторов.
             llm_failed = llm_configured and wants_llm and not llm_analysis
-            should_notify = notify_candidate and not llm_rejected and not (llm_failed and has_docs)
+            should_notify = effective_notify_candidate and not llm_rejected and not (llm_failed and has_docs)
             if llm_rejected and not tender.get("notified_at"):
                 logger.info("%s: LLM-вердикт ПРОПУСТИТЬ — не отправляю (отсеяно по ТЗ)", pnum)
-            elif llm_failed and has_docs and notify_candidate:
+            elif provisional_candidate and llm_analysis and not stops_cleared and not llm_rejected:
+                logger.info("%s: LLM подтвердил фразовый стоп — оставляю NO-GO", pnum)
+            elif llm_failed and has_docs and (notify_candidate or provisional_candidate):
                 logger.info("%s: LLM не ответил, ТЗ не проверено — отправка отложена до следующего прогона", pnum)
             notified = False
             if should_notify:

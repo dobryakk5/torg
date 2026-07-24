@@ -164,7 +164,7 @@ def _build_system_prompt(tender: dict, page_text: str) -> str:
     )
 
 
-def analyze_tender(tender: dict, page_text: str = "") -> Optional[str]:
+def analyze_tender(tender: dict, page_text: str = "", stop_quotes: Optional[list] = None) -> Optional[str]:
     import config
     import llm_provider
 
@@ -188,6 +188,13 @@ def analyze_tender(tender: dict, page_text: str = "") -> Optional[str]:
         url                  = tender.get("url", "—"),
         page_text            = (page_text or "(текст не получен)")[:config.LLM_TEXT_CHARS],
     )
+
+    # Авто-фильтр пометил фразы как стоп-факторы (Ф4–Ф7). Просим модель
+    # адъюдицировать их в контексте — реальный ли это блокер или ложное
+    # совпадение (напр. «доступны круглосуточно» про доступность контента).
+    adj_block = _build_stop_adjudication_block(stop_quotes)
+    if adj_block:
+        user_message += adj_block
 
     result = llm_provider.complete(
         system=system_prompt,
@@ -701,6 +708,79 @@ def extract_stop_factors(analysis: str) -> list[str]:
         if val and val.lower() not in ("нет", "не выявлены", "не найдены", "..."):
             out.append(val)
     return out
+
+
+_STOP_ADJ_HEADER = "РАЗБОР АВТО-СТОПОВ"
+
+
+def _build_stop_adjudication_block(stop_quotes: Optional[list]) -> str:
+    """Формирует блок пользователя со стоп-цитатами и просьбой их адъюдицировать."""
+    if not stop_quotes:
+        return ""
+    lines = [
+        "",
+        "АВТО-ФИЛЬТР пометил приведённые ниже фразы как стоп-факторы (возможен",
+        "ложный сработ по ключевым словам). Для КАЖДОЙ оцени в контексте ТЗ:",
+        "реальный ли это блокер для нашего профиля или ложное совпадение",
+        "(напр. «доступны круглосуточно» — это про доступность контента, а не",
+        "круглосуточная поддержка; «в течение часа разместить» — срок публикации,",
+        "а не SLA реагирования).",
+        "",
+    ]
+    n = 0
+    for q in stop_quotes:
+        fname = q.get("filter_name") or f"Ф{q.get('filter')}"
+        for sent in (q.get("sentences") or []):
+            n += 1
+            lines.append(f'{n}. [{fname}] «{str(sent)[:400]}»')
+    lines += [
+        "",
+        f"Добавь в ответ секцию «{_STOP_ADJ_HEADER}:» — по строке на каждый пункт",
+        "в формате: «- <номер/суть>: НЕ БЛОКЕР — <почему>» либо",
+        "«- <номер/суть>: БЛОКЕР — <почему>». Ставь БЛОКЕР только если фраза",
+        "действительно означает неподъёмное для нас условие.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def stop_review_all_cleared(analysis: str) -> tuple[bool, list[str]]:
+    """Разбирает секцию «РАЗБОР АВТО-СТОПОВ» детального ответа.
+
+    Возвращает ``(all_cleared, items)``: ``all_cleared=True`` только если секция
+    есть, в ней ≥1 пункт и КАЖДЫЙ помечен «НЕ БЛОКЕР». Любой «БЛОКЕР» или
+    неоднозначный пункт → False (консервативно оставляем стоп). Отсутствие
+    секции → False.
+    """
+    if not analysis:
+        return False, []
+    items: list[str] = []
+    in_section = False
+    all_cleared = True
+    for line in analysis.splitlines():
+        stripped = line.strip()
+        upper = stripped.upper()
+        if upper.startswith(_STOP_ADJ_HEADER):
+            in_section = True
+            continue
+        if not in_section:
+            continue
+        if not stripped:
+            continue
+        bare = stripped.lstrip("-•* \t")
+        # Следующий ЗАГОЛОВОК секции (ВОПРОСЫ ЗАКАЗЧИКУ: / ИТОГ:) — конец секции.
+        if stripped == upper and not stripped.startswith(("-", "•", "*")) and len(stripped) > 3:
+            break
+        if not stripped.startswith(("-", "•", "*")):
+            break
+        items.append(bare)
+        u = bare.upper()
+        cleared = ("НЕ БЛОКЕР" in u) or ("НЕ ЯВЛЯЕТСЯ БЛОКЕР" in u)
+        if not cleared:
+            all_cleared = False
+    if not items:
+        return False, []
+    return all_cleared, items
 
 
 def extract_verdict(analysis: str) -> str:

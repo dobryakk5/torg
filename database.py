@@ -1817,6 +1817,55 @@ def _save_llm_analysis_once(
         )
 
 
+def apply_stop_clearance(
+    purchase_number: str,
+    new_decision: str,
+    filter_numbers: list[int],
+    note: str = "",
+) -> None:
+    """Снимает фразовые стоп-факторы, признанные LLM ложными (Stage 2.5).
+
+    Понижает жёсткий NO-GO до решения по баллам (``new_decision``) и снимает флаг
+    ``stop_factor`` у перечисленных фильтров, помечая сигнал, чтобы в веб-панели
+    было видно: авто-стоп снят моделью, а не пропал молча. Меняет только лоты,
+    которые сейчас NO-GO — если решение уже иное, ничего не трогаем.
+    """
+    if not purchase_number or not filter_numbers:
+        return
+    now = _now()
+    mark = "✓ LLM снял авто-стоп" + (f": {note}" if note else "")
+
+    def _run() -> None:
+        with _conn() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE tenders
+                   SET filter_decision = %(decision)s,
+                       updated_at      = %(now)s
+                 WHERE purchase_number = %(pnum)s
+                   AND filter_decision = 'NO-GO'
+                """,
+                {"decision": new_decision, "now": now, "pnum": purchase_number},
+            )
+            cur.execute(
+                """
+                UPDATE filter_scores
+                   SET stop_factor = FALSE,
+                       signals = CASE
+                           WHEN signals IS NULL OR signals = '' THEN %(mark)s
+                           ELSE signals || ' | ' || %(mark)s
+                       END
+                 WHERE purchase_number = %(pnum)s
+                   AND filter_number = ANY(%(nums)s)
+                   AND stop_factor = TRUE
+                """,
+                {"mark": mark, "pnum": purchase_number, "nums": list(filter_numbers)},
+            )
+
+    _with_db_retries("apply_stop_clearance", _run)
+
+
 def get_result_candidates(limit: int = 50) -> list[dict[str, Any]]:
     """
     Кандидаты для Stage 3: лоты с прошедшим дедлайном, по которым ещё не подтягивали
