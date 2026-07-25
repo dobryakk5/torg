@@ -1,0 +1,71 @@
+<section id="tender-preview" class="preview-pane" data-pnum="{{ tender.purchase_number }}">
+  {% set dec = tender.filter_decision or '' %}
+  {% set tone = 'go' if dec == 'GO' else ('caution' if dec == 'CAUTION' else ('nogo' if dec == 'NO-GO' else 'unknown')) %}
+  {% set verdict = 'БЕРИ' if dec == 'GO' else ('ПОДУМАЙ' if dec == 'CAUTION' else ('ПРОПУСТИ' if dec == 'NO-GO' else 'НА РАЗБОР')) %}
+  <div class="preview-source">
+    <span>{{ tender.purchase_number }}</span>
+    {% if tender.law_type %}<span>{{ tender.law_type }}</span>{% endif %}
+    {% if tender.platform %}<span>{{ tender.platform | platform_short }}</span>{% endif %}
+    {% if tender.url %}<a href="{{ tender.url | zakupki_common_info_url(tender.purchase_number) }}" target="_blank" rel="noopener">открыть на площадке ↗</a>{% endif %}
+  </div>
+
+  <h1>{{ tender.title or 'Без названия' }}</h1>
+  <div class="preview-meta">
+    <span>{{ tender.customer or 'Заказчик не указан' }}</span>
+    {% if tender.deadline %}<span>подача до <strong>{{ tender.deadline | fmt_datetime }}</strong></span>{% endif %}
+    {% if tender.price %}<span>НМЦК <strong>{{ tender.price | fmt_price }}</strong></span>{% endif %}
+  </div>
+
+  <div class="preview-decision tone-{{ tone }}">
+    <div class="preview-decision-head">
+      <strong class="preview-verdict">{{ verdict }}</strong>
+      {% if tender.filter_total is not none %}<span class="preview-score">{{ tender.filter_total }}<small>/40</small></span>{% endif %}
+      {% if card %}<span class="preview-confidence">уверенность оценки: <b>{{ 'высокая' if card.confidence >= 0.7 else ('средняя' if card.confidence >= 0.4 else 'низкая') }}</b></span>{% endif %}
+      <div class="preview-actions">
+        <button class="preview-take" onclick="previewTake(this)">Беру в работу</button>
+        <button class="preview-reject" onclick="previewReject(this)">Отказ</button>
+      </div>
+    </div>
+    {% if card %}<p class="preview-summary">{{ card.verdict_reason }}</p>{% endif %}
+    {% if decision_reasons %}
+    <div class="preview-reasons">
+      {% for reason in decision_reasons %}
+      <div class="preview-reason {{ reason.tone }}">
+        <span>{{ '+' if reason.tone == 'positive' else '!' }}</span>
+        <p><strong>{{ reason.title }}.</strong> {{ reason.text }} Ф{{ reason.filter_number }} {{ reason.score }}/5.</p>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if card %}
+  <div class="preview-section-title"><span>ДОПУСК — ПУСТЯТ ЛИ МЕНЯ</span></div>
+  <div class="preview-gates">
+    {% for gate in card.gates %}
+    <div class="preview-gate gate-{{ gate.status }}">
+      <strong>{{ gate.label }}</strong>
+      <span>{{ gate.explain }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if tender.filter_scores %}
+  <div class="preview-section-title"><span>ПОЧЕМУ {{ tender.filter_total }}, А НЕ 40</span><a href="/tender/{{ tender.purchase_number }}">все 8 фильтров →</a></div>
+  <div class="preview-scorecard">
+    {% for f in tender.filter_scores %}
+    {% set delta = (f.score or 0) - 3 %}
+    <div class="preview-filter">
+      <span>Ф{{ f.filter_number }} {{ f.filter_name }}</span>
+      <div><i style="width:{{ ((f.score or 0) / 5 * 100)|int }}%;background:{{ 'var(--go)' if f.score >= 4 else ('var(--caution)' if f.score == 3 else 'var(--nogo)') }}"></i></div>
+      <b>{{ '+' if delta > 0 else '' }}{{ delta }}</b>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="preview-open">
+    <a href="/tender/{{ tender.purchase_number }}">Открыть карточку целиком →</a>
+  </div>
+</section>

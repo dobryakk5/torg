@@ -776,6 +776,63 @@ def _tenders_context(
     }
 
 
+def _decision_reasons(tender: dict[str, Any]) -> list[dict[str, Any]]:
+    """Три коротких аргумента для первого экрана карточки решения."""
+    reasons: list[dict[str, Any]] = []
+    scored_filters = sorted(
+        tender.get("filter_scores") or [],
+        key=lambda row: int(row.get("score") or 0),
+        reverse=True,
+    )
+    reason_slots = [
+        ("positive", "ЗА", scored_filters[:1]),
+        ("negative", "ПРОТИВ", list(reversed(scored_filters[-1:]))),
+        ("check", "ПРОВЕРИТЬ", scored_filters[1:2]),
+    ]
+    seen_filter_numbers: set[Any] = set()
+    for tone, label, rows in reason_slots:
+        for row in rows:
+            number = row.get("filter_number")
+            if number in seen_filter_numbers:
+                continue
+            seen_filter_numbers.add(number)
+            signals = row.get("signals")
+            if isinstance(signals, str):
+                try:
+                    signals = json.loads(signals)
+                except (TypeError, ValueError):
+                    signals = [signals]
+            if isinstance(signals, dict):
+                signals = list(signals.values())
+            signals = [str(value) for value in (signals or []) if value]
+            reasons.append({
+                "tone": tone,
+                "label": label,
+                "filter_number": number,
+                "score": row.get("score"),
+                "title": row.get("filter_name") or f"Фильтр {number}",
+                "text": signals[0] if signals else "Проверьте доказательства в полной карточке.",
+            })
+    return reasons
+
+
+def _tender_preview_context(purchase_number: str) -> dict[str, Any]:
+    tender = db.get_tender(purchase_number)
+    if not tender:
+        raise HTTPException(404, "Тендер не найден")
+    card = None
+    try:
+        import decision_aid
+        card = decision_aid.build_card(tender, text=_decide_text(tender))
+    except Exception:
+        logger.exception("preview decision card failed for %s", purchase_number)
+    return {
+        "tender": tender,
+        "card": card,
+        "decision_reasons": _decision_reasons(tender),
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(
     request: Request,
@@ -813,6 +870,7 @@ async def index(
         sort_by, order, limit,
     )
     ctx["stats"] = db.get_stats_extended()
+    ctx["preview"] = _tender_preview_context(ctx["tenders"][0]["purchase_number"]) if ctx["tenders"] else None
     return templates.TemplateResponse(request, "index.html", ctx)
 
 
@@ -853,6 +911,13 @@ async def partial_tenders(
         sort_by, order, limit,
     )
     return templates.TemplateResponse(request, "_tenders_table.html", ctx)
+
+
+@app.get("/partials/tender-preview/{purchase_number}", response_class=HTMLResponse)
+async def tender_preview(request: Request, purchase_number: str):
+    return templates.TemplateResponse(
+        request, "_tender_preview.html", _tender_preview_context(purchase_number)
+    )
 
 
 @app.get("/analytics", response_class=HTMLResponse)
@@ -988,41 +1053,7 @@ async def tender_detail(request: Request, purchase_number: str):
         purchase_number,
         tender.get("notice_guid") or "",
     )
-    decision_reasons: list[dict[str, Any]] = []
-    scored_filters = sorted(
-        tender.get("filter_scores") or [],
-        key=lambda row: int(row.get("score") or 0),
-        reverse=True,
-    )
-    reason_slots = [
-        ("positive", "ЗА", scored_filters[:1]),
-        ("negative", "ПРОТИВ", list(reversed(scored_filters[-1:]))),
-        ("check", "ПРОВЕРИТЬ", scored_filters[1:2]),
-    ]
-    seen_filter_numbers: set[Any] = set()
-    for tone, label, rows in reason_slots:
-        for row in rows:
-            number = row.get("filter_number")
-            if number in seen_filter_numbers:
-                continue
-            seen_filter_numbers.add(number)
-            signals = row.get("signals")
-            if isinstance(signals, str):
-                try:
-                    signals = json.loads(signals)
-                except (TypeError, ValueError):
-                    signals = [signals]
-            if isinstance(signals, dict):
-                signals = list(signals.values())
-            signals = [str(value) for value in (signals or []) if value]
-            decision_reasons.append({
-                "tone": tone,
-                "label": label,
-                "filter_number": number,
-                "score": row.get("score"),
-                "title": row.get("filter_name") or f"Фильтр {number}",
-                "text": signals[0] if signals else "Откройте фильтр ниже, чтобы проверить доказательства.",
-            })
+    decision_reasons = _decision_reasons(tender)
     return templates.TemplateResponse(request, "detail.html",
         {"tender": tender, "card": card, "criteria": criteria,
          "work_stages": WORK_STAGES, "spec": spec, "spec_rollup": spec_rollup,

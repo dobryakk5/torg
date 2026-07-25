@@ -48,7 +48,7 @@
   <div class="tender-queue">
     {% for t in tenders %}
     {% set dleft = t.deadline | days_left %}
-    <article class="queue-card tone-{{ t.decision_tone }}" onclick="location.href='/tender/{{ t.purchase_number }}'" tabindex="0" onkeydown="if(event.key==='Enter')location.href='/tender/{{ t.purchase_number }}'">
+    <article class="queue-card tone-{{ t.decision_tone }} {% if loop.first %}selected{% endif %}" data-pnum="{{ t.purchase_number }}" onclick="selectTender(event, this)" tabindex="0" onkeydown="if(event.key==='Enter')selectTender(event, this)">
       <div class="queue-accent"></div>
       <div class="queue-content">
         <div class="queue-card-head">
