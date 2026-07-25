@@ -40,6 +40,7 @@ from fastapi import FastAPI, Request, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
 
 import config
 import database as db
@@ -459,6 +460,55 @@ def deadline_iso(v: str) -> str:
     dt = db.parse_deadline(str(v))
     return dt.strftime("%Y-%m-%d") if dt else ""
 
+
+# Заголовки секций детального разбора (llm_analyzer._SYSTEM_TEMPLATE).
+_LLM_SECTIONS = (
+    "ВЕРДИКТ:", "ПОДХОДИТ ПО ПРОФИЛЮ:", "ФИНАНСЫ:", "ОБЪЕМ:", "РИСКИ:",
+    'ПРИЗНАКИ "ПОД СВОЕГО":', "СТОП-ФАКТОРЫ:", "РАЗБОР АВТО-СТОПОВ:",
+    "ВОПРОСЫ ЗАКАЗЧИКУ:", "ИТОГ:",
+)
+# Секции, которые не показываем в карточке: финансы дублируют блок «Обеспечение»
+# и info-карточки (НМЦК/обеспечение берутся из БД, а не из пересказа модели).
+_LLM_HIDDEN_SECTIONS = ("ФИНАНСЫ:",)
+
+_MD_BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.S)
+
+
+def _llm_strip_sections(text: str, hidden: tuple[str, ...]) -> str:
+    """Вырезает целые секции разбора (заголовок + тело до следующего заголовка)."""
+    if not hidden:
+        return text
+    out: list[str] = []
+    skipping = False
+    for line in text.splitlines():
+        head = line.strip().upper()
+        if any(head.startswith(h) for h in _LLM_SECTIONS):
+            skipping = any(head.startswith(h) for h in hidden)
+        if not skipping:
+            out.append(line)
+    return "\n".join(out).strip()
+
+
+def llm_html(v: str) -> Markup:
+    """Готовит текст детального разбора к выводу в HTML.
+
+    Экранирует текст (иначе разметка «вылезает» наружу — Jinja экранирует
+    результат replace-цепочки целиком), убирает скрытые секции, превращает
+    markdown-выделение **жирным** в <strong> и подсвечивает заголовки секций.
+    """
+    if not v:
+        return Markup("")
+    text = _llm_strip_sections(str(v), _LLM_HIDDEN_SECTIONS)
+    html = str(escape(text))
+    # **жирный** → <strong> (модель размечает так подзаголовки рисков)
+    html = _MD_BOLD_RE.sub(r"<strong>\1</strong>", html)
+    for title in _LLM_SECTIONS:
+        if title in _LLM_HIDDEN_SECTIONS:
+            continue
+        safe_title = str(escape(title))
+        html = html.replace(safe_title, f'<span class="llm-section-title">{safe_title}</span>')
+    return Markup(html)
+
 def days_left(v: str) -> Optional[int]:
     """Сколько дней осталось до срока подачи заявок (deadline). None — не распознано/не задано.
 
@@ -593,7 +643,7 @@ def zakupki_documents_url(url: str, purchase_number: str = "", notice_guid: str 
         + urlencode(query)
     )
 
-for name, fn in [("fmt_price",fmt_price),("fmt_date",fmt_date),("fmt_datetime",fmt_datetime),("deadline_iso",deadline_iso),("days_left",days_left),
+for name, fn in [("fmt_price",fmt_price),("fmt_date",fmt_date),("fmt_datetime",fmt_datetime),("deadline_iso",deadline_iso),("llm_html",llm_html),("days_left",days_left),
                   ("platform_short",platform_short),
                   ("score_color",score_color),("decision_class",decision_class),
                   ("parse_signals",parse_signals),("parse_stop",parse_stop),

@@ -1642,6 +1642,65 @@ def _update_stage1_after_triage_once(filter_result: Any) -> None:
             )
 
 
+def update_detail_after_llm(filter_result: Any) -> None:
+    """Переписывает Stage 2-оценки после детального разбора (Stage 2.5).
+
+    Нужна, когда разбор ТЗ нашёл то, чего не видели фразовые фильтры — сейчас
+    это вендор-лок (штраф VENDOR_LOCK_PENALTY). Обновляет заголовочные поля
+    (detail_score/filter_total/decision) и per-filter строки.
+    """
+    _with_db_retries("update_detail_after_llm", lambda: _update_detail_after_llm_once(filter_result))
+
+
+def _update_detail_after_llm_once(filter_result: Any) -> None:
+    pnum = strip_nul(getattr(filter_result, "purchase_number", ""))
+    if not pnum:
+        return
+    total = getattr(filter_result, "total_score", 0)
+    decision = getattr(filter_result, "decision", None)
+    stop_factors = strip_nul(getattr(filter_result, "stop_factors", []) or [])
+    reasons = " | ".join(filter_result.to_reasons()) if hasattr(filter_result, "to_reasons") else ""
+
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE tenders
+               SET detail_score    = %(total)s,
+                   total_score     = %(total)s,
+                   score           = %(total)s,
+                   filter_total    = %(total)s,
+                   filter_decision = %(decision)s,
+                   filter_stop     = %(stop)s,
+                   detail_reasons  = %(reasons)s,
+                   updated_at      = NOW()
+             WHERE purchase_number = %(pnum)s
+            """,
+            {
+                "total": total, "decision": decision,
+                "stop": " | ".join(stop_factors), "reasons": reasons, "pnum": pnum,
+            },
+        )
+        for f in getattr(filter_result, "filters", []) or []:
+            cur.execute(
+                """
+                INSERT INTO filter_scores
+                    (purchase_number, filter_number, filter_name, score, signals, stop_factor)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (purchase_number, filter_number) DO UPDATE SET
+                    filter_name = EXCLUDED.filter_name,
+                    score       = EXCLUDED.score,
+                    signals     = EXCLUDED.signals,
+                    stop_factor = EXCLUDED.stop_factor
+                """,
+                (
+                    pnum, getattr(f, "number", 0), getattr(f, "name", ""),
+                    getattr(f, "score", 0), " | ".join(getattr(f, "signals", []) or []),
+                    bool(getattr(f, "stop_factor", False)),
+                ),
+            )
+
+
 def save_detail(
     tender: dict[str, Any],
     detail_score: int,

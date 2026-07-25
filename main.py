@@ -1439,6 +1439,24 @@ def run_llm(dry_run: bool = False, limit: int | None = None) -> tuple[int, int]:
             llm_verdict = _verdict(llm_analysis).upper() if llm_analysis else ""
             llm_rejected = llm_verdict == "ПРОПУСТИТЬ"
 
+            # Вендор-лок виден только из разбора ТЗ (фразовые фильтры его не ловят):
+            # закупка формально открытая, но работать вправе лишь вендор/его партнёр.
+            # Пересчитываем скор со штрафом и сохраняем — иначе лот остаётся с GO.
+            if llm_analysis and scoring_text.strip():
+                from llm_analyzer import detect_vendor_lock as _vendor_lock
+                if _vendor_lock(llm_analysis) and not tender.get("llm_vendor_lock"):
+                    tender["llm_vendor_lock"] = True
+                    vl_fr = run_stage2_filters(tender, scoring_text)
+                    detail_score = vl_fr.total_score
+                    tender["filter_decision"] = vl_fr.decision
+                    detail_reasons = vl_fr.to_reasons()
+                    if not dry_run:
+                        db.update_detail_after_llm(vl_fr)
+                    logger.info(
+                        "%s: вендор-лок по разбору ТЗ → скор %d (%s)",
+                        pnum, vl_fr.total_score, vl_fr.decision,
+                    )
+
             # Адъюдикация фразовых стопов: если LLM признал ВСЕ авто-стопы лота
             # ложными, снимаем NO-GO — лот становится полноценным кандидатом на
             # отправку и в веб-панели тоже перестаёт быть красным.

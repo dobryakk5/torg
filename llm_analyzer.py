@@ -77,14 +77,6 @@ _SYSTEM_TEMPLATE = """
 
 ПОДХОДИТ ПО ПРОФИЛЮ: [да/нет/частично]
 
-ФИНАНСЫ:
-- НМЦК:
-- обеспечение заявки:
-- обеспечение исполнения:
-- аванс:
-- оплата:
-- риск кассового разрыва:
-
 ОБЪЕМ:
 - что надо сделать:
 - есть ли лимит часов:
@@ -781,6 +773,49 @@ def stop_review_all_cleared(analysis: str) -> tuple[bool, list[str]]:
     if not items:
         return False, []
     return all_cleared, items
+
+
+# Маркеры вендор-лока в тексте разбора. Модель размечает его подзаголовком
+# «**ВЕНДОР-ЛОК:**» в РИСКАХ, но формулировка плавает — ловим и по сути:
+# требование прав/лицензионного договора с правообладателем, статус партнёра.
+_VENDOR_LOCK_MARKERS = (
+    "вендор-лок", "вендорлок", "вендор лок", "vendor lock", "vendor-lock",
+    "лицензионн", "правообладател", "исключительн",
+    "официальн", "партнер", "партнёр",
+)
+_VENDOR_LOCK_STRONG = ("вендор-лок", "вендорлок", "вендор лок", "vendor lock", "vendor-lock")
+
+
+def detect_vendor_lock(analysis: str) -> bool:
+    """True, если разбор указывает на вендор-лок (РИСКИ или СТОП-ФАКТОРЫ).
+
+    Вендор-лок — закупка формально открытая, но работать вправе только вендор,
+    его партнёр или обладатель лицензионного договора. Для нас это тяжёлый
+    минус: без статуса результат работ могут не принять. Ищем только в секциях
+    РИСКИ/СТОП-ФАКТОРЫ, чтобы не ловить «партнёр» из вопросов заказчику.
+    """
+    if not analysis:
+        return False
+    sections = ("РИСКИ", "СТОП-ФАКТОР")
+    in_section = False
+    for line in analysis.splitlines():
+        head = line.strip().upper()
+        if any(head.startswith(s) for s in sections):
+            in_section = True
+            continue
+        # Любой другой ЗАГОЛОВОК секции закрывает текущую.
+        if in_section and head and head == line.strip() and head.endswith(":") and not line.strip().startswith(("-", "•", "*")):
+            in_section = False
+        if not in_section:
+            continue
+        low = line.lower().replace("ё", "е")
+        if any(m.replace("ё", "е") in low for m in _VENDOR_LOCK_STRONG):
+            return True
+        # Комбинация «лицензионный договор + правообладатель» и т.п.
+        hits = sum(1 for m in _VENDOR_LOCK_MARKERS if m.replace("ё", "е") in low)
+        if hits >= 2:
+            return True
+    return False
 
 
 def extract_verdict(analysis: str) -> str:

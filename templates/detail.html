@@ -492,6 +492,27 @@ body::before {
     </div>
   </div>
 
+  <!-- ── LLM Analysis (выше карточки решения: сперва разбор, потом допуск) ── -->
+  {% if tender.llm_analysis %}
+  <div class="section-label">АНАЛИЗ CLAUDE</div>
+  <div class="llm-box">
+    {% if tender.llm_verdict %}
+    <div class="llm-verdict">
+      <span style="font-size:.7rem;color:var(--dim)">ВЕРДИКТ:</span>
+      {% set lv = tender.llm_verdict | upper %}
+      <span class="llm-verdict-badge
+        {% if 'СМОТРЕТЬ' in lv %}verdict-go
+        {% elif 'ПРОПУСТИТЬ' in lv %}verdict-stop
+        {% elif 'ОСТОРОЖНО' in lv %}verdict-caution
+        {% else %}verdict-other{% endif %}">
+        {{ tender.llm_verdict }}
+      </span>
+    </div>
+    {% endif %}
+    <div class="llm-text">{{ tender.llm_analysis | llm_html }}</div>
+  </div>
+  {% endif %}
+
   <!-- ── Карточка решения для новичка (decision_aid) ── -->
   {% if card %}
   {% set conf_label = 'высокая' if card.confidence >= 0.7 else ('средняя' if card.confidence >= 0.4 else 'низкая') %}
@@ -880,27 +901,6 @@ body::before {
   Чистая маржа:              = ????? ₽
   <span class="eco-result">Порог ≥ 40%:               ≥ {{ min_margin | fmt_price }}</span>
 </pre>
-  </div>
-  {% endif %}
-
-  <!-- ── LLM Analysis ── -->
-  {% if tender.llm_analysis %}
-  <div class="section-label">АНАЛИЗ CLAUDE</div>
-  <div class="llm-box">
-    {% if tender.llm_verdict %}
-    <div class="llm-verdict">
-      <span style="font-size:.7rem;color:var(--dim)">ВЕРДИКТ:</span>
-      {% set lv = tender.llm_verdict | upper %}
-      <span class="llm-verdict-badge
-        {% if 'СМОТРЕТЬ' in lv %}verdict-go
-        {% elif 'ПРОПУСТИТЬ' in lv %}verdict-stop
-        {% elif 'ОСТОРОЖНО' in lv %}verdict-caution
-        {% else %}verdict-other{% endif %}">
-        {{ tender.llm_verdict }}
-      </span>
-    </div>
-    {% endif %}
-    <div class="llm-text">{{ tender.llm_analysis | replace('ЧТО ХОРОШО:', '<span class="llm-section-title">ЧТО ХОРОШО:</span>') | replace('РИСКИ:', '<span class="llm-section-title">РИСКИ:</span>') | replace('ПРИЗНАКИ', '<span class="llm-section-title">ПРИЗНАКИ') | replace('СОВЕТ:', '<span class="llm-section-title">СОВЕТ:</span>') | replace('ВЕРДИКТ:', '<span class="llm-section-title">ВЕРДИКТ:</span>') }}</div>
   </div>
   {% endif %}
 

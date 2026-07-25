@@ -376,6 +376,10 @@ def run_filters(tender: dict[str, Any], text: str = "", stage: str = "stage2") -
     if isinstance(triage, dict) and triage.get("verdict"):
         filters[0] = _apply_triage(filters[0], triage)
 
+    # Вендор-лок из детального разбора (Stage 2.5): тяжёлый штраф к скору.
+    if tender.get("llm_vendor_lock"):
+        filters = _apply_vendor_lock(filters)
+
     total = sum(f.score for f in filters)
     stop_factors: list[str] = []
     for f in filters:
@@ -1372,6 +1376,37 @@ def _apply_triage(profile: "FilterScore", triage: dict) -> "FilterScore":
         profile.signals + [tag],
         stop_factor=profile.stop_factor,
     )
+
+
+# Вендор-лок, найденный детальным разбором (Stage 2.5): тяжёлый минус к скору.
+# Бьём по Ф5 (участник обязан быть партнёром/лицензиатом правообладателя), остаток
+# переносим на Ф1 (работа внутри закрытой проприетарной системы — не наш профиль),
+# чтобы итог реально просел на VENDOR_LOCK_PENALTY, а сумма фильтров сходилась.
+VENDOR_LOCK_PENALTY = 5
+_VENDOR_LOCK_ORDER = (5, 1)
+
+
+def _apply_vendor_lock(filters: list[FilterScore]) -> list[FilterScore]:
+    left = VENDOR_LOCK_PENALTY
+    by_num = {f.number: f for f in filters}
+    for num in _VENDOR_LOCK_ORDER:
+        if left <= 0:
+            break
+        f = by_num.get(num)
+        if f is None:
+            continue
+        take = min(left, f.score - 1)   # балл не опускаем ниже 1
+        if take <= 0:
+            continue
+        left -= take
+        by_num[num] = FilterScore(
+            f.number,
+            f.name,
+            f.score - take,
+            f.signals + [f"⛔ вендор-лок по разбору ТЗ (LLM): −{take}"],
+            stop_factor=f.stop_factor,
+        )
+    return [by_num.get(f.number, f) for f in filters]
 
 
 def _decision(total: int, stop_factors: list[str], stage: str = "stage2", filters: list["FilterScore"] | None = None) -> str:
