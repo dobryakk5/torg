@@ -453,6 +453,12 @@ def fmt_datetime(v: str) -> str:
     dt = db.parse_deadline(str(v))
     return dt.strftime("%d.%m.%Y %H:%M") if dt else str(v)
 
+def deadline_iso(v: str) -> str:
+    """ГГГГ-ММ-ДД для value у <input type="date">; пусто, если дата не распознана."""
+    if not v: return ""
+    dt = db.parse_deadline(str(v))
+    return dt.strftime("%Y-%m-%d") if dt else ""
+
 def days_left(v: str) -> Optional[int]:
     """Сколько дней осталось до срока подачи заявок (deadline). None — не распознано/не задано.
 
@@ -587,7 +593,7 @@ def zakupki_documents_url(url: str, purchase_number: str = "", notice_guid: str 
         + urlencode(query)
     )
 
-for name, fn in [("fmt_price",fmt_price),("fmt_date",fmt_date),("fmt_datetime",fmt_datetime),("days_left",days_left),
+for name, fn in [("fmt_price",fmt_price),("fmt_date",fmt_date),("fmt_datetime",fmt_datetime),("deadline_iso",deadline_iso),("days_left",days_left),
                   ("platform_short",platform_short),
                   ("score_color",score_color),("decision_class",decision_class),
                   ("parse_signals",parse_signals),("parse_stop",parse_stop),
@@ -2188,6 +2194,24 @@ async def api_tender_workflow(purchase_number: str, request: Request):
         "work_note": updated.get("work_note"),
         "work_updated_at": updated.get("work_updated_at"),
     }})
+
+
+@app.post("/api/tender/{purchase_number}/deadline")
+async def api_tender_deadline(purchase_number: str, request: Request):
+    """Ручная правка срока подачи заявок — источники иногда публикуют дату
+    неточно, либо заказчик продлевает срок без изменения текста карточки."""
+    tender = db.get_tender(purchase_number)
+    if not tender:
+        raise HTTPException(404, "Тендер не найден")
+    data = await request.json()
+    raw = (data.get("deadline") or "").strip()
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", raw)
+    if not m:
+        raise HTTPException(400, "Нужен формат ГГГГ-ММ-ДД")
+    y, mo, d = m.groups()
+    db.update_tender_deadline(purchase_number, f"{d}.{mo}.{y}")
+    updated = db.get_tender(purchase_number) or {}
+    return JSONResponse(content={"ok": True, "deadline": updated.get("deadline")})
 
 
 @app.post("/api/tender/{purchase_number}/reject")

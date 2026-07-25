@@ -920,6 +920,30 @@ def _set_workflow_once(purchase_number: str, fields: dict[str, Any]) -> None:
         )
 
 
+def update_tender_deadline(purchase_number: str, deadline: str) -> None:
+    """Ручная правка срока подачи заявок (deadline).
+
+    Источники иногда публикуют дату неточно, или заказчик продлевает срок без
+    изменения текста карточки — правим вручную из веб-панели. Хранится в том
+    же формате, что у скрейпера (ДД.ММ.ГГГГ, без времени — время 23:59
+    подразумевает единый парсер database.parse_deadline и SQL-эквивалент
+    _deadline_timestamp_sql), поэтому все запросы/фильтры понимают значение
+    без миграции.
+    """
+    if not purchase_number or not deadline:
+        return
+    _with_db_retries("update_tender_deadline", lambda: _update_tender_deadline_once(purchase_number, deadline))
+
+
+def _update_tender_deadline_once(purchase_number: str, deadline: str) -> None:
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE tenders SET deadline = %s, updated_at = NOW() WHERE purchase_number = %s",
+            (deadline, purchase_number),
+        )
+
+
 def list_workflow_tenders() -> list[dict[str, Any]]:
     """Тендеры на доске работы (work_stage задан). Сортировка по внутреннему сроку."""
     with _conn() as conn:

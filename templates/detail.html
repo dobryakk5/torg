@@ -747,9 +747,14 @@ body::before {
         {{ tender.law_type or '—' }}
       </div>
     </div>
-    <div class="info-card">
+    <div class="info-card" id="deadlineCard" data-pnum="{{ tender.purchase_number }}">
       <div class="info-label">СРОК ПОДАЧИ</div>
-      <div class="info-val">{{ tender.deadline | fmt_datetime }}</div>
+      <div class="info-val" style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
+        <input type="date" id="deadlineInput" value="{{ tender.deadline | deadline_iso }}"
+               style="font-family:var(--mono);font-size:.85rem;background:var(--surf);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.3rem">
+        <button class="explain-btn" style="padding:.3rem .6rem;font-size:.72rem" onclick="saveDeadline(this)">💾</button>
+      </div>
+      <span id="deadlineMsg" class="explain-meta"></span>
     </div>
     <div class="info-card">
       <div class="info-label">РЕШЕНИЕ</div>
@@ -924,7 +929,7 @@ body::before {
         <input type="date" id="workDue" value="{{ tender.work_due or '' }}" style="font-family:var(--mono);background:var(--surf);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.4rem">
       </label>
     </div>
-    <label style="font-size:.72rem;color:var(--dim);display:block;margin-top:.6rem">Заметка<br>
+    <label style="font-size:.72rem;color:var(--dim);display:block;margin-top:.6rem">Комментарий<br>
       <textarea id="workNote" maxlength="2000" style="width:100%;min-height:60px;font-family:var(--mono);font-size:.8rem;background:var(--surf);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.5rem">{{ tender.work_note or '' }}</textarea>
     </label>
     <div style="margin-top:.5rem">
@@ -1031,6 +1036,25 @@ async function saveWorkflow(btn) {
   try {
     var d = await _postWorkflow(pnum, body);
     msg.textContent = d.workflow.work_stage ? 'Сохранено · на доске' : 'Сохранено · снято с доски';
+  } catch (err) {
+    msg.textContent = '⚠️ ' + String(err);
+  }
+  btn.disabled = false;
+}
+async function saveDeadline(btn) {
+  var card = document.getElementById('deadlineCard');
+  var pnum = card.getAttribute('data-pnum');
+  var val = document.getElementById('deadlineInput').value;
+  var msg = document.getElementById('deadlineMsg');
+  if (!val) { msg.textContent = '⚠️ укажите дату'; return; }
+  btn.disabled = true; msg.textContent = 'Сохраняю…';
+  try {
+    var r = await fetch('/api/tender/' + encodeURIComponent(pnum) + '/deadline', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({deadline: val}),
+    });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    msg.textContent = 'Сохранено: ' + d.deadline;
   } catch (err) {
     msg.textContent = '⚠️ ' + String(err);
   }
