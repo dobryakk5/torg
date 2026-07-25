@@ -429,6 +429,9 @@ body::before {
 }
 </style>
 {% include "_theme.html" %}
+<style>
+.page{max-width:1060px;padding-top:20px}.hero{display:block;background:transparent!important;border:0!important;box-shadow:none!important;padding:0;margin-bottom:16px}.hero-title{font:600 27px/1.24 var(--font-sans)!important;max-width:860px;text-wrap:pretty}.hero-score{display:none}.meta-row{font:13.5px var(--font-sans);margin-top:11px}.meta-row span{gap:4px}.meta-row span::first-letter{font-size:0}.decide{padding:22px 24px;border-radius:14px;margin-top:20px}.decide-head{gap:16px}.decide-verdict{font:700 34px/1 var(--font-sans);order:0}.decide-reason{flex-basis:100%;font-size:14.5px;line-height:1.55;order:3;max-width:780px}.decide-conf{margin-left:auto}.decision-actions{display:flex;gap:9px;margin-left:auto}.decision-action{font:600 14px var(--font-sans);padding:10px 20px;border-radius:9px;cursor:pointer}.decision-action.take{color:#fffaf2;background:var(--go);border:1px solid var(--go)}.decision-action.reject{color:var(--nogo);background:var(--surf);border:1px solid var(--nogo-bdr)}.reason-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}.reason-card{background:var(--surf);border:1px solid #e6d5ba;border-top:3px solid var(--caution);border-radius:10px;padding:13px 15px}.reason-card.positive{border-top-color:var(--go)}.reason-card.negative{border-top-color:var(--nogo)}.reason-kicker{font:600 10px var(--mono);letter-spacing:.09em;color:var(--caution);margin-bottom:6px}.reason-card.positive .reason-kicker{color:var(--go)}.reason-card.negative .reason-kicker{color:var(--nogo)}.reason-title{font:600 14px/1.35 var(--font-sans);margin-bottom:5px}.reason-text{font:12.5px/1.5 var(--font-sans);color:var(--dim)}.decide-grid{margin-top:16px}.llm-box{margin-top:1.5rem}@media(max-width:760px){.reason-grid{grid-template-columns:1fr}.decision-actions{margin-left:0}.decide-head{align-items:flex-start}.decide-verdict{font-size:28px}}
+</style>
 </head>
 <body>
 <div class="page">
@@ -492,31 +495,10 @@ body::before {
     </div>
   </div>
 
-  <!-- ── LLM Analysis (выше карточки решения: сперва разбор, потом допуск) ── -->
-  {% if tender.llm_analysis %}
-  <div class="section-label">АНАЛИЗ CLAUDE</div>
-  <div class="llm-box">
-    {% if tender.llm_verdict %}
-    <div class="llm-verdict">
-      <span style="font-size:.7rem;color:var(--dim)">ВЕРДИКТ:</span>
-      {% set lv = tender.llm_verdict | upper %}
-      <span class="llm-verdict-badge
-        {% if 'СМОТРЕТЬ' in lv %}verdict-go
-        {% elif 'ПРОПУСТИТЬ' in lv %}verdict-stop
-        {% elif 'ОСТОРОЖНО' in lv %}verdict-caution
-        {% else %}verdict-other{% endif %}">
-        {{ tender.llm_verdict }}
-      </span>
-    </div>
-    {% endif %}
-    <div class="llm-text">{{ tender.llm_analysis | llm_html }}</div>
-  </div>
-  {% endif %}
-
   <!-- ── Карточка решения для новичка (decision_aid) ── -->
   {% if card %}
   {% set conf_label = 'высокая' if card.confidence >= 0.7 else ('средняя' if card.confidence >= 0.4 else 'низкая') %}
-  <div class="decide v-{{ card.verdict }}">
+  <div class="decide v-{{ card.verdict }}" data-pnum="{{ tender.purchase_number }}">
     <div class="decide-head">
       <span class="decide-verdict">
         {% if card.verdict == 'TAKE' %}✅{% elif card.verdict == 'THINK' %}🤔{% else %}⛔{% endif %}
@@ -524,7 +506,23 @@ body::before {
       </span>
       <span class="decide-reason">{{ card.verdict_reason }}</span>
       <span class="decide-conf">уверенность оценки: {{ conf_label }}</span>
+      <div class="decision-actions">
+        <button class="decision-action take" onclick="takeToWork(this)" {% if tender.decision == 'rejected' %}disabled{% endif %}>Беру в работу</button>
+        <button class="decision-action reject" onclick="rejectTender(this)" {% if tender.decision == 'rejected' %}disabled{% endif %}>{% if tender.decision == 'rejected' %}Отказано{% else %}Отказ{% endif %}</button>
+      </div>
     </div>
+
+    {% if decision_reasons %}
+    <div class="reason-grid">
+      {% for reason in decision_reasons %}
+      <div class="reason-card {{ reason.tone }}">
+        <div class="reason-kicker">{{ reason.label }} · Ф{{ reason.filter_number }} {{ reason.score }}/5</div>
+        <div class="reason-title">{{ reason.title }}</div>
+        <div class="reason-text">{{ reason.text }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
 
     <div class="decide-grid">
       <!-- Допуск-чеклист -->
@@ -585,12 +583,18 @@ body::before {
     <div class="decide-explain" data-pnum="{{ tender.purchase_number }}">
       <button class="explain-btn" id="explainBtn" onclick="loadExplain(this)">💬 Объяснить простыми словами</button>
       <button class="explain-btn" id="clarifyBtn" onclick="loadClarification(this)">✉️ Запрос на разъяснение</button>
-      <button class="explain-btn" id="takeBtn" onclick="takeToWork(this)" {% if tender.decision == 'rejected' %}disabled{% endif %}>📋 Взять в работу</button>
-      <button class="explain-btn" id="rejectBtn" onclick="rejectTender(this)" {% if tender.decision == 'rejected' %}disabled{% endif %}>{% if tender.decision == 'rejected' %}✅ Отказано{% else %}− Отказаться{% endif %}</button>
+      <button class="explain-btn" onclick="downloadTenderDocs(this)">Скачать документы{% if docs_files %} ({{ docs_files|length }}){% endif %}</button>
       <div id="explainResult" class="explain-result" hidden></div>
       <div id="clarifyResult" class="explain-result" hidden></div>
     </div>
   </div><!-- /.decide -->
+  {% endif %}
+
+  {% if tender.llm_analysis %}
+  <div class="section-label">РАЗБОР И ДОКАЗАТЕЛЬСТВА</div>
+  <div class="llm-box">
+    <div class="llm-text">{{ tender.llm_analysis | llm_html }}</div>
+  </div>
   {% endif %}
 
   <!-- ── Спецификация / описание работ ── -->
@@ -1061,7 +1065,7 @@ async function saveDeadline(btn) {
   btn.disabled = false;
 }
 async function takeToWork(btn) {
-  var pnum = btn.closest('.decide-explain').getAttribute('data-pnum');
+  var pnum = btn.closest('.decide').getAttribute('data-pnum');
   var orig = btn.textContent;
   btn.disabled = true; btn.textContent = '⏳…';
   try {
@@ -1075,7 +1079,7 @@ async function takeToWork(btn) {
   }
 }
 async function rejectTender(btn) {
-  var pnum = btn.closest('.decide-explain').getAttribute('data-pnum');
+  var pnum = btn.closest('.decide').getAttribute('data-pnum');
   var orig = btn.textContent;
   btn.disabled = true; btn.textContent = '⏳…';
   try {

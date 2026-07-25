@@ -1,7 +1,7 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
   color-scheme: light;
@@ -34,7 +34,7 @@
   --nogo-bg: rgba(166, 66, 47, .11);
   --nogo-bdr: rgba(166, 66, 47, .3);
 
-  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+  --font-sans: 'Golos Text', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
   --mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
   --display: var(--font-sans);
 }
@@ -114,6 +114,7 @@ h1,
 
 .header-inner {
   min-height: 56px;
+  padding: 0 20px;
 }
 
 .logo {
@@ -121,6 +122,18 @@ h1,
   font-size: .98rem !important;
   font-weight: 800 !important;
   white-space: nowrap;
+}
+
+.header + .tabs-wrap {
+  position: sticky;
+  top: 56px;
+  z-index: 90;
+}
+
+.main {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 22px 24px 56px;
 }
 
 .nav a,

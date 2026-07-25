@@ -1,205 +1,90 @@
-<!-- Партиал: единая таблица тендеров. Отдаётся и на / (полная страница),
-     и на /partials/tenders (htmx-обновление без перезагрузки). Корневой div
-     — цель хтмх-свопа (id должен совпадать на обоих концах). -->
+<!-- Очередь тендеров. Корневой id используется HTMX для обновления без перезагрузки. -->
 <div id="tenders-table">
-  <div class="section-hdr">
-    <div class="dot dot-all"></div>
-    <h2>ТЕНДЕРЫ — {{ tenders|length }}</h2>
+  <div class="queue-toolbar">
+    <div>
+      <div class="queue-kicker">ТРИАЖ-ОЧЕРЕДЬ</div>
+      <h1>Тендеры <span>{{ tenders|length }}</span></h1>
+    </div>
+    <div class="queue-sort">
+      <button type="button" class="sort-btn" onclick="sortBy('score')">Вердикт {{ '↑' if sort_by == 'score' and sort_order == 'asc' else '↓' }}</button>
+      <button type="button" class="sort-btn" onclick="sortBy('deadline')">Срок {{ '↑' if sort_by == 'deadline' and sort_order == 'asc' else '↓' }}</button>
+      <button type="button" class="sort-btn" onclick="sortBy('price')">Цена {{ '↑' if sort_by == 'price' and sort_order == 'asc' else '↓' }}</button>
+    </div>
   </div>
 
-  <div class="col-filters-row">
-    <label class="cf-group">
-      <span class="filter-label">Решение</span>
-      {% for d, cls in [('GO','go'), ('CAUTION','caution'), ('NO-GO','nogo')] %}
-      <span class="cf-check">
+  <div class="queue-filters">
+    <div class="queue-filter-group">
+      <span class="filter-label">РЕШЕНИЕ</span>
+      {% for d, label, cls in [('GO','БЕРИ','go'), ('CAUTION','ПОДУМАЙ','caution'), ('NO-GO','ПРОПУСТИ','nogo')] %}
+      <label class="queue-check tone-{{ cls }}">
         <input type="checkbox" name="decision" value="{{ d }}" {% if d in active_decisions %}checked{% endif %} onchange="applyCheckboxGroup('decision')">
-        <span class="badge badge-{{ cls }}">{{ d }}</span>
-      </span>
+        <span>{{ label }}</span>
+      </label>
       {% endfor %}
-    </label>
-
-    <label class="cf-group">
-      <span class="filter-label">Статус</span>
+    </div>
+    <div class="queue-filter-group">
+      <span class="filter-label">СТАТУС</span>
       {% for s, label in funnel_status_labels.items() %}
-      <span class="cf-check">
+      <label class="queue-check">
         <input type="checkbox" name="status" value="{{ s }}" {% if s in active_statuses %}checked{% endif %} onchange="applyCheckboxGroup('status')">
         <span>{{ label }}</span>
-      </span>
+      </label>
       {% endfor %}
-    </label>
-
-    <label class="cf-group">
-      <span class="filter-label">Закон</span>
-      <select name="law" class="filter-select cf-select" onchange="applySingleParam('law', this.value)">
-        <option value="" {% if not active_law %}selected{% endif %}>— все —</option>
+    </div>
+    <label class="queue-select">
+      <span class="filter-label">ЗАКОН</span>
+      <select name="law" class="filter-select" onchange="applySingleParam('law', this.value)">
+        <option value="">Все</option>
         {% for lv in ("44-ФЗ", "223-ФЗ", "ЗМО") %}
         <option value="{{ lv }}" {% if active_law == lv %}selected{% endif %}>{{ lv }}</option>
         {% endfor %}
       </select>
     </label>
-
-    <label class="cf-group">
-      <span class="filter-label">Балл</span>
-      <input type="number" name="score_min" class="filter-input cf-num" min="0" max="40" placeholder="от" value="{{ active_score_min if active_score_min is not none else '' }}" onchange="applySingleParam('score_min', this.value)">
-      <input type="number" name="score_max" class="filter-input cf-num" min="0" max="40" placeholder="до" value="{{ active_score_max if active_score_max is not none else '' }}" onchange="applySingleParam('score_max', this.value)">
-    </label>
-
-    <label class="cf-group">
-      <span class="filter-label">Дней</span>
-      <input type="number" name="days_min" class="filter-input cf-num" placeholder="от" value="{{ active_days_min if active_days_min is not none else '' }}" onchange="applySingleParam('days_min', this.value)">
-      <input type="number" name="days_max" class="filter-input cf-num" placeholder="до" value="{{ active_days_max if active_days_max is not none else '' }}" onchange="applySingleParam('days_max', this.value)">
-    </label>
   </div>
 
   {% if not tenders %}
-  <div class="empty">— Нет тендеров по текущим фильтрам —</div>
+  <div class="queue-empty">По текущим фильтрам ничего не найдено.</div>
   {% else %}
-  <div class="tbl-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th class="col-num">#</th>
-          <th class="col-score">
-            <button type="button" class="sort-btn" onclick="sortBy('score')">БАЛЛ{% if sort_by == 'score' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button>
-          </th>
-          <th class="col-decision">РЕШЕНИЕ</th>
-          <th class="col-status">СТАТУС</th>
-          <th class="col-title">НАЗВАНИЕ</th>
-          <th class="col-search">
-            <button type="button" class="sort-btn" onclick="sortBy('phrase')">ПОИСКОВАЯ ФРАЗА{% if sort_by == 'phrase' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button>
-          </th>
-          <th class="col-exclude">X&nbsp;&nbsp;−</th>
-          <th class="col-eis">ИСТ.</th>
-          <th class="col-open">ЛОТ</th>
-          <th class="col-filters hide-sm">ФИЛЬТРЫ</th>
-          <th class="col-price hide-sm">
-            <button type="button" class="sort-btn" onclick="sortBy('price')">НМЦК, тыс.р.{% if sort_by == 'price' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button>
-          </th>
-          <th class="col-days hide-sm">
-            <button type="button" class="sort-btn" onclick="sortBy('deadline')">ДНЕЙ{% if sort_by == 'deadline' %}<span class="sort-mark">{{ '↑' if sort_order == 'asc' else '↓' }}</span>{% endif %}</button>
-          </th>
-          <th class="col-deadline hide-sm">СРОК</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for t in tenders %}
-        {% set dec = t.filter_decision or '' %}
-        {% set dc  = dec | decision_class %}
-        <tr onclick="location.href='/tender/{{ t.purchase_number }}'">
-          <td style="color:var(--dimmer);font-size:.65rem">{{ loop.index }}</td>
-
-          <!-- Score -->
-          <td class="score-cell">
-            {% if t.filter_total is not none %}
-            {% set pct = (t.filter_total / 40 * 100)|int %}
-            {% set sc_color = '#22C55E' if pct >= 80 else ('#F59E0B' if pct >= 55 else '#EF4444') %}
-            <span class="score-num" style="color:{{ sc_color }}">
-              {{ t.filter_total }}<span class="score-max">/40</span>
-            </span>
-            {% else %}
-            <span style="color:var(--dimmer); font-size:.7rem">—</span>
-            {% endif %}
-          </td>
-
-          <!-- Decision -->
-          <td>
-            {% if dec %}
-            <span class="badge badge-{{ dc }}">{{ dec }}</span>
-            {% else %}
-            <span class="badge badge-unknown">—</span>
-            {% endif %}
-            {% if t.llm_verdict %}
-            <div style="font-size:.6rem;color:var(--dim);margin-top:3px">{{ t.llm_verdict }}</div>
-            {% endif %}
-          </td>
-
-          <!-- Status (этап воронки) -->
-          <td style="font-size:.68rem">
-            <span class="status-mark status-{{ t.funnel_status }}">{{ funnel_status_labels[t.funnel_status] }}</span>
-            {% if t.unsent_reason %}
-            <div style="color:var(--dim);margin-top:3px;white-space:normal">{{ t.unsent_reason }}</div>
-            {% endif %}
-          </td>
-
-          <!-- Title -->
-          <td class="title-cell">
-            <span class="title-main" title="{{ t.title }}">{{ t.title or '—' }}</span>
-          </td>
-          {% set row_phrase = active_kw %}
-          {% if not row_phrase and t.matched_keywords %}{% set row_phrase = t.matched_keywords.split(';')[0] %}{% endif %}
-          <td class="phrase-cell" title="{{ (t.matched_keywords or '') | replace(';', ', ') }}">
-            {{ row_phrase or '—' }}
-            {% if t.matched_profiles %}
-            {% set best_profile = t.matched_profiles | sort(attribute='score', reverse=true) | first %}
-            <div style="font-size:.58rem;color:var(--dim);margin-top:2px" title="{{ (best_profile.phrases or []) | map(attribute='phrase') | join(', ') }}">
-              🔎 {{ best_profile.profile_name }} ({{ best_profile.score }})
-            </div>
-            {% endif %}
-          </td>
-          <td class="exclude-cell">
-            {% if t.funnel_status != 'rejected' %}
-            <div class="exclude-actions">
-              <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="not_my_profile" onclick="rejectLotFromList(this);event.stopPropagation()" title="Не мой профиль">X</button>
-              <button class="exclude-btn" data-pnum="{{ t.purchase_number }}" data-reason="manual_decline" onclick="rejectLotFromList(this);event.stopPropagation()" title="Решил не брать">−</button>
-            </div>
-            {% else %}
-            {% set reason_titles = {'manual_decline': 'Решил не брать', 'failed': 'Не прошел'} %}
-            {% set reason_marks = {'manual_decline': '−', 'failed': '✗'} %}
-            <span class="exclude-mark" title="{{ reason_titles.get(t.rejection_reason, 'Не мой профиль') }}">{{ reason_marks.get(t.rejection_reason, 'X') }}</span>
-            {% endif %}
-          </td>
-
-          <!-- EIS link -->
-          <td class="link-cell">
-            {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
-            {% if eis_url %}
-            <a href="{{ eis_url }}" target="_blank" rel="noopener noreferrer" class="lot-link src" title="Открыть источник: {{ t.platform or 'ЕИС' }}" onclick="event.stopPropagation()">{{ t.platform | platform_short }}</a>
-            {% else %}
-            <span style="color:var(--dimmer);font-size:.65rem">—</span>
-            {% endif %}
-          </td>
-          <td class="link-cell">
-            <a href="/tender/{{ t.purchase_number }}" target="_blank" rel="noopener noreferrer" class="lot-link internal" title="Открыть лот в новой вкладке" onclick="event.stopPropagation()">↗</a>
-          </td>
-
-          <!-- Filter mini bars -->
-          <td class="hide-sm">
-            {% set fs = t.get('filter_scores', []) %}
-            {% if fs %}
-            <div class="filter-bars">
-              {% for f in fs %}
-              {% set h = (f.score / 5 * 22)|int %}
-              {% set c = f.score | score_color %}
-              <div class="fbar" title="{{ f.signals or f.filter_name or ('Ф' ~ f.filter_number) }}">
-                <div class="fbar-block" style="height:{{ h }}px;background:{{ c }};opacity:.85"></div>
-                <div class="fbar-label">{{ f.filter_number }}</div>
-              </div>
-              {% endfor %}
-            </div>
-            {% else %}
-            <span style="color:var(--dimmer);font-size:.65rem">нет данных</span>
-            {% endif %}
-          </td>
-
-          <!-- Price -->
-          <td class="price-cell hide-sm">{{ t.price | fmt_price }}</td>
-
-          <!-- Days left -->
-          <td class="days-cell hide-sm">
-            {% set dleft = t.deadline | days_left %}
-            {% if dleft is none %}
-            <span style="color:var(--dimmer)">—</span>
-            {% else %}
-            <span style="color:{{ 'var(--nogo)' if dleft <= 2 else ('var(--caution)' if dleft <= 7 else 'var(--go)') }}">{{ dleft }}</span>
-            {% endif %}
-          </td>
-
-          <!-- Deadline -->
-          <td class="date-cell hide-sm">{{ t.deadline | fmt_datetime }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="tender-queue">
+    {% for t in tenders %}
+    {% set dleft = t.deadline | days_left %}
+    <article class="queue-card tone-{{ t.decision_tone }}" onclick="location.href='/tender/{{ t.purchase_number }}'" tabindex="0" onkeydown="if(event.key==='Enter')location.href='/tender/{{ t.purchase_number }}'">
+      <div class="queue-accent"></div>
+      <div class="queue-content">
+        <div class="queue-card-head">
+          <span class="queue-verdict">{{ t.decision_label }}</span>
+          {% if t.filter_total is not none %}
+          <span class="queue-score">{{ t.filter_total }}<small>/40</small></span>
+          {% endif %}
+          {% if t.llm_triage_category %}
+          <span class="queue-category">{{ t.llm_triage_category }}</span>
+          {% elif t.law_type %}
+          <span class="queue-category">{{ t.law_type }}</span>
+          {% endif %}
+          <span class="queue-spacer"></span>
+          {% if dleft is not none %}<span class="queue-days {% if dleft <= 3 %}urgent{% endif %}">{{ dleft }} дн</span>{% endif %}
+          {% if t.funnel_status != 'rejected' %}
+          <button class="queue-reject" data-pnum="{{ t.purchase_number }}" data-reason="not_my_profile" onclick="rejectLotFromList(this);event.stopPropagation()" title="Не мой профиль">×</button>
+          {% endif %}
+        </div>
+        <h2>{{ t.title or 'Без названия' }}</h2>
+        <p class="queue-why"><span>→</span>{{ t.decision_reason }}</p>
+        <div class="queue-meta">
+          {% if t.matched_profiles %}
+          {% set best_profile = t.matched_profiles | sort(attribute='score', reverse=true) | first %}
+          <span class="queue-tag">{{ best_profile.profile_name }}</span>
+          {% elif t.matched_keywords %}
+          <span class="queue-tag">{{ t.matched_keywords.split(';')[0] }}</span>
+          {% endif %}
+          <span class="queue-spacer"></span>
+          <strong>{{ t.price | fmt_price }}</strong>
+          <span>{{ t.customer or t.platform or 'Заказчик не указан' }}</span>
+          {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
+          {% if eis_url %}<a href="{{ eis_url }}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">источник ↗</a>{% endif %}
+        </div>
+      </div>
+    </article>
+    {% endfor %}
   </div>
   {% endif %}
 </div>

@@ -732,6 +732,25 @@ def _tenders_context(
         t["funnel_status"] = _funnel_status(t)
         if t["funnel_status"] == "processed" and (t.get("law_type") or "") == "ЗМО":
             t["unsent_reason"] = _unsent_reason(t, notify_min)
+        # Подготовленные на сервере подписи держат шаблон очереди простым и
+        # позволяют одинаково показывать старый скоринг и новый LLM-триаж.
+        decision = (t.get("filter_decision") or "").upper()
+        t["decision_label"] = {
+            "GO": "БЕРИ",
+            "CAUTION": "ПОДУМАЙ",
+            "NO-GO": "ПРОПУСТИ",
+        }.get(decision, "НА РАЗБОР")
+        t["decision_tone"] = {
+            "GO": "go",
+            "CAUTION": "caution",
+            "NO-GO": "nogo",
+        }.get(decision, "unknown")
+        t["decision_reason"] = (
+            t.get("llm_triage_reason")
+            or t.get("llm_verdict")
+            or t.get("unsent_reason")
+            or "Откройте карточку, чтобы увидеть оценку требований и рисков."
+        )
 
     search_phrases = config.get_runtime("SEARCH_KEYWORDS", config.SEARCH_KEYWORDS)
     return {
@@ -969,11 +988,46 @@ async def tender_detail(request: Request, purchase_number: str):
         purchase_number,
         tender.get("notice_guid") or "",
     )
+    decision_reasons: list[dict[str, Any]] = []
+    scored_filters = sorted(
+        tender.get("filter_scores") or [],
+        key=lambda row: int(row.get("score") or 0),
+        reverse=True,
+    )
+    reason_slots = [
+        ("positive", "ЗА", scored_filters[:1]),
+        ("negative", "ПРОТИВ", list(reversed(scored_filters[-1:]))),
+        ("check", "ПРОВЕРИТЬ", scored_filters[1:2]),
+    ]
+    seen_filter_numbers: set[Any] = set()
+    for tone, label, rows in reason_slots:
+        for row in rows:
+            number = row.get("filter_number")
+            if number in seen_filter_numbers:
+                continue
+            seen_filter_numbers.add(number)
+            signals = row.get("signals")
+            if isinstance(signals, str):
+                try:
+                    signals = json.loads(signals)
+                except (TypeError, ValueError):
+                    signals = [signals]
+            if isinstance(signals, dict):
+                signals = list(signals.values())
+            signals = [str(value) for value in (signals or []) if value]
+            decision_reasons.append({
+                "tone": tone,
+                "label": label,
+                "filter_number": number,
+                "score": row.get("score"),
+                "title": row.get("filter_name") or f"Фильтр {number}",
+                "text": signals[0] if signals else "Откройте фильтр ниже, чтобы проверить доказательства.",
+            })
     return templates.TemplateResponse(request, "detail.html",
         {"tender": tender, "card": card, "criteria": criteria,
          "work_stages": WORK_STAGES, "spec": spec, "spec_rollup": spec_rollup,
          "work_scope": work_scope, "docs_files": docs_files,
-         "documents_url": documents_url})
+         "documents_url": documents_url, "decision_reasons": decision_reasons})
 
 
 @app.get("/rules", response_class=HTMLResponse)
