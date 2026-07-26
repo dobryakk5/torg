@@ -444,6 +444,14 @@ def fmt_price(v) -> str:
     try: return f"{round(float(v) / 1000):,.0f}".replace(",", "\u2009")
     except: return str(v)
 
+def fmt_rub(v) -> str:
+    """Полная сумма в рублях («640 000 ₽») — там, где важна цена, а не масштаб в тыс."""
+    if v is None or v == "": return "—"
+    try:
+        return f"{round(float(v)):,.0f}".replace(",", " ") + " ₽"
+    except (TypeError, ValueError):
+        return str(v)
+
 def fmt_date(v: str) -> str:
     if not v: return "—"
     m = re.search(r"(\d{4})-(\d{2})-(\d{2})", str(v))
@@ -643,7 +651,7 @@ def zakupki_documents_url(url: str, purchase_number: str = "", notice_guid: str 
         + urlencode(query)
     )
 
-for name, fn in [("fmt_price",fmt_price),("fmt_date",fmt_date),("fmt_datetime",fmt_datetime),("deadline_iso",deadline_iso),("llm_html",llm_html),("days_left",days_left),
+for name, fn in [("fmt_price",fmt_price),("fmt_rub",fmt_rub),("fmt_date",fmt_date),("fmt_datetime",fmt_datetime),("deadline_iso",deadline_iso),("llm_html",llm_html),("days_left",days_left),
                   ("platform_short",platform_short),
                   ("score_color",score_color),("decision_class",decision_class),
                   ("parse_signals",parse_signals),("parse_stop",parse_stop),
@@ -751,10 +759,25 @@ def _tenders_context(
             or t.get("unsent_reason")
             or "Откройте карточку, чтобы увидеть оценку требований и рисков."
         )
+        t["risk_tags"] = _risk_tags(t)
+
+    # Хвост очереди из ПРОПУСТИ прячем под «развернуть»: при сортировке по вердикту
+    # он всегда в конце и только мешает разбирать живые лоты.
+    nogo_tail = 0
+    if not decisions and (sort_by, order) == ("score", "desc"):
+        for t in reversed(tenders):
+            if t["decision_tone"] != "nogo":
+                break
+            nogo_tail += 1
+        if nogo_tail == len(tenders):   # весь список — ПРОПУСТИ, прятать нечего
+            nogo_tail = 0
 
     search_phrases = config.get_runtime("SEARCH_KEYWORDS", config.SEARCH_KEYWORDS)
     return {
         "tenders": tenders,
+        "nogo_tail": nogo_tail,
+        # «Разобрать очередь · N» — сколько лотов ещё не разобрано (не отправлены и не отказ).
+        "queue_pending": sum(1 for t in tenders if t["funnel_status"] in ("raw", "processed")),
         "funnel_status_labels": FUNNEL_STATUS_LABELS,
         "search_phrases": search_phrases if isinstance(search_phrases, list) else [],
         "search_profiles": db.search_profiles_list(),
@@ -796,24 +819,125 @@ def _decision_reasons(tender: dict[str, Any]) -> list[dict[str, Any]]:
             if number in seen_filter_numbers:
                 continue
             seen_filter_numbers.add(number)
-            signals = row.get("signals")
-            if isinstance(signals, str):
-                try:
-                    signals = json.loads(signals)
-                except (TypeError, ValueError):
-                    signals = [signals]
-            if isinstance(signals, dict):
-                signals = list(signals.values())
-            signals = [str(value) for value in (signals or []) if value]
+            signals = _signal_list(row)
             reasons.append({
                 "tone": tone,
                 "label": label,
                 "filter_number": number,
                 "score": row.get("score"),
                 "title": row.get("filter_name") or f"Фильтр {number}",
-                "text": signals[0] if signals else "Проверьте доказательства в полной карточке.",
+                "text": _short_phrase(signals[0], 160) if signals else "Проверьте доказательства в полной карточке.",
             })
     return reasons
+
+
+# Короткие подписи фильтров для водопада «почему такой балл» (Ф1–Ф8).
+FILTER_SHORT_NAMES = {
+    1: "Профиль", 2: "Финвход", 3: "Объём", 4: "SLA",
+    5: "Требования", 6: "Заточка", 7: "Перекуп", 8: "Договор",
+}
+
+# Нейтральный балл одного фильтра: от него считается вклад ± в водопаде.
+FILTER_NEUTRAL_SCORE = 3
+
+
+def _signal_list(row: dict[str, Any]) -> list[str]:
+    """Сигналы фильтра списком: в БД строка через `|`, в агрегате — уже список."""
+    signals = row.get("signals")
+    if isinstance(signals, str):
+        return parse_signals(signals)
+    if isinstance(signals, dict):
+        signals = list(signals.values())
+    return [str(v).strip() for v in (signals or []) if str(v).strip()]
+
+
+def _short_phrase(text: str, limit: int = 44) -> str:
+    s = " ".join(str(text or "").split()).lstrip("✓✗⚠!↳ ").strip()
+    return s if len(s) <= limit else s[: limit - 1].rstrip() + "…"
+
+
+def _risk_tags(tender: dict[str, Any]) -> list[dict[str, str]]:
+    """Метки риска для карточки очереди: стоп-факторы, затем просевшие фильтры."""
+    tags: list[dict[str, str]] = []
+    for stop in parse_stop(tender.get("filter_stop") or ""):
+        tags.append({"tone": "stop", "text": "СТОП · " + _short_phrase(stop, 40)})
+    for row in tender.get("filter_scores") or []:
+        score = int(row.get("score") or 0)
+        if score == 0 or score > 2:
+            continue
+        signals = _signal_list(row)
+        bad = [s for s in signals if s.startswith(("✗", "⚠", "!"))] or signals
+        number = int(row.get("filter_number") or 0)
+        label = _short_phrase(bad[0]) if bad else FILTER_SHORT_NAMES.get(number, f"Ф{number}")
+        tags.append({"tone": "warn", "text": label})
+    return tags[:3]
+
+
+def _score_breakdown(tender: dict[str, Any]) -> list[dict[str, Any]]:
+    """Вклад каждого фильтра относительно нейтральных 3 баллов (водопад 24 → итог)."""
+    rows: list[dict[str, Any]] = []
+    for row in tender.get("filter_scores") or []:
+        number = int(row.get("filter_number") or 0)
+        score = int(row.get("score") or 0)
+        signals = _signal_list(row)
+        rows.append({
+            "filter_number": number,
+            "short_name":    FILTER_SHORT_NAMES.get(number, f"Ф{number}"),
+            "filter_name":   row.get("filter_name") or f"Фильтр {number}",
+            "score":         score,
+            "delta":         score - FILTER_NEUTRAL_SCORE,
+            "signal":        signals[0] if signals else "",
+            "signals":       signals,
+            "stop_factor":   bool(row.get("stop_factor")),
+        })
+    return rows
+
+
+def _score_disputes(breakdown: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Только спорные места: фильтры, которые утопили балл (или дали стоп-фактор)."""
+    disputes = [
+        dict(row, tone=("nogo" if row["stop_factor"] or row["delta"] <= -2 else "caution"))
+        for row in breakdown
+        if row["delta"] < 0 or row["stop_factor"]
+    ]
+    disputes.sort(key=lambda row: (row["delta"], -row["filter_number"]))
+    return disputes
+
+
+# Сколько лотов просматриваем, чтобы найти позицию текущего в очереди по умолчанию.
+QUEUE_NAV_LIMIT = 300
+
+
+def _queue_nav(purchase_number: str) -> Optional[dict[str, Any]]:
+    """Позиция лота в очереди (сорт по умолчанию: вердикт ↓) и соседи для ↑/↓."""
+    try:
+        rows = db.get_top_tenders(
+            decision=None, sort_by="score", order="desc", limit=QUEUE_NAV_LIMIT,
+        )
+    except Exception:
+        logger.exception("queue nav lookup failed for %s", purchase_number)
+        return None
+    numbers = [r.get("purchase_number") for r in rows]
+    if purchase_number not in numbers:
+        return None
+    index = numbers.index(purchase_number)
+    return {
+        "position": index + 1,
+        "total":    len(numbers),
+        "prev":     numbers[index - 1] if index > 0 else None,
+        "next":     numbers[index + 1] if index + 1 < len(numbers) else None,
+    }
+
+
+def _stored_work_scope(purchase_number: str) -> dict[str, Any]:
+    """Разобранный объём работ из БД (без парсинга документов — превью должно быть быстрым)."""
+    try:
+        details = db.get_tender_details(purchase_number) or {}
+    except Exception:
+        logger.exception("get_tender_details failed for %s", purchase_number)
+        return {}
+    scope = details.get("work_scope")
+    return scope if isinstance(scope, dict) else {}
 
 
 def _tender_preview_context(purchase_number: str) -> dict[str, Any]:
@@ -830,6 +954,8 @@ def _tender_preview_context(purchase_number: str) -> dict[str, Any]:
         "tender": tender,
         "card": card,
         "decision_reasons": _decision_reasons(tender),
+        "breakdown": _score_breakdown(tender),
+        "work_scope": _stored_work_scope(purchase_number),
     }
 
 
@@ -1053,12 +1179,21 @@ async def tender_detail(request: Request, purchase_number: str):
         purchase_number,
         tender.get("notice_guid") or "",
     )
+    customer = None
+    if tender.get("customer_inn"):
+        try:
+            customer = db.get_customer(tender["customer_inn"])
+        except Exception:
+            logger.exception("get_customer failed for %s", purchase_number)
     decision_reasons = _decision_reasons(tender)
+    breakdown = _score_breakdown(tender)
     return templates.TemplateResponse(request, "detail.html",
         {"tender": tender, "card": card, "criteria": criteria,
          "work_stages": WORK_STAGES, "spec": spec, "spec_rollup": spec_rollup,
          "work_scope": work_scope, "docs_files": docs_files,
-         "documents_url": documents_url, "decision_reasons": decision_reasons})
+         "documents_url": documents_url, "decision_reasons": decision_reasons,
+         "breakdown": breakdown, "disputes": _score_disputes(breakdown),
+         "customer": customer, "queue_nav": _queue_nav(purchase_number)})
 
 
 @app.get("/rules", response_class=HTMLResponse)

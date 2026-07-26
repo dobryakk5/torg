@@ -431,6 +431,40 @@ body::before {
 {% include "_theme.html" %}
 <style>
 .page{max-width:1060px;padding-top:20px}.hero{display:block;background:transparent!important;border:0!important;box-shadow:none!important;padding:0;margin-bottom:16px}.hero-title{font:600 27px/1.24 var(--font-sans)!important;max-width:860px;text-wrap:pretty}.hero-score{display:none}.meta-row{font:13.5px var(--font-sans);margin-top:11px}.meta-row span{gap:4px}.meta-row span::first-letter{font-size:0}.decide{padding:22px 24px;border-radius:14px;margin-top:20px}.decide-head{gap:16px}.decide-verdict{font:700 34px/1 var(--font-sans);order:0}.decide-reason{flex-basis:100%;font-size:14.5px;line-height:1.55;order:3;max-width:780px}.decide-conf{margin-left:auto}.decision-actions{display:flex;gap:9px;margin-left:auto}.decision-action{font:600 14px var(--font-sans);padding:10px 20px;border-radius:9px;cursor:pointer}.decision-action.take{color:#fffaf2;background:var(--go);border:1px solid var(--go)}.decision-action.reject{color:var(--nogo);background:var(--surf);border:1px solid var(--nogo-bdr)}.reason-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}.reason-card{background:var(--surf);border:1px solid #e6d5ba;border-top:3px solid var(--caution);border-radius:10px;padding:13px 15px}.reason-card.positive{border-top-color:var(--go)}.reason-card.negative{border-top-color:var(--nogo)}.reason-kicker{font:600 10px var(--mono);letter-spacing:.09em;color:var(--caution);margin-bottom:6px}.reason-card.positive .reason-kicker{color:var(--go)}.reason-card.negative .reason-kicker{color:var(--nogo)}.reason-title{font:600 14px/1.35 var(--font-sans);margin-bottom:5px}.reason-text{font:12.5px/1.5 var(--font-sans);color:var(--dim)}.decide-grid{margin-top:16px}.llm-box{margin-top:1.5rem}@media(max-width:760px){.reason-grid{grid-template-columns:1fr}.decision-actions{margin-left:0}.decide-head{align-items:flex-start}.decide-verdict{font-size:28px}}
+.top-bar{display:flex;align-items:center;gap:12px}.queue-pos{margin-left:auto;font:500 12px var(--font-sans);color:var(--dimmer)}.top-bar .back-btn.is-off{opacity:.4;cursor:default}
+.card-columns{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;margin-top:20px;align-items:start}
+.card-panel{background:var(--surf);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:16px;box-shadow:0 10px 30px rgba(72,48,26,.07)}
+.card-panel-title{font:600 10.5px var(--mono);letter-spacing:.1em;color:var(--dim);margin-bottom:12px}
+.card-panel-note{font:12.5px/1.5 var(--font-sans);color:var(--dimmer);margin:0 0 14px}
+.dispute{border:1px solid var(--border);border-left:3px solid var(--caution);border-radius:9px;padding:12px 14px;background:#fffdf9;margin-bottom:10px}
+.dispute.tone-nogo{border-left-color:var(--nogo)}.dispute.tone-unknown{border-left-color:var(--border2)}
+.dispute-head{display:flex;align-items:baseline;gap:8px;margin-bottom:7px}
+.dispute-head strong{font:600 13.5px var(--font-sans);flex:1}
+.dispute-delta{font:700 13px var(--mono);color:var(--caution)}.dispute.tone-nogo .dispute-delta{color:var(--nogo)}.dispute-delta.muted{color:var(--dimmer)}
+.dispute-quote{font:italic 12.5px/1.5 var(--font-sans);color:var(--dim);background:var(--surf2);border-radius:6px;padding:8px 10px}
+.dispute-note{font:12.5px/1.45 var(--font-sans);color:var(--dim);margin-top:7px}.dispute-note strong{color:var(--text)}
+.dispute-actions{margin-top:9px}
+.filters-8{margin-top:4px;border-top:1px solid #ecdfc9;padding-top:12px}
+.filters-8 summary{cursor:pointer;font:500 12px var(--font-sans);color:var(--accent);margin-bottom:12px}
+.f8-row{margin-bottom:11px}
+.f8-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.f8-head>span:first-child{font:600 13px var(--font-sans);flex:1}
+.f8-bars{display:flex;gap:2px}.f8-bars i{width:15px;height:6px;border-radius:2px;background:var(--surf2)}
+.f8-score{font:600 12px var(--mono);width:30px;text-align:right}
+.f8-clue{font:12.5px/1.45 var(--font-sans);color:var(--dim)}
+.side-gate{display:grid;grid-template-columns:8px 1fr;gap:10px;align-items:start;margin-bottom:10px}
+.side-gate i{width:8px;height:8px;border-radius:50%;margin-top:5px;background:var(--dimmer)}
+.side-gate.gate-ok i{background:var(--go)}.side-gate.gate-warn i{background:var(--caution)}.side-gate.gate-block i{background:var(--nogo)}.side-gate.gate-unknown i{background:var(--border2)}
+.side-gate strong{display:block;font:600 13px var(--font-sans)}
+.side-gate span{display:block;font:12px/1.45 var(--font-sans);color:var(--dim)}
+.side-row{display:flex;justify-content:space-between;gap:10px;font:13px var(--font-sans);color:var(--dim);padding:4px 0}
+.side-row b{font-family:var(--mono);font-weight:600;color:var(--text);white-space:nowrap}
+.side-row.is-total{border-bottom:1px solid #ecdfc9;padding-bottom:9px}
+.side-row.is-accent{padding-top:10px}.side-row.is-accent span{font-weight:600;color:var(--text)}
+.side-row b.ok{color:var(--go)}.side-row b.warn{color:var(--caution)}.side-row b.bad{color:var(--nogo)}
+.side-note{font:12px/1.45 var(--font-sans);color:var(--dimmer);margin-top:6px}
+.side-customer{font:600 13.5px/1.4 var(--font-sans);margin-bottom:8px}
+@media(max-width:900px){.card-columns{grid-template-columns:minmax(0,1fr)}}
 </style>
 </head>
 <body>
@@ -438,8 +472,15 @@ body::before {
 
   <!-- ── Top bar ── -->
   <div class="top-bar">
-    <a href="/" class="back-btn"><span class="back-arrow">←</span> Назад</a>
+    <a href="/" class="back-btn"><span class="back-arrow">←</span> Очередь</a>
     <span class="pnum">{{ tender.purchase_number }}</span>
+    {% if queue_nav %}
+    <span class="queue-pos">{{ queue_nav.position }} из {{ queue_nav.total }} в очереди</span>
+    {% if queue_nav.prev %}<a class="back-btn" href="/tender/{{ queue_nav.prev }}" title="Предыдущий лот очереди">↑</a>
+    {% else %}<span class="back-btn is-off">↑</span>{% endif %}
+    {% if queue_nav.next %}<a class="back-btn" href="/tender/{{ queue_nav.next }}" title="Следующий лот очереди">↓</a>
+    {% else %}<span class="back-btn is-off">↓</span>{% endif %}
+    {% endif %}
   </div>
 
   <!-- ── Hero ── -->
@@ -460,7 +501,7 @@ body::before {
         <span>🏛 <strong>{{ tender.customer }}</strong></span>
         {% endif %}
         {% if tender.price %}
-        <span>💰 <strong>{{ tender.price | fmt_price }}</strong></span>
+        <span>💰 НМЦК <strong>{{ tender.price | fmt_rub }}</strong></span>
         {% endif %}
         {% if tender.law_type %}
         <span>📋 <strong>{{ tender.law_type }}</strong></span>
@@ -525,18 +566,6 @@ body::before {
     {% endif %}
 
     <div class="decide-grid">
-      <!-- Допуск-чеклист -->
-      <div class="decide-block">
-        <h4>Допуск — можно ли участвовать</h4>
-        {% for g in card.gates %}
-        {% set gi = '✅' if g.status=='ok' else ('⚠️' if g.status=='warn' else ('⛔' if g.status=='block' else '❓')) %}
-        <div class="gate">
-          <span class="gi">{{ gi }}</span>
-          <span><span class="gl">{{ g.label }}.</span> <span class="ge">{{ g.explain }}</span></span>
-        </div>
-        {% endfor %}
-      </div>
-
       <!-- Смогу ли сделать -->
       <div class="decide-block">
         <h4>Смогу ли сделать</h4>
@@ -551,23 +580,6 @@ body::before {
         {% if cd.matched %}<div style="margin-top:.4rem">{% for m in cd.matched %}<span class="chip">{{ m }}</span>{% endfor %}</div>{% endif %}
         {% if cd.gaps %}<div style="margin-top:.3rem"><span class="ge">не хватает:</span> {% for m in cd.gaps %}<span class="chip gap">{{ m }}</span>{% endfor %}</div>{% endif %}
         {% if cd.note and not cd.matched and not cd.gaps %}<div class="ge" style="margin-top:.3rem">{{ cd.note }}</div>{% endif %}
-        {% endif %}
-      </div>
-
-      <!-- Обеспечение -->
-      <div class="decide-block">
-        <h4>Обеспечение</h4>
-        {% set f = card.finance %}
-        {% macro money(v) %}{% if v is none %}<span class="fin-na">не найдено</span>{% else %}{{ v | fmt_price }}{% endif %}{% endmacro %}
-        {% if f.app_security is none and f.contract_security is none and f.warranty_security is none %}
-        <div class="fin-na">Суммы обеспечения не найдены в извлечённых данных.</div>
-        {% else %}
-        <div class="fin-row"><span class="muted">Заявки</span><span>{{ money(f.app_security) }}</span></div>
-        <div class="fin-row"><span class="muted">Исполнения</span><span>{{ money(f.contract_security) }}</span></div>
-        <div class="fin-row"><span class="muted">Гарантийное</span><span>{{ money(f.warranty_security) }}</span></div>
-        {% if f.total_security is not none %}
-        <div class="fin-row"><span class="muted">Всего</span><span>{{ money(f.total_security) }}</span></div>
-        {% endif %}
         {% endif %}
       </div>
 
@@ -588,6 +600,132 @@ body::before {
       <div id="clarifyResult" class="explain-result" hidden></div>
     </div>
   </div><!-- /.decide -->
+  {% endif %}
+
+  <!-- ── Почему такой балл + сайдбар допуска/денег/заказчика ── -->
+  {% if breakdown or card %}
+  <div class="card-columns">
+    <div class="card-main">
+
+      {% if breakdown %}
+      <div class="card-panel">
+        {% set unknown_gates = (card.gates | selectattr('status', 'equalto', 'unknown') | list) if card else [] %}
+        <div class="card-panel-title">
+          СПОРНЫЕ МЕСТА · {{ (disputes | length) + (unknown_gates | length) }}
+        </div>
+        {% if disputes or unknown_gates %}
+        <p class="card-panel-note">
+          Без замечаний — {{ (breakdown | length) - (disputes | length) }} из {{ breakdown | length }} фильтров, они скрыты.
+          Показываем только то, что двигало балл вниз.
+        </p>
+        {% for row in disputes %}
+        <div class="dispute tone-{{ row.tone }}">
+          <div class="dispute-head">
+            <strong>Ф{{ row.filter_number }} {{ row.filter_name }}</strong>
+            <span class="dispute-delta">{{ '−' ~ (row.delta | abs) if row.delta < 0 else row.score ~ '/5' }}</span>
+          </div>
+          {% if row.signal %}<div class="dispute-quote">{{ row.signal }}</div>{% endif %}
+          {% if row.signals | length > 1 %}
+          <div class="dispute-note">{{ row.signals[1:] | join(' · ') }}</div>
+          {% endif %}
+          {% if row.stop_factor %}<div class="dispute-note"><strong>Стоп-фактор фильтра</strong> — итоговое решение NO-GO.</div>{% endif %}
+        </div>
+        {% endfor %}
+        {% for gate in unknown_gates %}
+        <div class="dispute tone-unknown">
+          <div class="dispute-head">
+            <strong>{{ gate.label }} — не проверено</strong>
+            <span class="dispute-delta muted">?</span>
+          </div>
+          <div class="dispute-note">{{ gate.explain }}</div>
+          <div class="dispute-actions">
+            <button class="explain-btn" onclick="document.getElementById('clarifyBtn')?.click()">Запросить разъяснение</button>
+          </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="card-panel-note">Все {{ breakdown | length }} фильтров сошлись без замечаний.</p>
+        {% endif %}
+
+        <details class="filters-8">
+          <summary>показать все {{ breakdown | length }} фильтров</summary>
+          {% for row in breakdown %}
+          {% set color = 'var(--go)' if row.score >= 4 else ('var(--caution)' if row.score == 3 else 'var(--nogo)') %}
+          <div class="f8-row">
+            <div class="f8-head">
+              <span>{{ row.filter_name }}</span>
+              <div class="f8-bars">
+                {% for n in range(1, 6) %}<i {% if n <= row.score %}style="background:{{ color }}"{% endif %}></i>{% endfor %}
+              </div>
+              <span class="f8-score" style="color:{{ color }}">{{ row.score }}/5</span>
+            </div>
+            {% if row.signal %}<div class="f8-clue">{{ row.signal }}</div>{% endif %}
+          </div>
+          {% endfor %}
+          <a href="#filters-full">все сигналы движка ↓</a>
+        </details>
+      </div>
+      {% endif %}
+
+    </div>
+
+    <aside class="card-side">
+      {% if card %}
+      <div class="card-panel">
+        <div class="card-panel-title">ДОПУСК</div>
+        {% for g in card.gates %}
+        <div class="side-gate gate-{{ g.status }}">
+          <i></i>
+          <div>
+            <strong>{{ g.label }}</strong>
+            <span>{{ g.explain }}</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      {% set f = card.finance %}
+      <div class="card-panel">
+        <div class="card-panel-title">ДЕНЬГИ</div>
+        <div class="side-row"><span>НМЦК</span><b>{% if f.nmck is none %}не найдено{% else %}{{ f.nmck | fmt_rub }}{% endif %}</b></div>
+        <div class="side-row"><span>Рекомендуемая ставка</span><b>{% if f.recommended_bid is none %}не найдено{% else %}{{ f.recommended_bid | fmt_rub }}{% endif %}</b></div>
+        <div class="side-row"><span>Обеспечение заявки</span><b>{% if f.app_security is none %}не найдено{% else %}{{ f.app_security | fmt_rub }}{% endif %}</b></div>
+        <div class="side-row"><span>Обеспечение исполнения</span><b>{% if f.contract_security is none %}не найдено{% else %}{{ f.contract_security | fmt_rub }}{% endif %}</b></div>
+        <div class="side-row is-total"><span>Обеспечение всего</span><b>{% if f.total_security is none %}не найдено{% else %}{{ f.total_security | fmt_rub }}{% endif %}</b></div>
+        {% if f.net_margin is not none %}
+        <div class="side-row is-accent">
+          <span>Чистая маржа</span>
+          <b class="{{ 'ok' if f.verdict == 'выгодно' else ('warn' if f.verdict == 'на грани' else 'bad') }}">{{ f.net_margin | fmt_rub }} · {{ (f.net_margin_pct * 100) | round | int }}%</b>
+        </div>
+        {% endif %}
+        {% if f.assumptions %}
+        <div class="side-note">{{ f.assumptions | join(' ') }}</div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if customer %}
+      <div class="card-panel">
+        <div class="card-panel-title">ЗАКАЗЧИК</div>
+        <div class="side-customer">
+          <a href="/customer/{{ customer.inn }}">{{ customer.name or tender.customer }}</a>
+        </div>
+        <div class="side-row"><span>Закупок всего</span><b>{{ customer.total_contracts or '—' }}</b></div>
+        <div class="side-row"><span>Ср. участников</span><b>{{ customer.avg_participants if customer.avg_participants is not none else '—' }}</b></div>
+        <div class="side-row"><span>Ср. снижение</span><b>{% if customer.avg_drop_pct is not none %}{{ customer.avg_drop_pct }} %{% else %}—{% endif %}</b></div>
+        <div class="side-row"><span>Тот же победитель</span>
+          <b class="{{ 'warn' if customer.monopoly_flag else '' }}">{% if customer.repeat_winner_share is not none %}{{ customer.repeat_winner_share }} %{% else %}—{% endif %}</b>
+        </div>
+      </div>
+      {% elif tender.customer %}
+      <div class="card-panel">
+        <div class="card-panel-title">ЗАКАЗЧИК</div>
+        <div class="side-customer">{{ tender.customer }}</div>
+        <div class="side-note">Профиль заказчика ещё не собран — запустите аналитику в /control.</div>
+      </div>
+      {% endif %}
+    </aside>
+  </div>
   {% endif %}
 
   {% if tender.llm_analysis %}
@@ -839,7 +977,7 @@ body::before {
 
   <!-- ── 8 Filters ── -->
   {% if tender.filter_scores %}
-  <div class="section-label">8 ФИЛЬТРОВ</div>
+  <div class="section-label" id="filters-full">8 ФИЛЬТРОВ — ВСЕ СИГНАЛЫ</div>
   <div class="filter-grid">
     {% for f in tender.filter_scores %}
     {% set fc_color =

@@ -13,7 +13,7 @@
   <div class="preview-meta">
     <span>{{ tender.customer or 'Заказчик не указан' }}</span>
     {% if tender.deadline %}<span>подача до <strong>{{ tender.deadline | fmt_datetime }}</strong></span>{% endif %}
-    {% if tender.price %}<span>НМЦК <strong>{{ tender.price | fmt_price }}</strong></span>{% endif %}
+    {% if tender.price %}<span>НМЦК <strong>{{ tender.price | fmt_rub }}</strong></span>{% endif %}
   </div>
 
   <div class="preview-decision tone-{{ tone }}">
@@ -40,28 +40,71 @@
   </div>
 
   {% if card %}
-  <div class="preview-section-title"><span>ДОПУСК — ПУСТЯТ ЛИ МЕНЯ</span></div>
+  {% set checked_gates = card.gates | rejectattr('status', 'equalto', 'unknown') | list %}
+  <div class="preview-section-title">
+    <span>ДОПУСК — ПУСТЯТ ЛИ МЕНЯ</span>
+    <em>{{ checked_gates | length }} из {{ card.gates | length }} проверено</em>
+  </div>
   <div class="preview-gates">
     {% for gate in card.gates %}
     <div class="preview-gate gate-{{ gate.status }}">
-      <strong>{{ gate.label }}</strong>
+      <strong>{{ gate.label }}{% if gate.status == 'unknown' %} <i>?</i>{% endif %}</strong>
       <span>{{ gate.explain }}</span>
     </div>
     {% endfor %}
   </div>
   {% endif %}
 
-  {% if tender.filter_scores %}
-  <div class="preview-section-title"><span>ПОЧЕМУ {{ tender.filter_total }}, А НЕ 40</span><a href="/tender/{{ tender.purchase_number }}">все 8 фильтров →</a></div>
+  {% set scope_items = work_scope.get('items') if work_scope else none %}
+  {% if scope_items or (work_scope and work_scope.get('text')) %}
+  <div class="preview-section-title">
+    <span>ЧТО НАДО СДЕЛАТЬ</span>
+    {% if work_scope.get('source') %}<em>из ТЗ · {{ work_scope.get('source') }}</em>{% endif %}
+  </div>
+  <div class="preview-scope">
+    {% if scope_items %}
+    {% for item in scope_items[:5] %}<div>— {{ item }}</div>{% endfor %}
+    {% else %}
+    <div>{{ work_scope.get('text') }}</div>
+    {% endif %}
+    {% if card and card.can_do and card.can_do.gaps %}
+    <div class="preview-scope-gaps">не хватает: {{ card.can_do.gaps | join(', ') }}</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if breakdown %}
+  {% set base = breakdown | length * 3 %}
+  <div class="preview-section-title">
+    <span>ОТ {{ base }} БАЗОВЫХ К {{ tender.filter_total if tender.filter_total is not none else base }}</span>
+    <a href="/tender/{{ tender.purchase_number }}">все 8 фильтров →</a>
+  </div>
   <div class="preview-scorecard">
-    {% for f in tender.filter_scores %}
-    {% set delta = (f.score or 0) - 3 %}
+    <div class="preview-filter is-edge">
+      <span>База</span>
+      <div class="track"><i style="width:{{ (base / 40 * 100)|round|int }}%;background:var(--border2)"></i></div>
+      <b>{{ base }}</b>
+    </div>
+    {% for row in breakdown %}
+    {% set color = 'var(--go)' if row.delta > 0 else ('var(--nogo)' if row.delta <= -2 else ('var(--caution)' if row.delta < 0 else 'var(--dimmer)')) %}
     <div class="preview-filter">
-      <span>Ф{{ f.filter_number }} {{ f.filter_name }}</span>
-      <div><i style="width:{{ ((f.score or 0) / 5 * 100)|int }}%;background:{{ 'var(--go)' if f.score >= 4 else ('var(--caution)' if f.score == 3 else 'var(--nogo)') }}"></i></div>
-      <b>{{ '+' if delta > 0 else '' }}{{ delta }}</b>
+      <span{% if row.delta < 0 %} style="color:{{ color }}"{% endif %}>Ф{{ row.filter_number }} {{ row.short_name }}</span>
+      <div class="waterfall">
+        <u></u>
+        {% if row.delta %}
+        <i class="{{ 'plus' if row.delta > 0 else 'minus' }}" style="width:{{ (row.delta | abs) * 10 }}%;background:{{ color }}"></i>
+        {% endif %}
+      </div>
+      <b style="color:{{ color }}">{{ '+' ~ row.delta if row.delta > 0 else ('−' ~ (row.delta | abs) if row.delta < 0 else '0') }}</b>
     </div>
     {% endfor %}
+    {% if tender.filter_total is not none %}
+    <div class="preview-filter is-edge">
+      <span><b>Итог</b></span>
+      <div class="track"><i style="width:{{ (tender.filter_total / 40 * 100)|round|int }}%;background:var(--{{ 'go' if tone == 'go' else ('nogo' if tone == 'nogo' else 'caution') }})"></i></div>
+      <b class="total">{{ tender.filter_total }}</b>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 

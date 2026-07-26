@@ -1,16 +1,33 @@
 <!-- Очередь тендеров. Корневой id используется HTMX для обновления без перезагрузки. -->
 <div id="tenders-table">
   <div class="queue-toolbar">
-    <div>
-      <div class="queue-kicker">ТРИАЖ-ОЧЕРЕДЬ</div>
-      <h1>Тендеры <span>{{ tenders|length }}</span></h1>
-    </div>
+    <button type="button" class="queue-preset primary {% if 'raw' in active_statuses and 'processed' in active_statuses %}on{% endif %}"
+            onclick="togglePendingPreset()" title="Оставить только неразобранные лоты">
+      Разобрать очередь · {{ queue_pending }}
+    </button>
+    <button type="button" class="queue-preset {% if active_law == 'ЗМО' %}on{% endif %}"
+            onclick="applySingleParam('law', '{{ '' if active_law == 'ЗМО' else 'ЗМО' }}')"
+            title="Только закупки малого объёма">ЗМО{% if active_law == 'ЗМО' %} ✓{% endif %}</button>
+    <button type="button" class="queue-preset {% if active_decisions == ['GO'] %}on{% endif %}"
+            onclick="toggleOnlyGo()">Только БЕРИ</button>
     <div class="queue-sort">
-      <button type="button" class="sort-btn" onclick="sortBy('score')">Вердикт {{ '↑' if sort_by == 'score' and sort_order == 'asc' else '↓' }}</button>
-      <button type="button" class="sort-btn" onclick="sortBy('deadline')">Срок {{ '↑' if sort_by == 'deadline' and sort_order == 'asc' else '↓' }}</button>
-      <button type="button" class="sort-btn" onclick="sortBy('price')">Цена {{ '↑' if sort_by == 'price' and sort_order == 'asc' else '↓' }}</button>
+      <span class="queue-kicker">СОРТ</span>
+      <button type="button" class="sort-btn {% if sort_by == 'score' %}active{% endif %}" onclick="sortBy('score')">Вердикт {{ '↑' if sort_by == 'score' and sort_order == 'asc' else '↓' }}</button>
+      <button type="button" class="sort-btn {% if sort_by == 'deadline' %}active{% endif %}" onclick="sortBy('deadline')">Срок {{ '↑' if sort_by == 'deadline' and sort_order == 'asc' else '↓' }}</button>
+      <button type="button" class="sort-btn {% if sort_by == 'price' %}active{% endif %}" onclick="sortBy('price')">Цена {{ '↑' if sort_by == 'price' and sort_order == 'asc' else '↓' }}</button>
     </div>
   </div>
+
+  {% if excluded_keywords %}
+  <div class="queue-hidden">
+    <span class="queue-kicker">СКРЫТО</span>
+    {% for phrase in excluded_keywords %}
+    <button type="button" class="queue-hidden-tag" data-phrase="{{ phrase }}"
+            onclick="removeMinusPhrase(this.dataset.phrase)" title="Вернуть лоты с этой фразой">{{ phrase }} ✕</button>
+    {% endfor %}
+    <a href="#" onclick="clearMinusPhrases();return false">показать →</a>
+  </div>
+  {% endif %}
 
   <div class="queue-filters">
     <div class="queue-filter-group">
@@ -45,10 +62,18 @@
   {% if not tenders %}
   <div class="queue-empty">По текущим фильтрам ничего не найдено.</div>
   {% else %}
+  {% set tail_from = tenders | length - nogo_tail %}
   <div class="tender-queue">
     {% for t in tenders %}
+    {% if nogo_tail and loop.index0 == tail_from %}
+    <div class="queue-tail-divider">
+      <span class="queue-kicker">ДАЛЬШЕ {{ nogo_tail }} ЛОТ{{ '' if nogo_tail % 10 == 1 and nogo_tail % 100 != 11 else ('А' if nogo_tail % 10 in (2, 3, 4) and nogo_tail % 100 not in (12, 13, 14) else 'ОВ') }} С ВЕРДИКТОМ ПРОПУСТИ</span>
+      <i></i>
+      <a href="#" onclick="toggleNogoTail(this);return false">развернуть</a>
+    </div>
+    {% endif %}
     {% set dleft = t.deadline | days_left %}
-    <article class="queue-card tone-{{ t.decision_tone }} {% if loop.first %}selected{% endif %}" data-pnum="{{ t.purchase_number }}" onclick="selectTender(event, this)" tabindex="0" onkeydown="if(event.key==='Enter')selectTender(event, this)">
+    <article class="queue-card tone-{{ t.decision_tone }} {% if loop.first %}selected{% endif %} {% if nogo_tail and loop.index0 >= tail_from %}queue-tail{% endif %}" data-pnum="{{ t.purchase_number }}" onclick="selectTender(event, this)" tabindex="0" onkeydown="if(event.key==='Enter')selectTender(event, this)">
       <div class="queue-accent"></div>
       <div class="queue-content">
         <div class="queue-card-head">
@@ -69,6 +94,13 @@
         </div>
         <h2>{{ t.title or 'Без названия' }}</h2>
         <p class="queue-why"><span>→</span>{{ t.decision_reason }}</p>
+        {% if t.risk_tags %}
+        <div class="queue-risks">
+          {% for tag in t.risk_tags %}
+          <span class="queue-risk tone-{{ tag.tone }}">{{ tag.text }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
         <div class="queue-meta">
           {% if t.matched_profiles %}
           {% set best_profile = t.matched_profiles | sort(attribute='score', reverse=true) | first %}
@@ -77,7 +109,7 @@
           <span class="queue-tag">{{ t.matched_keywords.split(';')[0] }}</span>
           {% endif %}
           <span class="queue-spacer"></span>
-          <strong>{{ t.price | fmt_price }}</strong>
+          <strong>{{ t.price | fmt_rub }}</strong>
           <span>{{ t.customer or t.platform or 'Заказчик не указан' }}</span>
           {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
           {% if eis_url %}<a href="{{ eis_url }}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">источник ↗</a>{% endif %}
