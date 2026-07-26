@@ -37,7 +37,7 @@ import zipfile
 from tls_bootstrap import NATIVE_TRUSTSTORE_ACTIVE
 
 from fastapi import FastAPI, Request, HTTPException, Query
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
@@ -945,23 +945,66 @@ def _tender_preview_context(purchase_number: str) -> dict[str, Any]:
     if not tender:
         raise HTTPException(404, "Тендер не найден")
     card = None
+    criteria = None
+    spec: list[dict[str, Any]] = []
+    details: dict[str, Any] = {}
     try:
         import decision_aid
+        import document_processor as dp
+        text = _decide_text(tender)
         card = decision_aid.build_card(tender, text=_decide_text(tender))
+        criteria = dp.extract_evaluation_criteria(text)
     except Exception:
         logger.exception("preview decision card failed for %s", purchase_number)
+    try:
+        spec = db.list_tender_items(purchase_number)
+    except Exception:
+        logger.exception("preview tender items failed for %s", purchase_number)
+    try:
+        details = db.get_tender_details(purchase_number) or {}
+    except Exception:
+        logger.exception("preview tender details failed for %s", purchase_number)
+    work_scope = details.get("work_scope") or {}
+    if not spec and not work_scope:
+        work_scope = _build_work_scope(tender)
+    docs_files: list[str] = []
+    docs_dir = _tender_documents_dir(tender)
+    if docs_dir:
+        try:
+            docs_files = [_display_download_name(p) for p in sorted(docs_dir.iterdir()) if p.is_file()]
+        except Exception:
+            logger.exception("preview documents failed for %s", purchase_number)
+    customer = None
+    if tender.get("customer_inn"):
+        try:
+            customer = db.get_customer(tender["customer_inn"])
+        except Exception:
+            logger.exception("preview customer failed for %s", purchase_number)
+    breakdown = _score_breakdown(tender)
     return {
         "tender": tender,
         "card": card,
+        "criteria": criteria,
+        "spec": spec,
+        "spec_rollup": _spec_rollup(spec),
         "decision_reasons": _decision_reasons(tender),
-        "breakdown": _score_breakdown(tender),
-        "work_scope": _stored_work_scope(purchase_number),
+        "breakdown": breakdown,
+        "disputes": _score_disputes(breakdown),
+        "work_scope": work_scope,
+        "docs_files": docs_files,
+        "documents_url": zakupki_documents_url(
+            tender.get("url") or "", purchase_number, tender.get("notice_guid") or ""
+        ),
+        "customer": customer,
+        "work_stages": WORK_STAGES,
+        "stops": parse_stop(tender.get("filter_stop") or ""),
     }
 
 
 @app.get("/", response_class=HTMLResponse)
 async def index(
     request: Request,
+    selected: Optional[str] = None,
     decision: list[str] = Query(default=[]),
     status:   list[str] = Query(default=[]),
     law:      Optional[str]   = None,
@@ -996,13 +1039,16 @@ async def index(
         sort_by, order, limit,
     )
     ctx["stats"] = db.get_stats_extended()
-    ctx["preview"] = _tender_preview_context(ctx["tenders"][0]["purchase_number"]) if ctx["tenders"] else None
+    default_number = selected or (ctx["tenders"][0]["purchase_number"] if ctx["tenders"] else None)
+    ctx["active_selected"] = default_number
+    ctx["preview"] = _tender_preview_context(default_number) if default_number else None
     return templates.TemplateResponse(request, "index.html", ctx)
 
 
 @app.get("/partials/tenders", response_class=HTMLResponse)
 async def partial_tenders(
     request: Request,
+    selected: Optional[str] = None,
     decision: list[str] = Query(default=[]),
     status:   list[str] = Query(default=[]),
     law:      Optional[str]   = None,
@@ -1036,6 +1082,7 @@ async def partial_tenders(
         score_min, score_max, days_min, days_max,
         sort_by, order, limit,
     )
+    ctx["active_selected"] = selected
     return templates.TemplateResponse(request, "_tenders_table.html", ctx)
 
 
@@ -1132,68 +1179,11 @@ async def customer_page(request: Request, inn: str):
         {"customer": customer, "tenders": tenders})
 
 
-@app.get("/tender/{purchase_number}", response_class=HTMLResponse)
+@app.get("/tender/{purchase_number}", response_class=RedirectResponse)
 async def tender_detail(request: Request, purchase_number: str):
-    tender = db.get_tender(purchase_number)
-    if not tender:
+    if not db.get_tender(purchase_number):
         raise HTTPException(404, "Тендер не найден")
-    card = None
-    criteria = None
-    spec = []
-    spec_rollup = {"total": 0, "priced": 0, "count": 0}
-    details = {}
-    try:
-        import decision_aid
-        import document_processor as dp
-        text = _decide_text(tender)
-        card = decision_aid.build_card(tender, text=text)
-        criteria = dp.extract_evaluation_criteria(text)
-    except Exception:
-        logger.exception("decision_aid/criteria build failed for %s", purchase_number)
-    try:
-        spec = db.list_tender_items(purchase_number)
-        spec_rollup = _spec_rollup(spec)
-    except Exception:
-        logger.exception("list_tender_items failed for %s", purchase_number)
-    try:
-        details = db.get_tender_details(purchase_number) or {}
-    except Exception:
-        logger.exception("get_tender_details failed for %s", purchase_number)
-    work_scope = None
-    if not spec:
-        stored_work_scope = details.get("work_scope") or {}
-        work_scope = stored_work_scope or _build_work_scope(tender)
-        if stored_work_scope and not stored_work_scope.get("tables") and tender.get("documents_dir"):
-            rebuilt_work_scope = _build_work_scope(tender)
-            if rebuilt_work_scope.get("tables"):
-                work_scope = rebuilt_work_scope
-    docs_files = []
-    docs_dir = _tender_documents_dir(tender)
-    if docs_dir:
-        try:
-            docs_files = [_display_download_name(p) for p in sorted(docs_dir.iterdir()) if p.is_file()]
-        except Exception:
-            logger.exception("Не удалось прочитать documents_dir для %s", purchase_number)
-    documents_url = zakupki_documents_url(
-        tender.get("url") or "",
-        purchase_number,
-        tender.get("notice_guid") or "",
-    )
-    customer = None
-    if tender.get("customer_inn"):
-        try:
-            customer = db.get_customer(tender["customer_inn"])
-        except Exception:
-            logger.exception("get_customer failed for %s", purchase_number)
-    decision_reasons = _decision_reasons(tender)
-    breakdown = _score_breakdown(tender)
-    return templates.TemplateResponse(request, "detail.html",
-        {"tender": tender, "card": card, "criteria": criteria,
-         "work_stages": WORK_STAGES, "spec": spec, "spec_rollup": spec_rollup,
-         "work_scope": work_scope, "docs_files": docs_files,
-         "documents_url": documents_url, "decision_reasons": decision_reasons,
-         "breakdown": breakdown, "disputes": _score_disputes(breakdown),
-         "customer": customer, "queue_nav": _queue_nav(purchase_number)})
+    return RedirectResponse(url=f"/?selected={purchase_number}", status_code=302)
 
 
 @app.get("/rules", response_class=HTMLResponse)

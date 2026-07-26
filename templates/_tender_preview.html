@@ -1,4 +1,5 @@
 <section id="tender-preview" class="preview-pane" data-pnum="{{ tender.purchase_number }}">
+  <button class="preview-mobile-back" type="button" onclick="closeMobilePreview()">← К списку</button>
   {% set dec = tender.filter_decision or '' %}
   {% set tone = 'go' if dec == 'GO' else ('caution' if dec == 'CAUTION' else ('nogo' if dec == 'NO-GO' else 'unknown')) %}
   {% set verdict = 'БЕРИ' if dec == 'GO' else ('ПОДУМАЙ' if dec == 'CAUTION' else ('ПРОПУСТИ' if dec == 'NO-GO' else 'НА РАЗБОР')) %}
@@ -77,7 +78,7 @@
   {% set base = breakdown | length * 3 %}
   <div class="preview-section-title">
     <span>ОТ {{ base }} БАЗОВЫХ К {{ tender.filter_total if tender.filter_total is not none else base }}</span>
-    <a href="/tender/{{ tender.purchase_number }}">все 8 фильтров →</a>
+    <a href="#preview-filters">все 8 фильтров ↓</a>
   </div>
   <div class="preview-scorecard">
     <div class="preview-filter is-edge">
@@ -108,7 +109,142 @@
   </div>
   {% endif %}
 
-  <div class="preview-open">
-    <a href="/tender/{{ tender.purchase_number }}">Открыть карточку целиком →</a>
+  {% if stops %}
+  <div class="preview-section-title"><span>СТОП-ФАКТОРЫ</span></div>
+  <div class="preview-detail-card preview-stops">
+    {% for stop in stops %}<div>— {{ stop }}</div>{% endfor %}
   </div>
+  {% endif %}
+
+  {% if tender.llm_analysis %}
+  <div class="preview-section-title"><span>РАЗБОР И ДОКАЗАТЕЛЬСТВА</span></div>
+  <div class="preview-detail-card preview-analysis">{{ tender.llm_analysis | llm_html }}</div>
+  {% endif %}
+
+  {% if spec %}
+  <div class="preview-section-title">
+    <span>СПЕЦИФИКАЦИЯ</span>
+    <em>{{ spec_rollup.count }} позиций</em>
+  </div>
+  <div class="preview-detail-card preview-table-wrap">
+    <table class="preview-table">
+      <thead><tr><th>Наименование</th><th>Кол-во</th><th>Характеристики</th></tr></thead>
+      <tbody>
+      {% for item in spec %}
+      <tr>
+        <td>{{ item.name or item.title or '—' }}</td>
+        <td>{{ item.quantity or '—' }}{% if item.unit %} {{ item.unit }}{% endif %}</td>
+        <td>{{ item.requirements or item.characteristics or '—' }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif work_scope and work_scope.get('tables') %}
+  <div class="preview-section-title"><span>ПОЛНОЕ ОПИСАНИЕ РАБОТ</span></div>
+  {% for table in work_scope.get('tables') %}
+  <div class="preview-detail-card preview-table-wrap">
+    {% if table.get('caption') %}<strong class="preview-card-title">{{ table.get('caption') }}</strong>{% endif %}
+    <table class="preview-table">
+      {% if table.get('columns') %}<thead><tr>{% for col in table.get('columns') %}<th>{{ col }}</th>{% endfor %}</tr></thead>{% endif %}
+      <tbody>{% for row in table.get('rows') %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <div class="preview-section-title"><span>ДОКУМЕНТЫ</span><em>{{ docs_files | length }} файлов</em></div>
+  <div class="preview-detail-card">
+    {% if docs_files %}
+    <ul class="preview-list">{% for fname in docs_files %}<li>{{ fname }}</li>{% endfor %}</ul>
+    <a class="preview-link-btn" href="/api/tender/{{ tender.purchase_number }}/documents.zip">Скачать архив ZIP</a>
+    {% elif documents_url %}
+    <a class="preview-link-btn" href="{{ documents_url }}" target="_blank" rel="noopener">Открыть документы на площадке ↗</a>
+    {% else %}
+    <span class="preview-muted">Документы пока не загружены.</span>
+    {% endif %}
+  </div>
+
+  {% if criteria %}
+  <div class="preview-section-title"><span>КРИТЕРИИ ОЦЕНКИ</span></div>
+  <div class="preview-detail-card">
+    {% if criteria.criteria %}
+      {% for criterion in criteria.criteria %}
+      <div class="preview-detail-row"><span>{{ criterion.label }}</span><b>{% if criterion.weight is not none %}{{ criterion.weight }}%{% else %}вес не указан{% endif %}</b></div>
+      {% endfor %}
+    {% endif %}
+    {% if criteria.note %}<p class="preview-muted">{{ criteria.note }}</p>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if tender.llm_triage_verdict %}
+  <div class="preview-section-title"><span>LLM-ТРИАЖ</span></div>
+  <div class="preview-detail-card">
+    <div class="preview-detail-row"><span>Вердикт</span><b>{{ tender.llm_triage_verdict }}</b></div>
+    {% if tender.llm_triage_category %}<div class="preview-detail-row"><span>Категория</span><b>{{ tender.llm_triage_category }}</b></div>{% endif %}
+    {% if tender.llm_triage_reason %}<p>{{ tender.llm_triage_reason }}</p>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if customer %}
+  <div class="preview-section-title"><span>ЗАКАЗЧИК</span></div>
+  <div class="preview-detail-card">
+    <a class="preview-customer" href="/customer/{{ customer.inn }}">{{ customer.name or tender.customer }}</a>
+    <div class="preview-detail-grid">
+      <div><span>Закупок</span><b>{{ customer.total_contracts or '—' }}</b></div>
+      <div><span>Ср. участников</span><b>{{ customer.avg_participants if customer.avg_participants is not none else '—' }}</b></div>
+      <div><span>Ср. снижение</span><b>{% if customer.avg_drop_pct is not none %}{{ customer.avg_drop_pct }}%{% else %}—{% endif %}</b></div>
+      <div><span>Тот же победитель</span><b>{% if customer.repeat_winner_share is not none %}{{ customer.repeat_winner_share }}%{% else %}—{% endif %}</b></div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if tender.result_checked_at or tender.winner_name or tender.final_price or tender.participants_count %}
+  <div class="preview-section-title"><span>РЕЗУЛЬТАТ ПОСЛЕ ДЕДЛАЙНА</span></div>
+  <div class="preview-detail-card preview-detail-grid">
+    <div><span>Победитель</span><b>{{ tender.winner_name or '—' }}</b></div>
+    <div><span>Итоговая цена</span><b>{{ tender.final_price | fmt_rub }}</b></div>
+    <div><span>Участников</span><b>{{ tender.participants_count or '—' }}</b></div>
+    <div><span>Снижение</span><b>{% if tender.price_drop_percent is not none %}{{ tender.price_drop_percent }}%{% else %}—{% endif %}</b></div>
+  </div>
+  {% endif %}
+
+  {% if tender.filter_scores %}
+  <div class="preview-section-title" id="preview-filters"><span>8 ФИЛЬТРОВ — ВСЕ СИГНАЛЫ</span></div>
+  <div class="preview-full-filters">
+    {% for filter in tender.filter_scores %}
+    <details class="preview-full-filter" {% if filter.score < 3 or filter.stop_factor %}open{% endif %}>
+      <summary>
+        <span>Ф{{ filter.filter_number }} · {{ filter.filter_name }}</span>
+        <b>{{ filter.score }}/5{% if filter.stop_factor %} · СТОП{% endif %}</b>
+      </summary>
+      {% set signals = filter.signals | parse_signals %}
+      {% for signal in signals %}<div>{{ signal }}</div>{% endfor %}
+    </details>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if tender.score_reasons %}
+  <div class="preview-section-title"><span>KEYWORD-СКОРИНГ</span></div>
+  <div class="preview-detail-card preview-mono">{{ tender.score_reasons | replace(' | ', '\n') }}</div>
+  {% endif %}
+
+  {% if work_stages %}
+  <div class="preview-section-title"><span>РАБОТА ПО ТЕНДЕРУ</span><a href="/board">доска →</a></div>
+  <div class="preview-detail-card preview-work">
+    <div class="preview-work-row">
+      <label>Стадия
+        <select class="preview-work-stage">
+          <option value="">Не в работе</option>
+          {% for stage in work_stages %}<option value="{{ stage.key }}" {% if tender.work_stage == stage.key %}selected{% endif %}>{{ stage.label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Мой срок<input class="preview-work-due" type="date" value="{{ tender.work_due or '' }}"></label>
+    </div>
+    <label>Комментарий<textarea class="preview-work-note" maxlength="2000">{{ tender.work_note or '' }}</textarea></label>
+    <button class="preview-link-btn" onclick="previewSaveWorkflow(this)">Сохранить</button>
+    <span class="preview-work-message"></span>
+  </div>
+  {% endif %}
 </section>

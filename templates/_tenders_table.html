@@ -73,7 +73,7 @@
     </div>
     {% endif %}
     {% set dleft = t.deadline | days_left %}
-    <article class="queue-card tone-{{ t.decision_tone }} {% if loop.first %}selected{% endif %} {% if nogo_tail and loop.index0 >= tail_from %}queue-tail{% endif %}" data-pnum="{{ t.purchase_number }}" onclick="selectTender(event, this)" tabindex="0" onkeydown="if(event.key==='Enter')selectTender(event, this)">
+    <article class="queue-card tone-{{ t.decision_tone }} {% if active_selected == t.purchase_number or (not active_selected and loop.first) %}selected{% endif %} {% if nogo_tail and loop.index0 >= tail_from %}queue-tail{% endif %}" data-pnum="{{ t.purchase_number }}" onclick="selectTender(event, this)" tabindex="0" onkeydown="if(event.key==='Enter')selectTender(event, this)">
       <div class="queue-accent"></div>
       <div class="queue-content">
         <div class="queue-card-head">

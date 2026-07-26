@@ -684,24 +684,6 @@ body::before {
         {% endfor %}
       </div>
 
-      {% set f = card.finance %}
-      <div class="card-panel">
-        <div class="card-panel-title">ДЕНЬГИ</div>
-        <div class="side-row"><span>НМЦК</span><b>{% if f.nmck is none %}не найдено{% else %}{{ f.nmck | fmt_rub }}{% endif %}</b></div>
-        <div class="side-row"><span>Рекомендуемая ставка</span><b>{% if f.recommended_bid is none %}не найдено{% else %}{{ f.recommended_bid | fmt_rub }}{% endif %}</b></div>
-        <div class="side-row"><span>Обеспечение заявки</span><b>{% if f.app_security is none %}не найдено{% else %}{{ f.app_security | fmt_rub }}{% endif %}</b></div>
-        <div class="side-row"><span>Обеспечение исполнения</span><b>{% if f.contract_security is none %}не найдено{% else %}{{ f.contract_security | fmt_rub }}{% endif %}</b></div>
-        <div class="side-row is-total"><span>Обеспечение всего</span><b>{% if f.total_security is none %}не найдено{% else %}{{ f.total_security | fmt_rub }}{% endif %}</b></div>
-        {% if f.net_margin is not none %}
-        <div class="side-row is-accent">
-          <span>Чистая маржа</span>
-          <b class="{{ 'ok' if f.verdict == 'выгодно' else ('warn' if f.verdict == 'на грани' else 'bad') }}">{{ f.net_margin | fmt_rub }} · {{ (f.net_margin_pct * 100) | round | int }}%</b>
-        </div>
-        {% endif %}
-        {% if f.assumptions %}
-        <div class="side-note">{{ f.assumptions | join(' ') }}</div>
-        {% endif %}
-      </div>
       {% endif %}
 
       {% if customer %}
