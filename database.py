@@ -717,6 +717,12 @@ def ensure_extra_columns() -> None:
         cur.execute("ALTER TABLE tenders ADD COLUMN IF NOT EXISTS details_checked_at TIMESTAMPTZ")
         # LLM-триаж по карточке (Stage 1) — добавляется без bump SCHEMA_VERSION.
         for ddl in (
+            # Поисковые профили: индивидуальный ценовой коридор. Таблица могла
+            # быть создана до появления этих полей, а CREATE TABLE IF NOT EXISTS
+            # существующую схему не обновляет.
+            "ALTER TABLE search_profiles ADD COLUMN IF NOT EXISTS price_target_lo INTEGER",
+            "ALTER TABLE search_profiles ADD COLUMN IF NOT EXISTS price_target_hi INTEGER",
+            "ALTER TABLE search_profiles ADD COLUMN IF NOT EXISTS price_hard_max INTEGER",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS llm_triage_verdict TEXT",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS llm_triage_fit TEXT",
             "ALTER TABLE tenders ADD COLUMN IF NOT EXISTS llm_triage_resale BOOLEAN",
