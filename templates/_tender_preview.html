@@ -128,7 +128,7 @@
   </div>
   <div class="preview-detail-card preview-table-wrap">
     <table class="preview-table">
-      <thead><tr><th>Наименование</th><th>Кол-во</th><th>Характеристики</th></tr></thead>
+      <thead><tr><th title="Наименование">Наименование</th><th title="Количество">Кол-во</th><th title="Характеристики">Характеристики</th></tr></thead>
       <tbody>
       {% for item in spec %}
       <tr>
@@ -146,7 +146,7 @@
   <div class="preview-detail-card preview-table-wrap">
     {% if table.get('caption') %}<strong class="preview-card-title">{{ table.get('caption') }}</strong>{% endif %}
     <table class="preview-table">
-      {% if table.get('columns') %}<thead><tr>{% for col in table.get('columns') %}<th>{{ col }}</th>{% endfor %}</tr></thead>{% endif %}
+      {% if table.get('columns') %}<thead><tr>{% for col in table.get('columns') %}<th title="{{ col }}">{{ col }}</th>{% endfor %}</tr></thead>{% endif %}
       <tbody>{% for row in table.get('rows') %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
     </table>
   </div>
