@@ -81,15 +81,10 @@
           {% if t.filter_total is not none %}
           <span class="queue-score">{{ t.filter_total }}<small>/40</small></span>
           {% endif %}
-          {% if t.llm_triage_category %}
-          <span class="queue-category">{{ t.llm_triage_category }}</span>
-          {% elif t.law_type %}
-          <span class="queue-category">{{ t.law_type }}</span>
-          {% endif %}
           <span class="queue-spacer"></span>
           {% if dleft is not none %}<span class="queue-days {% if dleft <= 3 %}urgent{% endif %}">{{ dleft }} дн</span>{% endif %}
           {% if t.funnel_status != 'rejected' %}
-          <button class="queue-reject" data-pnum="{{ t.purchase_number }}" data-reason="not_my_profile" onclick="rejectLotFromList(this);event.stopPropagation()" title="Не мой профиль">×</button>
+          <button class="queue-reject" data-pnum="{{ t.purchase_number }}" data-reason="not_my_profile" onclick="rejectLotFromList(this);event.stopPropagation()">Не мой профиль</button>
           {% endif %}
         </div>
         <h2>{{ t.title or 'Без названия' }}</h2>
@@ -102,17 +97,8 @@
         </div>
         {% endif %}
         <div class="queue-meta">
-          {% if t.matched_profiles %}
-          {% set best_profile = t.matched_profiles | sort(attribute='score', reverse=true) | first %}
-          <span class="queue-tag">{{ best_profile.profile_name }}</span>
-          {% elif t.matched_keywords %}
-          <span class="queue-tag">{{ t.matched_keywords.split(';')[0] }}</span>
-          {% endif %}
           <span class="queue-spacer"></span>
           <strong>{{ t.price | fmt_rub }}</strong>
-          <span>{{ t.customer or t.platform or 'Заказчик не указан' }}</span>
-          {% set eis_url = t.url | zakupki_common_info_url(t.purchase_number) %}
-          {% if eis_url %}<a href="{{ eis_url }}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">источник ↗</a>{% endif %}
         </div>
       </div>
     </article>

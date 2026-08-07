@@ -735,6 +735,9 @@ def _tenders_context(
         active_only=active_only,
         sort_by=sort_by, order=order, limit=limit,
     )
+    # Главная — очередь на разбор. Лоты, уже взятые в работу, живут на доске
+    # и не должны возвращаться в левый список после обновления страницы.
+    tenders = [t for t in tenders if not t.get("work_stage")]
     notify_min = config.get_runtime("MIN_DETAILED_SCORE_FOR_NOTIFY", config.MIN_DETAILED_SCORE_FOR_NOTIFY)
     for t in tenders:
         t["funnel_status"] = _funnel_status(t)
