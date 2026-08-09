@@ -16,6 +16,19 @@ html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var
 @media(max-width:1050px){.triage-layout{grid-template-columns:minmax(400px,43%) minmax(0,57%)}.preview-gates{grid-template-columns:1fr 1fr}}@media(max-width:820px){.header-inner,.tabs{padding-left:16px;padding-right:16px}.tabs{overflow-x:auto}.tab{padding:.7rem .85rem;white-space:nowrap}.main{padding:20px 14px 40px}.page-head h1{font-size:21px}.triage-layout{display:block;height:auto;min-height:0}.preview-column{display:none}.queue-column{border-right:0}.triage-layout.mobile-preview .queue-column{display:none}.triage-layout.mobile-preview .preview-column{display:block}.preview-mobile-back{display:inline-flex;margin-bottom:12px;padding:6px 10px;border:1px solid var(--border2);border-radius:7px;background:var(--surf);color:var(--dim)}.queue-why{display:none}.preview-full-filters{grid-template-columns:1fr}}
 </style>
 {% include "_theme.html" %}
+<style>
+/* _theme задаёт общий предел 1180px; главная страница снимает его для
+   двухколоночного режима. Доска должна иметь ту же рабочую ширину. */
+.main {
+  width: auto !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 22px 30px 30px !important;
+}
+@media (max-width: 820px) {
+  .main { padding: 20px 14px 40px !important; }
+}
+</style>
 </head>
 <body>
 <header class="header"><div class="header-inner"><div class="logo">ТЕНДЕР·МОНИТОР</div><span class="header-count">в работе {{ total }}</span></div></header>
