@@ -38,6 +38,39 @@ TARGET_URL = "https://agregatoreat.ru/purchases/new"
 # Нужен полный комплект. Без первых трёх cookie последующий
 # requests-запрос снова получает HTML-страницу антибота вместо JSON.
 WANTED = ("__js_p_", "__jhash_", "__jua_", "__hash_", "__lhash_", "__rhash_")
+COOKIE_SETTLE_SECONDS = 6
+
+
+def _cookie_string(cookies: list[dict]) -> str:
+    values = {c["name"]: c["value"] for c in cookies}
+    return "; ".join(f"{name}={values[name]}" for name in WANTED if name in values)
+
+
+def _cookies_pass_api(cookie_string: str, user_agent: str) -> bool:
+    """Проверяет cookie тем же requests-запросом, который потом делает канал.
+
+    Само появление __hash_/__lhash_ ещё не означает, что ServicePipe
+    завершил JS-проверку. Невалидный набор не попадёт в .env.
+    """
+    try:
+        import requests
+        import config
+        from sources.eat import API_URL, _headers, _request_body
+
+        headers = _headers()
+        headers["Cookie"] = cookie_string
+        if user_agent:
+            headers["User-Agent"] = user_agent
+        response = requests.post(
+            API_URL,
+            json=_request_body("сайт", 20_000, 590_000, 1, 50),
+            headers=headers,
+            timeout=25,
+            proxies=config.source_proxies(),
+        )
+        return response.status_code == 200 and "json" in response.headers.get("content-type", "").lower()
+    except Exception:
+        return False
 
 
 def _playwright_proxy() -> dict | None:
@@ -110,14 +143,29 @@ def refresh_cookies(headed: bool = False, timeout_s: int = 90) -> tuple[str, str
 
         deadline = time.time() + timeout_s
         cookie_str = ""
+        ua = ""
         captcha_warned = False
+        cookies_seen_at: float | None = None
+        next_api_check_at = 0.0
         while time.time() < deadline:
-            cookies = {c["name"]: c["value"] for c in context.cookies("https://agregatoreat.ru")}
+            browser_cookies = context.cookies("https://agregatoreat.ru")
+            cookies = {c["name"]: c["value"] for c in browser_cookies}
+            now = time.time()
             if "__hash_" in cookies and "__lhash_" in cookies:
-                cookie_str = "; ".join(
-                    f"{name}={cookies[name]}" for name in WANTED if name in cookies
-                )
-                break
+                if cookies_seen_at is None:
+                    cookies_seen_at = now
+                # ServicePipe ещё несколько секунд дописывает/активирует
+                # cookie. Преждевременно сохранённый набор даёт HTML/400.
+                if now - cookies_seen_at >= COOKIE_SETTLE_SECONDS and now >= next_api_check_at:
+                    next_api_check_at = now + 3
+                    try:
+                        ua = page.evaluate("navigator.userAgent")
+                    except Exception:
+                        ua = ""
+                    candidate = _cookie_string(browser_cookies)
+                    if candidate and _cookies_pass_api(candidate, ua):
+                        cookie_str = candidate
+                        break
             title = ""
             try:
                 title = page.title()
@@ -136,15 +184,19 @@ def refresh_cookies(headed: bool = False, timeout_s: int = 90) -> tuple[str, str
                     return None
             page.wait_for_timeout(1000)
 
-        ua = ""
-        try:
-            ua = page.evaluate("navigator.userAgent")
-        except Exception:
-            pass
+        if not ua:
+            try:
+                ua = page.evaluate("navigator.userAgent")
+            except Exception:
+                pass
         browser.close()
 
     if not cookie_str:
-        print("Не дождался куков __hash_/__lhash_ — челлендж не прошёл.", file=sys.stderr)
+        print(
+            "Не получил рабочий набор cookie: ServicePipe не завершил "
+            "челлендж или проверочный API-запрос не вернул JSON.",
+            file=sys.stderr,
+        )
         return None
     return cookie_str, ua
 
