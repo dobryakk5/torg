@@ -1,6 +1,8 @@
 from unittest.mock import Mock, patch
 
+import config
 from refresh_eat_cookies import WANTED, _cookie_string, _cookies_pass_api
+from utils import update_eat_cookie
 
 
 def test_full_servicepipe_cookie_set_is_preserved():
@@ -30,3 +32,21 @@ def test_cookie_verification_requires_json_response():
     response.headers = {"content-type": "text/html"}
     with patch("requests.post", return_value=response):
         assert _cookies_pass_api("__hash_=bad", "Browser") is False
+
+
+def test_update_env_writes_project_env_and_syncs_process(monkeypatch, tmp_path):
+    env_path = tmp_path / ".env"
+    env_path.write_text("EAT_COOKIE=old\nEAT_USER_AGENT=Old\n", encoding="utf-8")
+    monkeypatch.setattr(update_eat_cookie, "ENV_PATH", env_path)
+    monkeypatch.setenv("EAT_COOKIE", "old")
+    monkeypatch.setenv("EAT_USER_AGENT", "Old")
+    monkeypatch.setattr(config, "EAT_COOKIE", "old")
+    monkeypatch.setattr(config, "EAT_USER_AGENT", "Old")
+
+    update_eat_cookie.update_env("__hash_=fresh", "FreshBrowser")
+
+    saved = env_path.read_text(encoding="utf-8")
+    assert "EAT_COOKIE=__hash_=fresh" in saved
+    assert "EAT_USER_AGENT=FreshBrowser" in saved
+    assert config.EAT_COOKIE == "__hash_=fresh"
+    assert config.EAT_USER_AGENT == "FreshBrowser"

@@ -23,12 +23,16 @@ EAT_USER_AGENT) — руками ничего парсить не нужно.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-ENV_PATH = Path(__file__).with_name(".env")
+# Скрипт живёт в utils/, а config.py читает .env из корня проекта.
+# with_name(".env") ошибочно писал в utils/.env, поэтом канал
+# продолжал видеть старые cookie.
+ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 
 # -b '...'  /  --cookie '...'  (кавычки одинарные или двойные)
 _COOKIE_RE = re.compile(r"(?:-b|--cookie)\s+(['\"])(.*?)\1", re.S)
@@ -36,8 +40,8 @@ _COOKIE_RE = re.compile(r"(?:-b|--cookie)\s+(['\"])(.*?)\1", re.S)
 _COOKIE_HEADER_RE = re.compile(r"-H\s+(['\"])cookie:\s*(.*?)\1", re.I | re.S)
 _UA_RE = re.compile(r"-H\s+(['\"])user-agent:\s*(.*?)\1", re.I | re.S)
 
-# Из всего cookie-набора нам нужны только анти-бот токены ЕАТ.
-_WANTED = ("__hash_", "__lhash_", "__rhash_")
+# Из всего cookie-набора оставляем полный комплект ServicePipe.
+_WANTED = ("__js_p_", "__jhash_", "__jua_", "__hash_", "__lhash_", "__rhash_")
 
 
 def read_curl(args: argparse.Namespace) -> str:
@@ -89,6 +93,21 @@ def update_env(cookie: str, ua: str) -> None:
     if ua:
         upsert("EAT_USER_AGENT", ua)
     ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # config._load_dotenv использует setdefault, поэтому простой записи файла
+    # недостаточно: subprocess наследует старые значения. Обновляем
+    # окружение и уже импортированный config как единую пару.
+    os.environ["EAT_COOKIE"] = cookie
+    if ua:
+        os.environ["EAT_USER_AGENT"] = ua
+    try:
+        import config
+
+        config.EAT_COOKIE = cookie
+        if ua:
+            config.EAT_USER_AGENT = ua
+    except ImportError:
+        pass
 
 
 def main() -> None:
