@@ -2,9 +2,9 @@
 """
 refresh_eat_cookies.py — автоматическое обновление анти-бот куков ЕАТ («Берёзка»).
 
-Анти-бот agregatoreat.ru (ServicePipe) выдаёт короткоживущие куки
-__hash_/__lhash_ (TTL ~6 часов, см. куку __js_p_=...,21600,...) после
-JS-челленджа, который обычный браузер проходит сам, без участия человека.
+Анти-бот agregatoreat.ru (ServicePipe) выдаёт комплект короткоживущих cookie
+(__js_p_, __jhash_, __jua_, __hash_, __lhash_; TTL ~6 часов) после JS-челленджа,
+который обычный браузер проходит сам, без участия человека.
 Скрипт запускает Chromium через Playwright, заходит на площадку, ждёт
 прохождения челленджа и сохраняет куки + User-Agent в .env
 (EAT_COOKIE / EAT_USER_AGENT).
@@ -35,7 +35,9 @@ import time
 from pathlib import Path
 
 TARGET_URL = "https://agregatoreat.ru/purchases/new"
-WANTED = ("__hash_", "__lhash_", "__rhash_")
+# Нужен полный комплект. Без первых трёх cookie последующий
+# requests-запрос снова получает HTML-страницу антибота вместо JSON.
+WANTED = ("__js_p_", "__jhash_", "__jua_", "__hash_", "__lhash_", "__rhash_")
 
 
 def _playwright_proxy() -> dict | None:
@@ -69,6 +71,7 @@ def refresh_cookies(headed: bool = False, timeout_s: int = 90) -> tuple[str, str
     """Возвращает (cookie_string, user_agent) или None.
 
     Челлендж считается пройденным, когда в контексте появились __hash_ и __lhash_.
+    В EAT_COOKIE сохраняется весь доступный набор WANTED.
     """
     try:
         from playwright.sync_api import sync_playwright

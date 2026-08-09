@@ -497,10 +497,12 @@ def search_eat(
     for page in range(1, pages + 1):
         logger.info("ЕАТ ищу '%s', страница %d", keyword, page)
         data = _post(_request_body(keyword, price_from, price_to, page, PAGE_SIZE))
-        if not data or data.get("isFail"):
-            if data and data.get("errors"):
-                logger.warning("ЕАТ ошибки API: %s", str(data["errors"])[:200])
-            break
+        if data is None:
+            raise RuntimeError("ЕАТ не вернул JSON: запрос заблокирован антиботом/капчей")
+        if data.get("isFail"):
+            api_errors = str(data.get("errors") or "причина не указана")[:500]
+            logger.warning("ЕАТ ошибки API: %s", api_errors)
+            raise RuntimeError(f"ЕАТ API вернул ошибку: {api_errors}")
 
         items = data.get("items") or []
         if not items:

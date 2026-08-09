@@ -135,7 +135,10 @@ def _extract_items(data: Any) -> list[dict]:
     if isinstance(data, list):
         return [x for x in data if isinstance(x, dict)]
     if isinstance(data, dict):
-        for key in ("items", "Items", "trades", "Trades", "data", "Data", "result", "Result"):
+        for key in (
+            "items", "Items", "trades", "Trades", "data", "Data",
+            "result", "Result", "invdata", "InvData",
+        ):
             v = data.get(key)
             if isinstance(v, list):
                 return [x for x in v if isinstance(x, dict)]
@@ -160,7 +163,10 @@ def _map_item(item: dict[str, Any]) -> Optional[dict[str, Any]]:
         c = _pick(item, "customer")
         customer = str(c.get("fullName") or c.get("name") or customer).strip()
 
-    price = _pick(item, "price", "startPrice", "nmck", "sum", "tradeSum", "maxPrice")
+    price = _pick(
+        item,
+        "price", "startPrice", "initialPrice", "nmck", "sum", "tradeSum", "maxPrice",
+    )
     try:
         price = float(price) if price is not None else None
     except (TypeError, ValueError):

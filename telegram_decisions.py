@@ -139,38 +139,78 @@ def _send_plain(token: str, chat_id: int | str, text: str) -> None:
 def _clear_private_chat(token: str, chat_id: int | str, newest_message_id: int) -> None:
     """Удаляет доступную боту историю личного чата пакетами по 100 ID."""
     oldest_message_id = max(1, newest_message_id - CLEAR_MAX_MESSAGES + 1)
-    attempted = 0
+    deleted = 0
+    reached_age_limit = False
 
     for batch_end in range(newest_message_id, oldest_message_id - 1, -CLEAR_BATCH_SIZE):
+        if reached_age_limit:
+            break
         batch_start = max(oldest_message_id, batch_end - CLEAR_BATCH_SIZE + 1)
         message_ids = list(range(batch_start, batch_end + 1))
         try:
-            response = requests.post(
-                f"https://api.telegram.org/bot{token}/deleteMessages",
-                json={"chat_id": chat_id, "message_ids": message_ids},
-                timeout=15,
+            response = _telegram_delete(token, "deleteMessages", {
+                "chat_id": chat_id,
+                "message_ids": message_ids,
+            })
+            if response.status_code == 200:
+                deleted += len(message_ids)
+                continue
+
+            # Один старый (>48 ч) ID ломает весь deleteMessages. Идём назад по
+            # одному: свежие удалятся, а на первом возрастном ограничении остановимся.
+            logger.info(
+                "/clear: пакет %d–%d не удалился целиком, перехожу к поштучному удалению",
+                batch_start,
+                batch_end,
             )
-            if response.status_code == 429:
-                retry_after = min(5, int((response.json().get("parameters") or {}).get("retry_after", 1)))
-                time.sleep(max(1, retry_after))
-                response = requests.post(
-                    f"https://api.telegram.org/bot{token}/deleteMessages",
-                    json={"chat_id": chat_id, "message_ids": message_ids},
-                    timeout=15,
-                )
-            if response.status_code != 200:
+            for message_id in reversed(message_ids):
+                single = _telegram_delete(token, "deleteMessage", {
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                })
+                if single.status_code == 200:
+                    deleted += 1
+                    continue
+                description = _telegram_error_description(single)
+                if "message to delete not found" in description:
+                    continue
+                if "message can't be deleted" in description:
+                    reached_age_limit = True
+                    break
                 logger.warning(
-                    "Telegram не удалил пакет %d–%d: %s %s",
-                    batch_start,
-                    batch_end,
-                    response.status_code,
-                    response.text[:200],
+                    "Telegram не удалил message_id=%d: %s %s",
+                    message_id,
+                    single.status_code,
+                    single.text[:200],
                 )
-            attempted += len(message_ids)
         except requests.RequestException as exc:
             logger.warning("/clear: ошибка удаления пакета %d–%d: %s", batch_start, batch_end, exc)
 
-    logger.info("/clear: обработано %d message_id в личном чате %s", attempted, chat_id)
+    logger.info("/clear: удалено до %d сообщений в личном чате %s", deleted, chat_id)
+
+
+def _telegram_delete(token: str, method: str, payload: dict):
+    response = requests.post(
+        f"https://api.telegram.org/bot{token}/{method}",
+        json=payload,
+        timeout=15,
+    )
+    if response.status_code == 429:
+        retry_after = min(5, int((response.json().get("parameters") or {}).get("retry_after", 1)))
+        time.sleep(max(1, retry_after))
+        response = requests.post(
+            f"https://api.telegram.org/bot{token}/{method}",
+            json=payload,
+            timeout=15,
+        )
+    return response
+
+
+def _telegram_error_description(response) -> str:
+    try:
+        return str(response.json().get("description") or "").lower()
+    except (ValueError, AttributeError):
+        return str(response.text or "").lower()
 
 
 def handle_callback(token: str, callback: dict) -> None:

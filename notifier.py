@@ -226,5 +226,9 @@ def send_source_error_alert(bot_token: str, chat_id: str, errors: list[str]) -> 
     ]
     if len(errors) > len(visible):
         lines.extend(["", f"Ещё ошибок: {len(errors) - len(visible)}"])
-    lines.extend(["", "Подробности: /control → История запусков"])
+    control_url = f"{config.WEB_APP_URL}/control#history"
+    lines.extend([
+        "",
+        f'🔗 <a href="{_esc(control_url)}">Открыть историю запусков</a>',
+    ])
     return send_message("\n".join(lines), bot_token, chat_id)

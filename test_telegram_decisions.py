@@ -7,6 +7,19 @@ def _ok_response():
     response = Mock()
     response.status_code = 200
     response.text = "ok"
+    response.json.return_value = {"ok": True, "result": True}
+    return response
+
+
+def _error_response(description):
+    response = Mock()
+    response.status_code = 400
+    response.text = description
+    response.json.return_value = {
+        "ok": False,
+        "error_code": 400,
+        "description": description,
+    }
     return response
 
 
@@ -55,3 +68,31 @@ def test_clear_does_not_delete_group_history():
 
     assert post.call_count == 1
     assert post.call_args.args[0].endswith("/sendMessage")
+
+
+def test_clear_falls_back_to_single_messages_until_telegram_age_limit():
+    message = {
+        "text": "/clear",
+        "message_id": 5,
+        "chat": {"id": 42, "type": "private"},
+    }
+
+    def telegram_response(url, **kwargs):
+        if url.endswith("/deleteMessages"):
+            return _error_response("Bad Request: message can't be deleted for everyone")
+        message_id = kwargs["json"]["message_id"]
+        if message_id >= 4:
+            return _ok_response()
+        return _error_response("Bad Request: message can't be deleted for everyone")
+
+    with patch.object(td.config, "TELEGRAM_CHAT_ID", "42"), patch.object(
+        td.requests, "post", side_effect=telegram_response
+    ) as post:
+        td.handle_message("token", message)
+
+    single_ids = [
+        call.kwargs["json"]["message_id"]
+        for call in post.call_args_list
+        if call.args[0].endswith("/deleteMessage")
+    ]
+    assert single_ids == [5, 4, 3]
