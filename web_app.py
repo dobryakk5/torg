@@ -2509,7 +2509,7 @@ async def api_tender_reject(purchase_number: str, request: Request):
 
 
 @app.get("/board", response_class=HTMLResponse)
-async def board(request: Request):
+async def board(request: Request, selected: Optional[str] = None):
     """Список тендеров в работе с фильтрами по стадии."""
     tenders = db.list_workflow_tenders()
     stages = [{**s, "count": 0} for s in WORK_STAGES]
@@ -2548,8 +2548,14 @@ async def board(request: Request):
             "key": "_other", "label": "Другое", "color": "gray",
             "active": False, "count": unknown_count,
         })
+    board_numbers = {t.get("purchase_number") for t in tenders}
+    selected_number = selected if selected in board_numbers else (
+        tenders[0].get("purchase_number") if tenders else None
+    )
+    preview = _tender_preview_context(selected_number) if selected_number else None
     return templates.TemplateResponse(request, "board.html", {
         "stages": stages, "tenders": tenders, "total": len(tenders),
+        "preview": preview, "selected": selected_number,
     })
 
 
