@@ -50,7 +50,13 @@ from document_processor import (
     safe_filename as _safe_fn,
 )
 from llm_analyzer import analyze_tender
-from notifier import format_tender_message, send_startup_message, send_summary, send_tender_message
+from notifier import (
+    format_tender_message,
+    send_source_error_alert,
+    send_startup_message,
+    send_summary,
+    send_tender_message,
+)
 from scraper import (
     extract_notice_guid, get_tender_page, parse_result_info, search_eis, search_eis_by_okpd2,
     to_common_info_url, to_documents_url,
@@ -287,10 +293,13 @@ def _run_stage1_channel(
     started_at = datetime.now().isoformat(timespec="seconds")
     fn_filter = filter_fn or (lambda t: _apply_profile_filter(t, profiles))
     total_found = total_saved = total_unique = total_candidates = 0
+    raw_received = 0
+    phase_errors: list[str] = []
 
     for keyword in keywords:
         try:
             tenders = search_fn(keyword)
+            raw_received += len(tenders)
             db.reconnect_db()
             tenders, dropped = fn_filter(tenders)
             if dropped:
@@ -306,9 +315,23 @@ def _run_stage1_channel(
             msg = f"Ошибка {channel_title}-поиска по '{keyword}': {exc}"
             logger.error(msg)
             errors.append(msg)
+            phase_errors.append(msg)
             continue
 
-    db.log_run(phase_mode, started_at, found=total_found, processed=total_candidates, notified=0, errors="")
+    if raw_received == 0 and not phase_errors:
+        msg = f"{channel_title}: источник не вернул ни одной карточки до фильтрации"
+        logger.error(msg)
+        errors.append(msg)
+        phase_errors.append(msg)
+
+    db.log_run(
+        phase_mode,
+        started_at,
+        found=total_found,
+        processed=total_candidates,
+        notified=0,
+        errors="; ".join(phase_errors),
+    )
     logger.info("%s: найдено %d, кандидатов на этап 2: %d", channel_title, total_found, total_candidates)
     return total_saved, total_unique, total_candidates
 
@@ -412,6 +435,8 @@ def run_stage1(
     else:
         eis_started_at = datetime.now().isoformat(timespec="seconds")
         eis_found = eis_candidates = 0
+        eis_raw_received = 0
+        eis_errors: list[str] = []
         for profile, keyword in eis_query_pairs:
             label = f"{profile.name}:{keyword}" if profile else keyword
             try:
@@ -426,6 +451,7 @@ def run_stage1(
                     date_from=d_from,
                     date_to=d_to,
                 )
+                eis_raw_received += len(tenders)
                 db.reconnect_db()
                 tenders, dropped = _apply_profile_filter(tenders, profiles)
                 if dropped:
@@ -445,8 +471,21 @@ def run_stage1(
                 msg = f"Ошибка поиска по '{label}': {exc}"
                 logger.error(msg)
                 errors.append(msg)
+                eis_errors.append(msg)
                 continue
-        db.log_run(eis_phase_mode, eis_started_at, found=eis_found, processed=eis_candidates, notified=0, errors="")
+        if eis_raw_received == 0 and not eis_errors:
+            msg = "ЕИС (ключевые слова): источник не вернул ни одной карточки до фильтрации"
+            logger.error(msg)
+            errors.append(msg)
+            eis_errors.append(msg)
+        db.log_run(
+            eis_phase_mode,
+            eis_started_at,
+            found=eis_found,
+            processed=eis_candidates,
+            notified=0,
+            errors="; ".join(eis_errors),
+        )
         logger.info("ЕИС (ключевые слова): найдено %d, кандидатов на этап 2: %d", eis_found, eis_candidates)
 
     # ── Канал 2: поиск по ОКПД2 — опциональный канал КАЖДОГО профиля ───────
@@ -459,6 +498,8 @@ def run_stage1(
         else:
             okpd2_started_at = datetime.now().isoformat(timespec="seconds")
             okpd2_found = okpd2_candidates = 0
+            okpd2_raw_received = 0
+            okpd2_errors: list[str] = []
             for profile in profiles:
                 if not profile.okpd2_codes:
                     continue
@@ -475,6 +516,7 @@ def run_stage1(
                         date_from=d_from,
                         date_to=d_to,
                     )
+                    okpd2_raw_received += len(okpd2_tenders)
                     db.reconnect_db()
                     okpd2_tenders, dropped = _apply_profile_filter(okpd2_tenders, profiles)
                     if dropped:
@@ -493,8 +535,22 @@ def run_stage1(
                     logger.info("ОКПД2-канал (%s) добавил %d новых тендеров", profile.name, len(seen_this_run) - before_unique)
                 except Exception as exc:
                     logger.error("Ошибка ОКПД2-поиска (%s): %s", profile.name, exc)
-                    errors.append(f"ОКПД2 ({profile.name}): {exc}")
-            db.log_run(okpd2_phase_mode, okpd2_started_at, found=okpd2_found, processed=okpd2_candidates, notified=0, errors="")
+                    msg = f"ОКПД2 ({profile.name}): {exc}"
+                    errors.append(msg)
+                    okpd2_errors.append(msg)
+            if okpd2_raw_received == 0 and not okpd2_errors:
+                msg = "ЕИС (ОКПД2): источник не вернул ни одной карточки до фильтрации"
+                logger.error(msg)
+                errors.append(msg)
+                okpd2_errors.append(msg)
+            db.log_run(
+                okpd2_phase_mode,
+                okpd2_started_at,
+                found=okpd2_found,
+                processed=okpd2_candidates,
+                notified=0,
+                errors="; ".join(okpd2_errors),
+            )
             logger.info("ОКПД2: найдено %d, кандидатов на этап 2: %d", okpd2_found, okpd2_candidates)
 
     # ── Канал 3: B2B-Center (коммерческие закупки и 223-ФЗ вне ЕИС) ──────────
@@ -508,10 +564,13 @@ def run_stage1(
         else:
             b2b_started_at = datetime.now().isoformat(timespec="seconds")
             b2b_found = b2b_candidates = 0
+            b2b_raw_received = 0
+            b2b_errors: list[str] = []
             for profile, keyword in eis_query_pairs:
                 label = f"{profile.name}:{keyword}" if profile else keyword
                 try:
                     b2b_tenders = search_b2b(keyword, price_from=p_min, price_to=p_max, pages=b2b_pages)
+                    b2b_raw_received += len(b2b_tenders)
                     db.reconnect_db()
                     b2b_tenders, dropped = _apply_profile_filter(b2b_tenders, profiles)
                     if dropped:
@@ -528,8 +587,21 @@ def run_stage1(
                     msg = f"Ошибка B2B-поиска по '{label}': {exc}"
                     logger.error(msg)
                     errors.append(msg)
+                    b2b_errors.append(msg)
                     continue
-            db.log_run(b2b_phase_mode, b2b_started_at, found=b2b_found, processed=b2b_candidates, notified=0, errors="")
+            if b2b_raw_received == 0 and not b2b_errors:
+                msg = "B2B-Center: источник не вернул ни одной карточки до фильтрации"
+                logger.error(msg)
+                errors.append(msg)
+                b2b_errors.append(msg)
+            db.log_run(
+                b2b_phase_mode,
+                b2b_started_at,
+                found=b2b_found,
+                processed=b2b_candidates,
+                notified=0,
+                errors="; ".join(b2b_errors),
+            )
             logger.info("B2B-Center: найдено %d, кандидатов на этап 2: %d", b2b_found, b2b_candidates)
 
     # Витрины (каналы 4-7) с точным полнотекстовым поиском: фразы — всегда из
@@ -683,6 +755,8 @@ def run_stage1(
                     base_url=getattr(config, "TENDERPLAN_BASE_URL", "https://tenderplan.ru"),
                     list_params=getattr(config, "TENDERPLAN_LIST_PARAMS", {}),
                 )
+                if not tp_tenders:
+                    raise RuntimeError("источник не вернул ни одной карточки до фильтрации")
                 db.reconnect_db()
                 phase_saved, phase_unique, phase_candidates = _process_stage1_tenders(
                     tp_tenders, "tenderplan", dry_run, seen_this_run, only_new=only_new,
@@ -695,9 +769,16 @@ def run_stage1(
                 msg = f"Ошибка Tenderplan-канала: {exc}"
                 logger.error(msg)
                 errors.append(msg)
+                db.log_run(phase_mode, phase_started_at, found=0, processed=0, notified=0, errors=msg)
 
     logger.info("Этап 1 завершён: найдено %d, кандидатов на этап 2: %d", unique_saved, primary_candidates)
     db.log_run("stage1", started_at, found=unique_saved, processed=primary_candidates, notified=0, errors="; ".join(errors))
+    if errors and not dry_run:
+        send_source_error_alert(
+            config.TELEGRAM_BOT_TOKEN,
+            config.TELEGRAM_CHAT_ID,
+            errors,
+        )
     if incremental:
         _save_watermark(had_errors=bool(errors), dry_run=dry_run)
     return unique_saved, primary_candidates

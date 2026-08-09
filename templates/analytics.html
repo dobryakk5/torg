@@ -27,6 +27,44 @@ h1{font-size:1.2rem;font-weight:600;margin-bottom:1.5rem;color:var(--accent)}
 h2{font-size:.9rem;font-weight:600;margin:2rem 0 1rem;color:var(--text);
    text-transform:uppercase;letter-spacing:.06em;opacity:.7}
 
+/* Аналитика обратной связи */
+.page-lead{max-width:850px;color:var(--dim);font-size:.82rem;line-height:1.55;margin:-.75rem 0 1.4rem}
+.feedback-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem;margin-bottom:1.25rem}
+.feedback-stat{background:var(--surf);border:1px solid var(--border);border-radius:8px;padding:1rem 1.1rem}
+.feedback-stat strong{display:block;font:700 1.45rem var(--mono);color:var(--accent)}
+.feedback-stat span{display:block;margin-top:.25rem;color:var(--dim);font-size:.68rem}
+.feedback-note{padding:.8rem 1rem;border:1px solid rgba(250,204,21,.24);border-radius:7px;background:rgba(250,204,21,.06);color:var(--dim);font-size:.72rem;line-height:1.5}
+.feedback-note strong{color:var(--yellow)}
+.analysis-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+.analysis-panel{min-width:0;background:var(--surf);border:1px solid var(--border);border-radius:8px;padding:1rem}
+.analysis-panel h3{font-size:.76rem;margin-bottom:.8rem;color:var(--text)}
+.analysis-panel table{margin-bottom:0}
+.analysis-panel th,.analysis-panel td{padding-left:7px;padding-right:7px}
+.metric-bar{min-width:100px;height:6px;background:var(--surf3);border-radius:99px;overflow:hidden}
+.metric-bar span{display:block;height:100%;background:linear-gradient(90deg,var(--yellow),var(--red));border-radius:99px}
+.topic-grid,.suggestion-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:.85rem}
+.topic-card,.suggestion-card{background:var(--surf);border:1px solid var(--border);border-radius:8px;padding:1rem}
+.topic-head{display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;margin-bottom:.65rem}
+.topic-head h3,.suggestion-card h3{font-size:.8rem;line-height:1.35}
+.topic-count{flex:none;padding:2px 7px;border-radius:99px;background:rgba(248,113,113,.12);color:var(--red);font:700 .65rem var(--mono)}
+.topic-examples{list-style:none;display:flex;flex-direction:column;gap:.35rem;margin:.65rem 0}
+.topic-examples li{font-size:.69rem;line-height:1.35;color:var(--dim)}
+.topic-examples a{color:var(--dim)}
+.minus-list{display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.65rem}
+.minus-chip{padding:2px 6px;border:1px solid var(--border);border-radius:4px;color:var(--yellow);font:500 .61rem var(--mono)}
+.suggestion-card{border-left:3px solid var(--accent)}
+.suggestion-kind{font:700 .58rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:.45rem}
+.suggestion-card p{font-size:.7rem;line-height:1.5;color:var(--dim);margin-top:.5rem}
+.suggestion-evidence{padding-top:.55rem;border-top:1px solid var(--border);color:var(--text)!important}
+.market-details{margin-top:2.5rem;border-top:1px solid var(--border);padding-top:1rem}
+.market-details>summary{display:inline-flex;align-items:center;gap:.5rem;padding:.65rem 1rem;border:1px solid var(--border);border-radius:7px;background:var(--surf);color:var(--dim);cursor:pointer;font-size:.75rem;list-style:none}
+.market-details>summary::-webkit-details-marker{display:none}
+.market-details>summary:before{content:'▶';font-size:.55rem;color:var(--accent);transition:transform .15s}
+.market-details[open]>summary:before{transform:rotate(90deg)}
+.market-details[open]>summary{color:var(--text)}
+.market-content{margin-top:1.5rem}
+@media(max-width:850px){.analysis-grid{grid-template-columns:1fr}.main{padding:1.25rem}.header{padding:.75rem 1rem}}
+
 /* Ценовые коридоры */
 .corridors-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin-bottom:2rem}
 .corridor-card{background:var(--surf);border:1px solid var(--border);border-radius:8px;padding:1.25rem}
@@ -76,7 +114,160 @@ tr:hover td{background:rgba(255,255,255,.025)}
 </div>
 
 <div class="main">
-  <h1>📊 Аналитика рынка</h1>
+  <h1>🎯 Аналитика фильтрации</h1>
+  <p class="page-lead">
+    Показывает, где правила систематически расходятся с вашей обратной связью.
+    Отрицательный сигнал — кнопка «Не мой профиль», положительный — добавление лота в работу.
+    Отсутствие решения не считается одобрением.
+  </p>
+
+  {% set fs = feedback.summary %}
+  <div class="feedback-stats">
+    <div class="feedback-stat">
+      <strong>{{ fs.negative_count or 0 }}</strong>
+      <span>«Не мой профиль»</span>
+    </div>
+    <div class="feedback-stat">
+      <strong>{{ fs.analyzed_count or 0 }}</strong>
+      <span>отказов с оценками 8 фильтров</span>
+    </div>
+    <div class="feedback-stat">
+      <strong>{{ fs.positive_count or 0 }}</strong>
+      <span>лотов взято в работу</span>
+    </div>
+  </div>
+  {% if (fs.positive_count or 0) < 10 %}
+  <div class="feedback-note">
+    <strong>Мало положительных примеров.</strong>
+    Проблемные отрицательные сигналы уже видны, но влияние предложений на хорошие лоты
+    станет надёжнее после 10–20 добавлений в работу.
+  </div>
+  {% endif %}
+
+  <h2>Проблемы по фильтрам</h2>
+  {% if feedback.filters %}
+  <table>
+    <thead>
+      <tr>
+        <th>Фильтр</th>
+        <th>Средний балл у «Не профиль»</th>
+        <th>Высокий балл 4–5</th>
+        <th>Средний у взятых в работу</th>
+        <th>Выборка</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in feedback.filters %}
+      {% set high_share = (((f.negative_high_count or 0) / f.negative_count * 100)|round|int) if f.negative_count else 0 %}
+      <tr>
+        <td><strong>Ф{{ f.filter_number }}</strong> <span class="muted">{{ f.filter_name }}</span></td>
+        <td class="score-cell {% if (f.negative_avg or 0) >= 4 %}danger{% endif %}">{{ f.negative_avg or '—' }}/5</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:.6rem">
+            <div class="metric-bar"><span style="width:{{ high_share }}%"></span></div>
+            <span class="mono">{{ high_share }}%</span>
+          </div>
+        </td>
+        <td class="mono">{{ (f.positive_avg|string + '/5') if f.positive_avg is not none else '—' }}</td>
+        <td class="muted">{{ f.negative_count }} / {{ f.positive_count }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted" style="font-size:.67rem;margin-top:-1.4rem">
+    Выборка указана как «отказы / взято в работу». Высокий балл у отказанных лотов — признак,
+    что фильтр может завышать итог или компенсировать слабую профильность.
+  </p>
+  {% else %}
+  <p class="empty">Пока нет ручных решений с сохранёнными оценками фильтров.</p>
+  {% endif %}
+
+  <h2>Проблемные источники и поисковые фразы</h2>
+  <div class="analysis-grid">
+    <section class="analysis-panel">
+      <h3>Источники</h3>
+      {% if feedback.sources %}
+      <table>
+        <thead><tr><th>Источник</th><th>Не профиль</th><th>В работе</th></tr></thead>
+        <tbody>
+          {% for item in feedback.sources %}
+          <tr>
+            <td>{{ item.label }}</td>
+            <td class="mono danger">{{ item.negative_count }}</td>
+            <td class="mono">{{ item.positive_count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty">Нет данных.</p>{% endif %}
+    </section>
+    <section class="analysis-panel">
+      <h3>Поисковые фразы</h3>
+      {% if feedback.phrases %}
+      <table>
+        <thead><tr><th>Фраза</th><th>Не профиль</th><th>В работе</th></tr></thead>
+        <tbody>
+          {% for item in feedback.phrases %}
+          <tr>
+            <td class="mono">{{ item.label }}</td>
+            <td class="mono danger">{{ item.negative_count }}</td>
+            <td class="mono">{{ item.positive_count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty">Нет данных.</p>{% endif %}
+    </section>
+  </div>
+
+  <h2>Повторяющиеся нерелевантные темы</h2>
+  {% if feedback.topics %}
+  <div class="topic-grid">
+    {% for topic in feedback.topics %}
+    <article class="topic-card">
+      <div class="topic-head">
+        <h3>{{ topic.name }}</h3>
+        <span class="topic-count">{{ topic.count }} отказов</span>
+      </div>
+      <ul class="topic-examples">
+        {% for example in topic.examples %}
+        <li><a href="/tender/{{ example.purchase_number }}">{{ example.title[:95] }}</a></li>
+        {% endfor %}
+      </ul>
+      <div class="muted" style="font-size:.62rem">Кандидаты в минус-фразы:</div>
+      <div class="minus-list">
+        {% for phrase in topic.minus_phrases %}<span class="minus-chip">− {{ phrase }}</span>{% endfor %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty">Повторяющиеся темы пока не обнаружены.</p>
+  {% endif %}
+
+  <h2>Предлагаемые улучшения</h2>
+  <p class="muted" style="font-size:.72rem;margin:-.4rem 0 .9rem">
+    Это рекомендации по накопленным кликам. Они не меняют правила автоматически.
+  </p>
+  {% if feedback.suggestions %}
+  <div class="suggestion-grid">
+    {% for item in feedback.suggestions %}
+    <article class="suggestion-card">
+      <div class="suggestion-kind">{{ item.kind }}</div>
+      <h3>{{ item.title }}</h3>
+      <p>{{ item.description }}</p>
+      <p class="suggestion-evidence"><strong>На истории:</strong> {{ item.evidence }}</p>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty">Для предложений пока недостаточно явной обратной связи.</p>
+  {% endif %}
+
+  <details class="market-details">
+    <summary>Показать старую рыночную аналитику</summary>
+    <div class="market-content">
+      <h1>📊 Аналитика рынка</h1>
 
   <!-- ── Ценовые коридоры ─────────────────────────────────────── -->
   <h2>Ценовые коридоры по категориям</h2>
@@ -197,6 +388,8 @@ tr:hover td{background:rgba(255,255,255,.025)}
   {% else %}
   <p class="empty">Профилей заказчиков нет. Запустите: <code>python customer_scorer.py --all</code></p>
   {% endif %}
+    </div>
+  </details>
 </div>
 </body>
 </html>

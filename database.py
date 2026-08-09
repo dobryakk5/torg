@@ -957,7 +957,9 @@ def list_workflow_tenders() -> list[dict[str, Any]]:
         cur.execute(
             """
             SELECT purchase_number, title, customer, price, deadline,
-                   work_stage, work_due, work_note, work_updated_at, decision, url
+                   work_stage, work_due, work_note, work_updated_at, decision, url,
+                   filter_total, filter_decision, filter_stop,
+                   llm_triage_reason, llm_verdict, law_type
               FROM tenders
              WHERE work_stage IS NOT NULL
              ORDER BY work_due ASC NULLS LAST, work_updated_at DESC NULLS LAST
@@ -2865,6 +2867,272 @@ def get_all_price_corridors() -> list[dict[str, Any]]:
             "SELECT * FROM price_corridors ORDER BY category, law_type"
         )
         return [_to_jsonable(dict(r)) for r in cur.fetchall()]
+
+
+# ─── FILTER FEEDBACK — аналитика ручных решений ─────────────────────────────────
+
+_FILTER_FEEDBACK_TOPICS: tuple[dict[str, Any], ...] = (
+    {
+        "name": "Строительство и проектирование",
+        "needles": (
+            "проектной документац", "проектирован", "строител", "архитектур",
+            "переустрой", "перепланиров", "сметн", "дорожного движения",
+        ),
+        "minus_phrases": ("проектная документация", "строительство", "перепланировка"),
+    },
+    {
+        "name": "Автомобили и транспорт",
+        "needles": ("автомоб", "автотранспорт", "транспортного средств", "шин", "запчаст"),
+        "minus_phrases": ("техническое обслуживание автомобиля", "автозапчасти", "шины"),
+    },
+    {
+        "name": "Благоустройство и хозяйственные услуги",
+        "needles": (
+            "благоустрой", "зеленых насажден", "озеленен", "грязезащит", "уборк",
+            "клининг", "вывоз мусор", "дезинфек", "санитарн",
+        ),
+        "minus_phrases": ("благоустройство", "зеленые насаждения", "грязезащитные коврики"),
+    },
+    {
+        "name": "Мебель, стенды и не-ИТ товары",
+        "needles": ("мебел", "стенд информацион", "канцеляр", "хозяйственных товар", "спецодеж"),
+        "minus_phrases": ("мебель", "информационный стенд", "канцелярские товары"),
+    },
+    {
+        "name": "Медицина, питание и бытовые товары",
+        "needles": ("медицинск", "лекарств", "продуктов питан", "питания", "одежд", "обув"),
+        "minus_phrases": ("медицинские изделия", "продукты питания", "лекарственные препараты"),
+    },
+)
+
+
+def _feedback_topics(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Группирует ручные отказы по понятным не-ИТ темам.
+
+    Темы не влияют на скоринг: это только объяснимая агрегация
+    для экрана аналитики. Один лот может попасть только в первую
+    подходящую тему, чтобы сумма счётчиков не была завышена.
+    """
+    buckets: dict[str, dict[str, Any]] = {
+        rule["name"]: {**rule, "count": 0, "examples": []}
+        for rule in _FILTER_FEEDBACK_TOPICS
+    }
+    for row in rows:
+        title = str(row.get("title") or "")
+        normalized = title.lower().replace("ё", "е")
+        for rule in _FILTER_FEEDBACK_TOPICS:
+            if not any(needle in normalized for needle in rule["needles"]):
+                continue
+            bucket = buckets[rule["name"]]
+            bucket["count"] += 1
+            if len(bucket["examples"]) < 3:
+                bucket["examples"].append({
+                    "purchase_number": row.get("purchase_number"),
+                    "title": title,
+                })
+            break
+    topics = [
+        {
+            "name": bucket["name"],
+            "count": bucket["count"],
+            "examples": bucket["examples"],
+            "minus_phrases": list(bucket["minus_phrases"]),
+        }
+        for bucket in buckets.values()
+        if bucket["count"] > 0
+    ]
+    return sorted(topics, key=lambda item: (-item["count"], item["name"]))
+
+
+def get_filter_feedback_analytics() -> dict[str, Any]:
+    """Агрегаты по явной обратной связи для ``/analytics``.
+
+    Отрицательный сигнал — только кнопка «Не мой профиль».
+    Положительный — тендер был добавлен в работу. Отсутствие клика
+    не считается положительным сигналом.
+    """
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE rejection_reason = 'not_my_profile') AS negative_count,
+                COUNT(*) FILTER (
+                    WHERE work_stage IS NOT NULL
+                      AND decision IS DISTINCT FROM 'rejected'
+                ) AS positive_count,
+                COUNT(*) FILTER (
+                    WHERE rejection_reason = 'not_my_profile'
+                      AND EXISTS (
+                          SELECT 1 FROM filter_scores fs
+                          WHERE fs.purchase_number = tenders.purchase_number
+                      )
+                ) AS analyzed_count
+            FROM tenders
+        """)
+        summary = dict(cur.fetchone())
+
+        cur.execute("""
+            SELECT
+                fs.filter_number,
+                MAX(fs.filter_name) AS filter_name,
+                ROUND(AVG(fs.score) FILTER (
+                    WHERE t.rejection_reason = 'not_my_profile'
+                ), 2) AS negative_avg,
+                ROUND(AVG(fs.score) FILTER (
+                    WHERE t.work_stage IS NOT NULL
+                      AND t.decision IS DISTINCT FROM 'rejected'
+                ), 2) AS positive_avg,
+                COUNT(*) FILTER (
+                    WHERE t.rejection_reason = 'not_my_profile'
+                ) AS negative_count,
+                COUNT(*) FILTER (
+                    WHERE t.rejection_reason = 'not_my_profile' AND fs.score >= 4
+                ) AS negative_high_count,
+                COUNT(*) FILTER (
+                    WHERE t.work_stage IS NOT NULL
+                      AND t.decision IS DISTINCT FROM 'rejected'
+                ) AS positive_count
+            FROM filter_scores fs
+            JOIN tenders t USING (purchase_number)
+            WHERE t.rejection_reason = 'not_my_profile'
+               OR (t.work_stage IS NOT NULL
+                   AND t.decision IS DISTINCT FROM 'rejected')
+            GROUP BY fs.filter_number
+            ORDER BY fs.filter_number
+        """)
+        filters = [dict(row) for row in cur.fetchall()]
+
+        cur.execute("""
+            SELECT
+                COALESCE(NULLIF(platform, ''), 'Не указан') AS label,
+                COUNT(*) FILTER (WHERE rejection_reason = 'not_my_profile') AS negative_count,
+                COUNT(*) FILTER (
+                    WHERE work_stage IS NOT NULL
+                      AND decision IS DISTINCT FROM 'rejected'
+                ) AS positive_count
+            FROM tenders
+            WHERE rejection_reason = 'not_my_profile'
+               OR (work_stage IS NOT NULL
+                   AND decision IS DISTINCT FROM 'rejected')
+            GROUP BY 1
+            ORDER BY negative_count DESC, positive_count DESC, label
+            LIMIT 12
+        """)
+        sources = [dict(row) for row in cur.fetchall()]
+
+        cur.execute("""
+            WITH feedback AS (
+                SELECT matched_keywords, rejection_reason, decision, work_stage
+                FROM tenders
+                WHERE rejection_reason = 'not_my_profile'
+                   OR (work_stage IS NOT NULL
+                       AND decision IS DISTINCT FROM 'rejected')
+            ), expanded AS (
+                SELECT
+                    BTRIM(keyword) AS label,
+                    rejection_reason,
+                    decision,
+                    work_stage
+                FROM feedback
+                CROSS JOIN LATERAL regexp_split_to_table(
+                    COALESCE(matched_keywords, ''), '\\s*;\\s*'
+                ) AS keyword
+            )
+            SELECT
+                label,
+                COUNT(*) FILTER (WHERE rejection_reason = 'not_my_profile') AS negative_count,
+                COUNT(*) FILTER (
+                    WHERE work_stage IS NOT NULL
+                      AND decision IS DISTINCT FROM 'rejected'
+                ) AS positive_count
+            FROM expanded
+            WHERE label <> ''
+            GROUP BY label
+            ORDER BY negative_count DESC, positive_count DESC, label
+            LIMIT 15
+        """)
+        phrases = [dict(row) for row in cur.fetchall()]
+
+        cur.execute("""
+            SELECT purchase_number, title
+            FROM tenders
+            WHERE rejection_reason = 'not_my_profile'
+            ORDER BY updated_at DESC
+        """)
+        rejected_rows = [dict(row) for row in cur.fetchall()]
+
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE t.rejection_reason = 'not_my_profile'
+                      AND t.filter_decision IN ('GO', 'CAUTION')
+                ) AS negative_affected,
+                COUNT(*) FILTER (
+                    WHERE t.work_stage IS NOT NULL
+                      AND t.decision IS DISTINCT FROM 'rejected'
+                ) AS positive_affected
+            FROM filter_scores fs
+            JOIN tenders t USING (purchase_number)
+            WHERE fs.filter_number = 1 AND fs.score <= 2
+        """)
+        profile_gate = dict(cur.fetchone())
+
+    topics = _feedback_topics(rejected_rows)
+    suggestions: list[dict[str, Any]] = []
+    if profile_gate.get("negative_affected"):
+        suggestions.append({
+            "kind": "Порог фильтра",
+            "title": "Не давать GO/CAUTION при Ф1 ≤ 2",
+            "description": (
+                "Слабое совпадение с профилем сейчас компенсируется высокими "
+                "баллами финансовых и рисковых фильтров. Предлагается ввести отдельный "
+                "порог релевантности."
+            ),
+            "evidence": (
+                f"Уберёт {profile_gate['negative_affected']} отмеченных вами нерелевантных лота; "
+                f"затронет {profile_gate.get('positive_affected') or 0} лотов из взятых в работу."
+            ),
+        })
+
+    if sources and sources[0].get("negative_count", 0) >= 5:
+        top_source = sources[0]
+        suggestions.append({
+            "kind": "Источник",
+            "title": f"Усилить профильную проверку для «{top_source['label']}»",
+            "description": (
+                "Применять локальный профиль к названию и объекту закупки до общего "
+                "скоринга, а не доверять только совпадению, которое вернула площадка."
+            ),
+            "evidence": (
+                f"{top_source['negative_count']} нажатий «Не мой профиль»; "
+                f"{top_source.get('positive_count') or 0} лотов взято в работу."
+            ),
+        })
+
+    for phrase in phrases[:5]:
+        if phrase.get("negative_count", 0) < 3:
+            continue
+        suggestions.append({
+            "kind": "Поисковая фраза",
+            "title": f"Сузить запрос «{phrase['label']}»",
+            "description": (
+                "Добавить обязательную ИТ-связку или минус-фразы. Перед применением "
+                "нужно прогнать изменение по исторической выборке."
+            ),
+            "evidence": (
+                f"{phrase['negative_count']} ручных отказов; "
+                f"{phrase.get('positive_count') or 0} лотов взято в работу."
+            ),
+        })
+
+    return _to_jsonable({
+        "summary": summary,
+        "filters": filters,
+        "sources": sources,
+        "phrases": phrases,
+        "topics": topics,
+        "suggestions": suggestions,
+    })
 
 
 def rebuild_corridors_from_results() -> int:

@@ -3,142 +3,67 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Доска работы — Монитор</title>
+<title>В работе — Тендерный монитор</title>
 <style>
-:root {
-  --bg:#06060B; --surf:#12121C; --surf2:#1A1A28; --border:#23233A; --border2:#33334F;
-  --text:#E8E8F4; --dim:#6060A0; --accent:#818CF8;
-  --go:#22C55E; --caution:#F59E0B; --nogo:#EF4444; --mono:'SF Mono',ui-monospace,Menlo,monospace;
-}
-* { box-sizing:border-box; }
-html,body { margin:0; background:var(--bg); color:var(--text); font-family:var(--mono); }
-.page { padding:1.5rem 1.5rem 4rem; }
-.top { display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; }
-.top a { color:var(--accent); text-decoration:none; font-size:.8rem; }
-.top h1 { font-size:1.1rem; margin:0; }
-.top .cnt { color:var(--dim); font-size:.8rem; }
-.empty { color:var(--dim); padding:3rem; text-align:center; font-size:.9rem; }
-.cols { display:flex; gap:.9rem; overflow-x:auto; padding-bottom:1rem; align-items:stretch; }
-.col { flex:0 0 270px; background:var(--surf); border:1px solid var(--border); border-radius:10px; padding:.7rem; display:flex; flex-direction:column; }
-.col-hd { font-size:.72rem; letter-spacing:.05em; text-transform:uppercase; color:var(--dim); margin-bottom:.6rem; display:flex; justify-content:space-between; }
-.col-hd .c-cnt { color:var(--text); }
-.col.c-green  .col-hd { color:var(--go); }
-.col.c-red    .col-hd { color:var(--nogo); }
-.col.c-orange .col-hd, .col.c-purple .col-hd, .col.c-blue .col-hd { color:var(--accent); }
-/* .cards тянется на всю высоту столбца → вся колонка (а не тонкая полоска сверху)
-   становится зоной сброса карточки. Это чинило «карточка возвращается на место». */
-.cards { flex:1 1 auto; min-height:60px; }
-.cards:empty::after { content:'—'; color:var(--dim); font-size:.68rem; }
-.card { background:var(--surf2); border:1px solid var(--border); border-radius:8px; padding:.6rem .7rem; margin-bottom:.6rem; cursor:grab; user-select:none; -webkit-user-select:none; }
-.card:active { cursor:grabbing; }
-.card.card-ghost { opacity:.35; border-color:var(--accent); }
-.card.card-chosen { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
-.card.card-drag { box-shadow:0 4px 14px rgba(0,0,0,.4); }
-.card a.t { color:var(--text); text-decoration:none; font-size:.82rem; line-height:1.35; display:block; }
-.card a.t:hover { color:var(--accent); }
-.card .meta { font-size:.68rem; color:var(--dim); margin-top:.35rem; line-height:1.5; }
-.card .note { font-size:.7rem; color:var(--text); margin-top:.35rem; border-top:1px dashed var(--border2); padding-top:.3rem; }
-.due { display:inline-block; padding:.05rem .35rem; border-radius:4px; font-size:.66rem; }
-.due.overdue { background:rgba(239,68,68,.15); color:var(--nogo); }
-.due.soon    { background:rgba(245,158,11,.15); color:var(--caution); }
-.due.ok      { color:var(--dim); }
-.due.none    { color:var(--dim); }
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f4ecdf;--surf:#fffaf2;--surf2:#f0e3d1;--surf3:#e3cfb5;--border:#ddc9aa;--border2:#c4a77f;--text:#2f261d;--dim:#74624d;--dimmer:#a08b71;--accent:#8a5a2b;--go:#23764a;--go-bg:rgba(35,118,74,.11);--go-bdr:rgba(35,118,74,.28);--caution:#9b6a13;--caution-bg:rgba(155,106,19,.12);--caution-bdr:rgba(155,106,19,.3);--nogo:#a6422f;--nogo-bg:rgba(166,66,47,.11);--nogo-bdr:rgba(166,66,47,.3);--font-sans:'Golos Text','Segoe UI',system-ui,sans-serif;--mono:'JetBrains Mono',Consolas,monospace}
+html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var(--font-sans)}
+.header{position:sticky;top:0;z-index:100;height:56px;background:rgba(255,250,242,.92);border-bottom:1px solid var(--border);box-shadow:0 8px 24px rgba(72,48,26,.08);backdrop-filter:blur(14px)}
+.header-inner{height:100%;padding:0 30px;display:flex;align-items:center;gap:20px}.logo{color:var(--accent);font-size:.98rem;font-weight:800}.header-count{font:500 11px var(--mono);color:var(--dim);padding:4px 9px;border:1px solid var(--border);border-radius:999px;background:var(--surf2)}
+.tabs-wrap{position:sticky;top:56px;z-index:90;background:rgba(255,250,242,.7);border-bottom:1px solid var(--border)}.tabs{display:flex;padding:0 30px}.tab{padding:.75rem 1.25rem;color:var(--dim);font-size:.75rem;text-decoration:none;border-bottom:2px solid transparent}.tab:hover{background:var(--surf2);color:var(--text)}.tab.active{color:var(--text);border-bottom-color:var(--accent)}
+.main{max-width:980px;margin:0 auto;padding:28px 24px 56px}.page-head{margin-bottom:18px}.page-head h1{font-size:24px;line-height:1.2}.page-head p{margin-top:5px;color:var(--dim);font-size:13px}
+.stage-filters{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}.stage-filter{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border:1px solid var(--border);border-radius:999px;background:var(--surf);color:var(--dim);font:500 11px var(--font-sans);cursor:pointer}.stage-filter:hover{border-color:var(--accent);color:var(--accent)}.stage-filter.active{background:var(--accent);border-color:var(--accent);color:#fffaf2}.stage-filter b{font:600 10px var(--mono);opacity:.75}
+.tender-queue{overflow:hidden;border:1px solid var(--border);border-radius:12px;background:var(--surf);box-shadow:0 10px 30px rgba(72,48,26,.07)}.queue-card{display:grid;grid-template-columns:4px 1fr;border-bottom:1px solid #ecdfc9;background:var(--surf);cursor:pointer;transition:background .12s}.queue-card:last-child{border-bottom:0}.queue-card:hover,.queue-card:focus{background:#f9f0e1;outline:0}.queue-card[hidden]{display:none}.queue-accent{background:var(--dimmer)}.tone-go .queue-accent{background:var(--go)}.tone-caution .queue-accent{background:var(--caution)}.tone-nogo .queue-accent{background:var(--nogo)}
+.queue-content{padding:14px 16px 13px 15px;display:flex;flex-direction:column;gap:7px}.queue-card-head,.queue-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.queue-verdict,.stage-badge{font:700 9.5px var(--mono);letter-spacing:.07em;border-radius:999px;padding:2px 8px;color:var(--dim);background:var(--surf2);border:1px solid var(--border)}.stage-badge{color:var(--accent);background:transparent;border-color:var(--border2)}.tone-go .queue-verdict,.tone-go .queue-score{color:var(--go)}.tone-go .queue-verdict{background:var(--go-bg);border-color:var(--go-bdr)}.tone-caution .queue-verdict,.tone-caution .queue-score{color:var(--caution)}.tone-caution .queue-verdict{background:var(--caution-bg);border-color:var(--caution-bdr)}.tone-nogo .queue-verdict,.tone-nogo .queue-score{color:var(--nogo)}.tone-nogo .queue-verdict{background:var(--nogo-bg);border-color:var(--nogo-bdr)}.queue-score{font:600 14px var(--mono)}.queue-score small{font-size:9px;color:var(--dimmer)}.queue-spacer{flex:1}.queue-days{font:600 11px var(--mono);color:var(--go)}.queue-days.urgent,.due.overdue{color:var(--nogo)}.due.soon{color:var(--caution)}
+.queue-card h2{font:500 14px/1.4 var(--font-sans);color:var(--text)}.queue-why{display:flex;gap:6px;font-size:12px;line-height:1.4;color:var(--dim)}.queue-why span{color:var(--accent)}.queue-risks{display:flex;gap:6px;flex-wrap:wrap}.queue-risk{font:500 10.5px var(--font-sans);border-radius:5px;padding:2px 7px;color:var(--caution);background:var(--caution-bg)}.queue-risk.tone-stop{font-weight:600;color:var(--nogo);background:var(--nogo-bg);border:1px solid var(--nogo-bdr)}.queue-meta{font-size:10.5px;color:var(--dim)}.queue-meta strong{font:600 11px var(--mono);color:var(--text)}.queue-empty{padding:60px 20px;text-align:center;color:var(--dim);border:1px solid var(--border);border-radius:12px;background:var(--surf)}.filtered-empty{display:none}.filtered-empty.visible{display:block}.tender-queue:has(.queue-card:not([hidden]))+.filtered-empty{display:none}
+@media(max-width:700px){.header-inner,.tabs{padding-left:16px;padding-right:16px}.tabs{overflow-x:auto}.tab{padding:.7rem .85rem;white-space:nowrap}.main{padding:20px 14px 40px}.page-head h1{font-size:21px}.queue-why{display:none}.queue-content{padding:12px}}
 </style>
+{% include "_theme.html" %}
 </head>
 <body>
-<div class="page">
-  <div class="top">
-    <a href="/">← Тендеры</a>
-    <h1>📋 Доска работы</h1>
-    <span class="cnt">в работе: {{ total }}</span>
+<header class="header"><div class="header-inner"><div class="logo">ТЕНДЕР·МОНИТОР</div><span class="header-count">в работе {{ total }}</span></div></header>
+<nav class="tabs-wrap"><div class="tabs">
+  <a href="/" class="tab">Очередь</a><a href="/board" class="tab active">В работе</a><a href="/search" class="tab">Поиск</a><a href="/analytics" class="tab">Аналитика</a><a href="/control" class="tab">Управление</a>
+</div></nav>
+<main class="main">
+  <div class="page-head"><h1>Тендеры в работе</h1><p>Фильтруйте список по текущей стадии.</p></div>
+  <div class="stage-filters" role="group" aria-label="Фильтр по стадии">
+    <button class="stage-filter active" type="button" data-stage="all" aria-pressed="true">Все <b>{{ total }}</b></button>
+    {% for stage in stages %}<button class="stage-filter" type="button" data-stage="{{ stage.key }}" aria-pressed="false">{{ stage.label }} <b>{{ stage.count }}</b></button>{% endfor %}
   </div>
-
-  {% if total == 0 %}
-  <div class="empty">Пока нет тендеров в работе.<br>Откройте тендер и нажмите «Взять в работу».</div>
+  {% if not tenders %}
+  <div class="queue-empty">Пока нет тендеров в работе.<br>Откройте тендер и нажмите «Взять в работу».</div>
   {% else %}
-  <div class="cols">
-    {% for col in columns %}
-    <div class="col c-{{ col.color }}" data-stage="{{ col.key }}">
-      <div class="col-hd"><span>{{ col.label }}</span><span class="c-cnt">{{ col.tenders|length }}</span></div>
-      <div class="cards" data-stage="{{ col.key }}"{% if col.key == '_other' %} data-locked="1"{% endif %}>
-      {% for t in col.tenders %}
-      <div class="card" data-purchase-number="{{ t.purchase_number }}">
-        <a class="t" href="/tender/{{ t.purchase_number }}">{{ t.title or t.purchase_number }}</a>
-        <div class="meta">
-          {% if t.customer %}🏛 {{ t.customer[:60] }}<br>{% endif %}
-          {% if t.price %}💰 {{ t.price | fmt_price }}<br>{% endif %}
-          📅 подача: {% if t.deadline %}{{ t.deadline[:10] }}{% else %}—{% endif %}<br>
-          🎯 мой срок:
-          {% if t.work_due %}
-            <span class="due {{ t.work_due_state }}">{{ t.work_due }}{% if t.work_due_state == 'overdue' %} · просрочен{% elif t.work_due_state == 'soon' %} · скоро{% endif %}</span>
-          {% else %}<span class="due none">не задан</span>{% endif %}
-        </div>
-        {% if t.work_note %}<div class="note">{{ t.work_note[:160] }}</div>{% endif %}
+  <div class="tender-queue">
+    {% for t in tenders %}{% set dleft = t.deadline | days_left %}
+    <article class="queue-card tone-{{ t.decision_tone }}" data-stage="{{ t.work_stage_filter }}" data-url="/tender/{{ t.purchase_number }}" tabindex="0">
+      <div class="queue-accent"></div><div class="queue-content">
+        <div class="queue-card-head"><span class="queue-verdict">{{ t.decision_label }}</span>{% if t.filter_total is not none %}<span class="queue-score">{{ t.filter_total }}<small>/40</small></span>{% endif %}<span class="stage-badge">{{ t.work_stage_label }}</span><span class="queue-spacer"></span>{% if dleft is not none %}<span class="queue-days {% if dleft <= 3 %}urgent{% endif %}">{{ dleft }} дн</span>{% endif %}</div>
+        <h2>{{ t.title or t.purchase_number }}</h2>
+        <p class="queue-why"><span>→</span>{{ t.decision_reason }}</p>
+        {% if t.risk_tags %}<div class="queue-risks">{% for tag in t.risk_tags %}<span class="queue-risk tone-{{ tag.tone }}">{{ tag.text }}</span>{% endfor %}</div>{% endif %}
+        <div class="queue-meta">{% if t.customer %}<span>{{ t.customer[:80] }}</span>{% endif %}<span class="queue-spacer"></span>{% if t.work_due %}<span class="due {{ t.work_due_state }}">Мой срок: {{ t.work_due }}</span>{% endif %}<strong>{{ t.price | fmt_rub }}</strong></div>
       </div>
-      {% endfor %}
-      </div>
-    </div>
+    </article>
     {% endfor %}
   </div>
+  <div class="queue-empty filtered-empty">На этой стадии пока нет тендеров.</div>
   {% endif %}
-</div>
-
-<script src="/static/vendor/htmx.min.js"></script>
-<script src="/static/vendor/sortable.min.js"></script>
+</main>
 <script>
-function updateCount(stageKey, delta) {
-  const cnt = document.querySelector('.col[data-stage="' + stageKey + '"] .c-cnt');
-  if (cnt) cnt.textContent = String(Number(cnt.textContent) + delta);
+const stageButtons = document.querySelectorAll('.stage-filter');
+const cards = document.querySelectorAll('.queue-card');
+function filterStage(stage) {
+  let shown = 0;
+  cards.forEach(card => { const visible = stage === 'all' || card.dataset.stage === stage; card.hidden = !visible; if (visible) shown += 1; });
+  stageButtons.forEach(button => { const active = button.dataset.stage === stage; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); });
+  const empty = document.querySelector('.filtered-empty'); if (empty) empty.classList.toggle('visible', shown === 0);
+  const url = new URL(location.href); if (stage === 'all') url.searchParams.delete('stage'); else url.searchParams.set('stage', stage); history.replaceState(null, '', url);
 }
-
-document.querySelectorAll('.cards[data-stage]:not([data-locked])').forEach(function (el) {
-  new Sortable(el, {
-    group: 'board',
-    draggable: '.card',
-    animation: 150,
-    forceFallback: true,
-    fallbackTolerance: 3,
-    ghostClass: 'card-ghost',
-    chosenClass: 'card-chosen',
-    dragClass: 'card-drag',
-    onEnd: function (evt) {
-      const card = evt.item;
-      const fromCol = evt.from;
-      const toCol = evt.to;
-      const oldStage = fromCol.dataset.stage;
-      const newStage = toCol.dataset.stage;
-      const oldIndex = evt.oldIndex;
-      if (oldStage === newStage) return;
-
-      const purchaseNumber = card.dataset.purchaseNumber;
-      const toLabelEl = toCol.closest('.col').querySelector('.col-hd span');
-      const toLabel = toLabelEl ? toLabelEl.textContent : newStage;
-
-      const comment = window.prompt('Комментарий к переходу в «' + toLabel + '»:', '');
-      if (comment === null) {
-        // отмена — вернуть карточку на исходное место, запрос не отправляем
-        const ref = fromCol.children[oldIndex] || null;
-        fromCol.insertBefore(card, ref);
-        return;
-      }
-
-      fetch('/api/tender/' + encodeURIComponent(purchaseNumber) + '/workflow', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ work_stage: newStage, comment: comment }),
-      }).then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        updateCount(oldStage, -1);
-        updateCount(newStage, 1);
-      }).catch(function () {
-        // откат карточки на исходное место при ошибке сохранения
-        const ref = fromCol.children[oldIndex] || null;
-        fromCol.insertBefore(card, ref);
-        alert('Не удалось сохранить стадию — попробуйте ещё раз');
-      });
-    }
-  });
-});
+stageButtons.forEach(button => button.addEventListener('click', () => filterStage(button.dataset.stage)));
+cards.forEach(card => { card.addEventListener('click', () => location.href = card.dataset.url); card.addEventListener('keydown', event => { if (event.key === 'Enter') location.href = card.dataset.url; }); });
+const initialStage = new URL(location.href).searchParams.get('stage');
+if (initialStage && document.querySelector('.stage-filter[data-stage="' + CSS.escape(initialStage) + '"]')) filterStage(initialStage);
 </script>
 </body>
 </html>

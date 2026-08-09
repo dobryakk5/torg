@@ -1099,6 +1099,7 @@ async def tender_preview(request: Request, purchase_number: str):
 @app.get("/analytics", response_class=HTMLResponse)
 async def analytics_page(request: Request):
     return templates.TemplateResponse(request, "analytics.html", {
+        "feedback":  db.get_filter_feedback_analytics(),
         "corridors": db.get_all_price_corridors(),
         "customers": db.get_customers_list(limit=50),
         "risky":     db.get_customers_list(limit=20, only_risky=True),
@@ -2509,25 +2510,46 @@ async def api_tender_reject(purchase_number: str, request: Request):
 
 @app.get("/board", response_class=HTMLResponse)
 async def board(request: Request):
-    """Kanban-доска тендеров в работе (lifecycle, MVP4a)."""
+    """Список тендеров в работе с фильтрами по стадии."""
     tenders = db.list_workflow_tenders()
-    # Колонки в порядке WORK_STAGES + «Другое» для неизвестных стадий.
-    columns = [{**s, "tenders": []} for s in WORK_STAGES]
-    by_key = {c["key"]: c for c in columns}
-    other = {"key": "_other", "label": "Другое", "color": "gray", "active": False, "tenders": []}
+    stages = [{**s, "count": 0} for s in WORK_STAGES]
+    by_key = {s["key"]: s for s in stages}
+    unknown_count = 0
     for t in tenders:
         t["work_due_state"] = _work_due_state(t.get("work_due"))
         stage = t.get("work_stage")
         if stage in by_key:
-            by_key[stage]["tenders"].append(t)
+            by_key[stage]["count"] += 1
+            t["work_stage_label"] = by_key[stage]["label"]
+            t["work_stage_filter"] = stage
         else:
             logger.warning("board: неизвестная стадия %r у %s", stage, t.get("purchase_number"))
-            other["tenders"].append(t)
-    if other["tenders"]:
-        columns.append(other)
-    total = len(tenders)
+            unknown_count += 1
+            t["work_stage_label"] = "Другое"
+            t["work_stage_filter"] = "_other"
+
+        decision = (t.get("filter_decision") or "").upper()
+        t["decision_label"] = {
+            "GO": "БЕРИ", "CAUTION": "ПОДУМАЙ", "NO-GO": "ПРОПУСТИ",
+        }.get(decision, "В РАБОТЕ")
+        t["decision_tone"] = {
+            "GO": "go", "CAUTION": "caution", "NO-GO": "nogo",
+        }.get(decision, "unknown")
+        t["decision_reason"] = (
+            t.get("work_note")
+            or t.get("llm_triage_reason")
+            or t.get("llm_verdict")
+            or "Откройте карточку, чтобы продолжить работу."
+        )
+        t["risk_tags"] = _risk_tags(t)
+
+    if unknown_count:
+        stages.append({
+            "key": "_other", "label": "Другое", "color": "gray",
+            "active": False, "count": unknown_count,
+        })
     return templates.TemplateResponse(request, "board.html", {
-        "columns": columns, "total": total,
+        "stages": stages, "tenders": tenders, "total": len(tenders),
     })
 
 

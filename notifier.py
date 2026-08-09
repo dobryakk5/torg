@@ -211,3 +211,20 @@ def send_summary(bot_token: str, chat_id: str, found: int, notified: int, keywor
         return
     msg = f"📊 Прогон завершён\nЗапросов: {keyword_count} · Новых: {found} · Отправлено: {notified}"
     send_message(msg, bot_token, chat_id)
+
+
+def send_source_error_alert(bot_token: str, chat_id: str, errors: list[str]) -> bool:
+    """Одно сводное Telegram-оповещение о сбоях источников Stage1."""
+    if not errors:
+        return True
+
+    visible = errors[:10]
+    lines = [
+        "🚨 <b>Ошибка получения данных Stage1</b>",
+        "",
+        *[f"• {_esc(error[:600])}" for error in visible],
+    ]
+    if len(errors) > len(visible):
+        lines.extend(["", f"Ещё ошибок: {len(errors) - len(visible)}"])
+    lines.extend(["", "Подробности: /control → История запусков"])
+    return send_message("\n".join(lines), bot_token, chat_id)
