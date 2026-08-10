@@ -3235,6 +3235,29 @@ def set_setting(key: str, value: str, description: str = "") -> None:
         )
 
 
+def had_stage1_error_today_before(error_needle: str, before_started_at: str) -> bool:
+    """Была ли такая ошибка в более раннем сводном Stage1-прогоне за тот же день."""
+    try:
+        with _conn() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM runs
+                    WHERE mode = 'stage1'
+                      AND started_at >= date_trunc('day', %s::timestamptz)
+                      AND started_at < %s::timestamptz
+                      AND errors ILIKE %s
+                )
+                """,
+                (before_started_at, before_started_at, f"%{error_needle}%"),
+            )
+            return bool(cur.fetchone()[0])
+    except Exception:
+        return False
+
+
 def get_all_settings() -> dict[str, str]:
     try:
         with _conn() as conn:

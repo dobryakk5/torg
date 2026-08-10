@@ -51,6 +51,7 @@ from document_processor import (
 )
 from llm_analyzer import analyze_tender
 from notifier import (
+    compact_source_errors,
     format_tender_message,
     send_source_error_alert,
     send_startup_message,
@@ -84,6 +85,62 @@ AUTO_ACTIVE_DATE_VALUES = {"auto", "active", "all-active", "активные", "
 # успешного Stage 1 (хранится в settings.STAGE1_WATERMARK), а не за весь период.
 LAST_RUN_DATE_VALUES = {"last", "since-last", "инкремент", "incremental"}
 STAGE1_WATERMARK_KEY = "STAGE1_WATERMARK"
+SOURCE_ALERT_SETTING_PREFIX = "TELEGRAM_SOURCE_ALERT_DATE_"
+SOURCE_ALERT_HISTORY_NEEDLES = {
+    "eat": "ЕАТ",
+    "mosreg": "ЭМ МО",
+    "mos": "ПП Москвы",
+    "spb": "ЭМ СПб",
+    "zakazrf": "ZakazRF",
+    "rts": "РТС",
+    "sberb2b": "SberB2B",
+    "b2b": "B2B",
+    "tenderplan": "Tenderplan",
+    "okpd2": "ОКПД2",
+    "eis": "Ошибка поиска по",
+    "stage1": "Ошибка",
+}
+
+
+def _eat_combined_queries(keywords: list[str]) -> list[str]:
+    """Один OR-запрос вместо серии из 10–15 запросов, на которые реагирует ServicePipe."""
+    unique = list(dict.fromkeys(str(keyword).strip() for keyword in keywords if str(keyword).strip()))
+    return [" ||".join(unique)] if unique else []
+
+
+def _send_source_alerts_once_daily(errors: list[str], current_started_at: str) -> None:
+    """По одному короткому алерту на источник в календарный день."""
+    today = datetime.now().date().isoformat()
+    pending: list[tuple[str, str]] = []
+    for source_key, message in compact_source_errors(errors):
+        setting_key = SOURCE_ALERT_SETTING_PREFIX + source_key.upper()
+        if db.get_setting(setting_key) == today:
+            continue
+        # При первом запуске после обновления учитываем алерты, которые
+        # старая версия уже отправила сегодня, но ещё не записала в settings.
+        needle = SOURCE_ALERT_HISTORY_NEEDLES.get(source_key, "Ошибка")
+        if db.had_stage1_error_today_before(needle, current_started_at):
+            try:
+                db.set_setting(setting_key, today, "Дата последнего Telegram-алерта об ошибке источника")
+            except Exception as exc:
+                logger.warning("Не удалось зафиксировать исторический алерт %s: %s", setting_key, exc)
+            continue
+        pending.append((setting_key, message))
+    if not pending:
+        logger.info("Telegram: ошибки источников уже отправлялись сегодня")
+        return
+    sent = send_source_error_alert(
+        config.TELEGRAM_BOT_TOKEN,
+        config.TELEGRAM_CHAT_ID,
+        [message for _, message in pending],
+    )
+    if not sent:
+        return
+    for setting_key, _ in pending:
+        try:
+            db.set_setting(setting_key, today, "Дата последнего Telegram-алерта об ошибке источника")
+        except Exception as exc:
+            logger.warning("Не удалось сохранить дедуп Telegram-алерта %s: %s", setting_key, exc)
 
 
 def _stage1_period_label(
@@ -634,8 +691,11 @@ def run_stage1(
             or getattr(config, "SPB_SEARCH_KEYWORDS", None)
             or storefront_kw_fallback
         )
+        eat_queries = _eat_combined_queries(eat_keywords)
+        if len(eat_keywords) > 1:
+            logger.info("ЕАТ: объединяю %d фраз в один OR-запрос", len(eat_keywords))
         phase_saved, phase_unique, phase_candidates = _run_stage1_channel(
-            channel_slug="eat", channel_title="ЕАТ", keywords=eat_keywords,
+            channel_slug="eat", channel_title="ЕАТ", keywords=eat_queries,
             search_fn=lambda kw: search_eat(kw, price_from=p_min, price_to=p_max, pages=eat_pages),
             profiles=profiles, dry_run=dry_run, seen_this_run=seen_this_run,
             skip_completed_today=skip_completed_today, errors=errors,
@@ -774,11 +834,7 @@ def run_stage1(
     logger.info("Этап 1 завершён: найдено %d, кандидатов на этап 2: %d", unique_saved, primary_candidates)
     db.log_run("stage1", started_at, found=unique_saved, processed=primary_candidates, notified=0, errors="; ".join(errors))
     if errors and not dry_run:
-        send_source_error_alert(
-            config.TELEGRAM_BOT_TOKEN,
-            config.TELEGRAM_CHAT_ID,
-            errors,
-        )
+        _send_source_alerts_once_daily(errors, started_at)
     if incremental:
         _save_watermark(had_errors=bool(errors), dry_run=dry_run)
     return unique_saved, primary_candidates

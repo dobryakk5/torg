@@ -12,6 +12,20 @@ import config
 
 logger = logging.getLogger(__name__)
 
+_SOURCE_NAMES = (
+    ("eat", "ЕАТ"),
+    ("mosreg", "ЭМ МО"),
+    ("mos", "ПП Москвы"),
+    ("spb", "ЭМ СПб"),
+    ("zakazrf", "БП ZakazRF"),
+    ("rts", "РТС-Тендер"),
+    ("sberb2b", "SberB2B"),
+    ("b2b", "B2B-Center"),
+    ("tenderplan", "Tenderplan"),
+    ("okpd2", "ЕИС (ОКПД2)"),
+    ("eis", "ЕИС"),
+)
+
 
 def send_message(text: str, bot_token: str, chat_id: str, parse_mode: str = "HTML", reply_markup: dict | None = None) -> bool:
     if not bot_token or not chat_id or bot_token == "YOUR_BOT_TOKEN" or chat_id == "YOUR_CHAT_ID":
@@ -213,19 +227,48 @@ def send_summary(bot_token: str, chat_id: str, found: int, notified: int, keywor
     send_message(msg, bot_token, chat_id)
 
 
-def send_source_error_alert(bot_token: str, chat_id: str, errors: list[str]) -> bool:
-    """Одно сводное Telegram-оповещение о сбоях источников Stage1."""
-    if not errors:
+def compact_source_errors(errors: list[str]) -> list[tuple[str, str]]:
+    """Сводит ошибки по фразам к одному короткому алерту на источник."""
+    result: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for error in errors:
+        low = str(error).lower()
+        matched: tuple[str, str] | None = None
+        aliases = {
+            "eat": ("еат",),
+            "mosreg": ("эм мо", "mosreg"),
+            "mos": ("пп москвы",),
+            "spb": ("эм спб",),
+            "zakazrf": ("zakazrf",),
+            "rts": ("ртс-тендер", "ртс"),
+            "sberb2b": ("sberb2b",),
+            "b2b": ("b2b-center", "b2b-поиск"),
+            "tenderplan": ("tenderplan",),
+            "okpd2": ("окпд2",),
+            "eis": ("еис", "ошибка поиска по"),
+        }
+        for slug, display_name in _SOURCE_NAMES:
+            if any(alias in low for alias in aliases[slug]):
+                matched = (slug, display_name)
+                break
+        key, display_name = matched or ("stage1", "Stage1")
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append((key, f"Ошибка доступа {display_name}"))
+    return result
+
+
+def send_source_error_alert(bot_token: str, chat_id: str, messages: list[str]) -> bool:
+    """Одно короткое Telegram-оповещение о недоступных источниках Stage1."""
+    if not messages:
         return True
 
-    visible = errors[:10]
     lines = [
-        "🚨 <b>Ошибка получения данных Stage1</b>",
+        "🚨 <b>Ошибка источника</b>",
         "",
-        *[f"• {_esc(error[:600])}" for error in visible],
+        *[f"• {_esc(message)}" for message in messages],
     ]
-    if len(errors) > len(visible):
-        lines.extend(["", f"Ещё ошибок: {len(errors) - len(visible)}"])
     control_url = f"{config.WEB_APP_URL}/control#history"
     lines.extend([
         "",
