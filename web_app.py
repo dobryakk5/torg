@@ -567,11 +567,20 @@ def _web_extract_reg_number(value: str) -> str:
     return match.group(0) if match else ""
 
 
+def _web_is_eis_url(source: str) -> bool:
+    """True only for absolute links hosted by zakupki.gov.ru itself."""
+    parsed = urlparse(str(source or "").strip())
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    return bool(hostname) and (
+        hostname == "zakupki.gov.ru" or hostname.endswith(".zakupki.gov.ru")
+    )
+
+
 def _web_notice_type(source: str) -> str:
     if "://" not in str(source or ""):
         return ""
     parsed = urlparse(source)
-    if "zakupki.gov.ru" not in parsed.netloc.lower():
+    if not _web_is_eis_url(source):
         return ""
     match = re.search(r"/epz/order/notice/([^/]+)/", parsed.path, flags=re.I)
     if not match:
@@ -585,6 +594,11 @@ def _web_notice_type(source: str) -> str:
 
 def zakupki_common_info_url(url: str, purchase_number: str = "") -> str:
     source = str(url or "").strip()
+    # Ссылки ЗМО и коммерческих площадок уже являются каноническими. Нельзя
+    # превращать цифровую часть их внутреннего номера (например,
+    # SPB-2026006146451) в несуществующий номер извещения ЕИС.
+    if urlparse(source).netloc and not _web_is_eis_url(source):
+        return source
     reg_number = _web_extract_reg_number(source) or _web_extract_reg_number(purchase_number)
     if not reg_number:
         return source
@@ -617,6 +631,8 @@ def zakupki_common_info_url(url: str, purchase_number: str = "") -> str:
 
 def zakupki_documents_url(url: str, purchase_number: str = "", notice_guid: str = "") -> str:
     source = str(url or "").strip()
+    if urlparse(source).netloc and not _web_is_eis_url(source):
+        return source
     reg_number = _web_extract_reg_number(source) or _web_extract_reg_number(purchase_number)
     if not reg_number:
         return source
