@@ -51,7 +51,14 @@ h2{font-size:.9rem;font-weight:600;margin:2rem 0 1rem;color:var(--text);
 .topic-examples li{font-size:.69rem;line-height:1.35;color:var(--dim)}
 .topic-examples a{color:var(--dim)}
 .minus-list{display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.65rem}
-.minus-chip{padding:2px 6px;border:1px solid var(--border);border-radius:4px;color:var(--yellow);font:500 .61rem var(--mono)}
+.minus-chip{display:inline-flex;align-items:center;gap:.4rem;padding:4px 7px;border:1px solid var(--border);border-radius:5px;background:transparent;color:var(--yellow);font:500 .61rem var(--mono);cursor:pointer;text-align:left}
+.minus-chip b{font:600 .55rem var(--mono);color:var(--dim)}
+.minus-chip:hover{border-color:var(--yellow);background:rgba(250,204,21,.06)}
+.minus-chip:hover b{color:var(--yellow)}
+.minus-chip:disabled{cursor:default;opacity:.78}
+.minus-chip.is-loading{color:var(--dim)}
+.minus-chip.is-added{color:var(--green);border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.06)}
+.minus-chip.is-error{color:var(--red);border-color:rgba(248,113,113,.35);background:rgba(248,113,113,.06)}
 .suggestion-card{border-left:3px solid var(--accent)}
 .suggestion-kind{font:700 .58rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:.45rem}
 .suggestion-card p{font-size:.7rem;line-height:1.5;color:var(--dim);margin-top:.5rem}
@@ -221,6 +228,8 @@ tr:hover td{background:rgba(255,255,255,.025)}
   </div>
 
   <h2>Повторяющиеся нерелевантные темы</h2>
+  {% set default_profile = feedback.get('default_profile') or {} %}
+  {% set default_minuses = default_profile.get('hard_minuses', []) %}
   {% if feedback.topics %}
   <div class="topic-grid">
     {% for topic in feedback.topics %}
@@ -234,9 +243,25 @@ tr:hover td{background:rgba(255,255,255,.025)}
         <li><a href="/tender/{{ example.purchase_number }}">{{ example.title[:95] }}</a></li>
         {% endfor %}
       </ul>
-      <div class="muted" style="font-size:.62rem">Кандидаты в минус-фразы:</div>
+      <div class="muted" style="font-size:.62rem">
+        Кандидаты в минус-фразы ·
+        {% if default_profile %}
+          клик добавит жёсткий минус в профиль «{{ default_profile.name }}»:
+        {% else %}
+          <a href="/profiles">назначьте профиль по умолчанию</a>, чтобы добавлять их:
+        {% endif %}
+      </div>
       <div class="minus-list">
-        {% for phrase in topic.minus_phrases %}<span class="minus-chip">− {{ phrase }}</span>{% endfor %}
+        {% for phrase in topic.minus_phrases %}
+        {% set phrase_key = phrase|lower|replace('ё', 'е') %}
+        {% set already_added = phrase_key in default_minuses %}
+        <button type="button" class="minus-chip {% if already_added %}is-added{% endif %}" data-phrase="{{ phrase }}"
+                onclick="addDefaultHardMinus(this)"
+                {% if already_added or not default_profile %}disabled{% endif %}
+                title="Добавить как жёсткий минус в профиль по умолчанию">
+          <span>− {{ phrase }}</span><b>{% if already_added %}✓ добавлено{% else %}+ добавить{% endif %}</b>
+        </button>
+        {% endfor %}
       </div>
     </article>
     {% endfor %}
@@ -391,5 +416,39 @@ tr:hover td{background:rgba(255,255,255,.025)}
     </div>
   </details>
 </div>
+<script>
+async function addDefaultHardMinus(btn) {
+  if (!btn || btn.disabled) return;
+  const phrase = btn.dataset.phrase || '';
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.classList.remove('is-error', 'is-added');
+  btn.classList.add('is-loading');
+  btn.textContent = 'Добавляю…';
+  try {
+    const response = await fetch('/api/analytics/default-profile/hard-minus', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({phrase}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+    btn.classList.remove('is-loading');
+    btn.classList.add('is-added');
+    btn.textContent = data.action === 'already_exists' ? '✓ уже в профиле' : '✓ добавлено как жёсткий минус';
+    btn.title = `${phrase} · ${data.profile_name || 'профиль по умолчанию'}`;
+  } catch (error) {
+    btn.classList.remove('is-loading');
+    btn.classList.add('is-error');
+    btn.textContent = `⚠ ${String(error.message || error)}`;
+    btn.title = String(error.message || error);
+    window.setTimeout(() => {
+      btn.classList.remove('is-error');
+      btn.textContent = original;
+      btn.disabled = false;
+    }, 4500);
+  }
+}
+</script>
 </body>
 </html>

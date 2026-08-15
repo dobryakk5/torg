@@ -3077,6 +3077,22 @@ def get_filter_feedback_analytics() -> dict[str, Any]:
         """)
         profile_gate = dict(cur.fetchone())
 
+        cur.execute("""
+            SELECT id, name
+            FROM search_profiles
+            WHERE is_default = TRUE
+        """)
+        default_profile_row = cur.fetchone()
+        default_profile = dict(default_profile_row) if default_profile_row else None
+        if default_profile:
+            cur.execute("""
+                SELECT REPLACE(LOWER(BTRIM(phrase)), 'ё', 'е') AS phrase
+                FROM search_phrases
+                WHERE profile_id = %s AND kind = 'minus_hard' AND enabled = TRUE
+                ORDER BY phrase
+            """, (default_profile["id"],))
+            default_profile["hard_minuses"] = [row["phrase"] for row in cur.fetchall()]
+
     topics = _feedback_topics(rejected_rows)
     suggestions: list[dict[str, Any]] = []
     if profile_gate.get("negative_affected"):
@@ -3132,6 +3148,7 @@ def get_filter_feedback_analytics() -> dict[str, Any]:
         "phrases": phrases,
         "topics": topics,
         "suggestions": suggestions,
+        "default_profile": default_profile,
     })
 
 
@@ -3498,6 +3515,98 @@ def search_profiles_active() -> list[dict[str, Any]]:
 def search_profile_get(profile_id: int) -> Optional[dict[str, Any]]:
     rows = _profiles_with_phrases("WHERE id = %s", (int(profile_id),))
     return rows[0] if rows else None
+
+
+def search_default_hard_minus_add(phrase: str) -> dict[str, Any]:
+    """Добавляет фразу как жёсткий минус в профиль по умолчанию.
+
+    Операция атомарна и безопасна для повторного клика. Существующий мягкий
+    минус повышается до жёсткого; плюс-фраза с тем же текстом считается
+    конфликтом и не изменяется.
+    """
+    clean_phrase = " ".join(str(phrase or "").strip().split())
+    if not clean_phrase:
+        raise ValueError("Минус-фраза не может быть пустой")
+    if len(clean_phrase) > 300:
+        raise ValueError("Минус-фраза слишком длинная")
+
+    normalized_sql = "REPLACE(LOWER(BTRIM(phrase)), 'ё', 'е') = REPLACE(LOWER(%s), 'ё', 'е')"
+    with _conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            """SELECT id, name
+                 FROM search_profiles
+                WHERE is_default = TRUE
+                FOR UPDATE"""
+        )
+        profile = cur.fetchone()
+        if not profile:
+            raise ValueError("Профиль по умолчанию не найден")
+
+        cur.execute(
+            f"""SELECT id, kind, phrase, enabled
+                  FROM search_phrases
+                 WHERE profile_id = %s AND {normalized_sql}
+                 FOR UPDATE""",
+            (profile["id"], clean_phrase),
+        )
+        existing = [dict(row) for row in cur.fetchall()]
+        hard = next((row for row in existing if row["kind"] == "minus_hard"), None)
+        if hard:
+            if not hard.get("enabled", True):
+                cur.execute(
+                    """UPDATE search_phrases
+                          SET weight = 0, local_only = TRUE, enabled = TRUE
+                        WHERE id = %s""",
+                    (hard["id"],),
+                )
+                return {
+                    "added": True,
+                    "action": "reactivated",
+                    "profile_id": profile["id"],
+                    "profile_name": profile["name"],
+                    "phrase": hard["phrase"],
+                }
+            return {
+                "added": False,
+                "action": "already_exists",
+                "profile_id": profile["id"],
+                "profile_name": profile["name"],
+                "phrase": hard["phrase"],
+            }
+
+        plus = next((row for row in existing if row["kind"] == "plus"), None)
+        if plus:
+            raise ValueError(f"Фраза уже используется как плюс-фраза: {plus['phrase']}")
+
+        soft = next((row for row in existing if row["kind"] == "minus_soft"), None)
+        if soft:
+            cur.execute(
+                """UPDATE search_phrases
+                      SET kind = 'minus_hard', weight = 0, enabled = TRUE,
+                          note = 'Добавлено из аналитики фильтрации'
+                    WHERE id = %s""",
+                (soft["id"],),
+            )
+            action = "promoted"
+        else:
+            cur.execute(
+                """INSERT INTO search_phrases
+                       (profile_id, kind, phrase, weight, query_only, local_only,
+                        query_text, enabled, note)
+                   VALUES (%s, 'minus_hard', %s, 0, FALSE, TRUE, NULL, TRUE,
+                           'Добавлено из аналитики фильтрации')""",
+                (profile["id"], clean_phrase),
+            )
+            action = "added"
+
+    return {
+        "added": True,
+        "action": action,
+        "profile_id": profile["id"],
+        "profile_name": profile["name"],
+        "phrase": clean_phrase,
+    }
 
 
 def _opt_int(value: Any) -> Optional[int]:

@@ -1122,6 +1122,25 @@ async def analytics_page(request: Request):
     })
 
 
+@app.post("/api/analytics/default-profile/hard-minus")
+async def api_analytics_add_default_hard_minus(request: Request):
+    """Одним кликом добавляет кандидатную фразу в hard-minus дефолтного профиля."""
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    phrase = str(data.get("phrase") or "").strip() if isinstance(data, dict) else ""
+    if not phrase:
+        raise HTTPException(400, "Укажите минус-фразу")
+    try:
+        result = db.search_default_hard_minus_add(phrase)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    import search_profiles as sp
+    sp.invalidate_cache()
+    return {"ok": True, **result}
+
+
 @app.get("/search", response_class=HTMLResponse)
 async def search_page(request: Request):
     profiles = db.search_profiles_list()
