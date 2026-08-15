@@ -85,6 +85,7 @@
           {% if dleft is not none %}<span class="queue-days {% if dleft <= 3 %}urgent{% endif %}">{{ dleft }} дн</span>{% endif %}
           {% if t.funnel_status != 'rejected' %}
           <button class="queue-reject" data-pnum="{{ t.purchase_number }}" data-reason="not_my_profile" onclick="rejectLotFromList(this);event.stopPropagation()">Не мой профиль</button>
+          <button class="queue-reject queue-decline" data-pnum="{{ t.purchase_number }}" data-reason="manual_decline" onclick="rejectLotFromList(this);event.stopPropagation()">Не хочу</button>
           {% endif %}
         </div>
         <h2>{{ t.title or 'Без названия' }}</h2>
