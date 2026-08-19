@@ -1443,6 +1443,7 @@ def get_detail_candidates(
             f"""
             SELECT * FROM tenders
              WHERE primary_score >= %s
+               AND filter_decision IS DISTINCT FROM 'NO-GO'
                {where_extra}
                AND decision NOT IN ('rejected', 'tailored')
                AND (
@@ -1838,6 +1839,16 @@ def get_llm_candidates(limit: int, min_score: int) -> list[dict[str, Any]]:
              WHERE t.detail_checked_at IS NOT NULL
                AND t.needs_detail_refresh = FALSE
                AND COALESCE(t.detail_score, 0) >= %s
+               AND (
+                   t.filter_decision IS DISTINCT FROM 'NO-GO'
+                   OR EXISTS (
+                       SELECT 1
+                       FROM filter_scores fs
+                       WHERE fs.purchase_number = t.purchase_number
+                         AND fs.filter_number IN (4, 5, 6, 7)
+                         AND fs.stop_factor = TRUE
+                   )
+               )
                AND t.decision NOT IN ('rejected', 'tailored')
                AND (t.llm_analyzed_at IS NULL OR t.llm_analyzed_at < t.detail_checked_at)
                AND {_active_or_unknown_deadline_sql("t.deadline")}

@@ -17,11 +17,30 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from typing import Any, Optional
 
 import database as db
 
 logger = logging.getLogger(__name__)
+
+
+_RISK_RULES_CACHE: list[dict[str, Any]] | None = None
+_RISK_RULES_CACHE_TS = 0.0
+_RISK_RULES_CACHE_TTL = 60.0
+
+
+def _active_risk_rules(force: bool = False) -> list[dict[str, Any]]:
+    """Активные персональные правила с коротким кешем между лотами."""
+    global _RISK_RULES_CACHE, _RISK_RULES_CACHE_TS
+    now = time.monotonic()
+    if (not force and _RISK_RULES_CACHE is not None
+            and now - _RISK_RULES_CACHE_TS < _RISK_RULES_CACHE_TTL):
+        return _RISK_RULES_CACHE
+    rules = db.kb_risk_rules_active()
+    _RISK_RULES_CACHE = rules
+    _RISK_RULES_CACHE_TS = now
+    return rules
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -79,7 +98,7 @@ def build_llm_context(tender: dict, tz_text: str = "") -> str:
         parts.append("\n".join(lines))
 
     # 3. Персональные правила рисков ─────────────────────────────────────────
-    rules   = db.kb_risk_rules_active()
+    rules   = _active_risk_rules()
     matched = []
     for r in rules:
         if r.get("pattern", "").lower() in combined:
@@ -121,7 +140,7 @@ def apply_custom_rules(combined_text: str) -> tuple[int, list[str]]:
     Вызывается из filter_engine.py в каждом фильтре.
     """
     try:
-        rules = db.kb_risk_rules_active()
+        rules = _active_risk_rules()
     except Exception:
         return 0, []
 
@@ -153,7 +172,7 @@ def apply_custom_rules(combined_text: str) -> tuple[int, list[str]]:
 def has_stop_rule_match(combined_text: str) -> bool:
     """True если сработало хотя бы одно stop-правило."""
     try:
-        rules = db.kb_risk_rules_active()
+        rules = _active_risk_rules()
     except Exception:
         return False
     text = combined_text.lower()
@@ -233,7 +252,7 @@ def get_profile() -> dict:
 
     try:
         competencies = db.kb_competencies_list()
-        rules        = db.kb_risk_rules_active()
+        rules        = _active_risk_rules()
         import config
         profile = {
             "competencies": [c["tech"].lower() for c in competencies if c.get("level", 0) >= 2],
@@ -271,9 +290,11 @@ def get_profile() -> dict:
 
 def invalidate_profile_cache() -> None:
     """Сбрасывает кеш профиля — вызвать после сохранения компетенций/правил."""
-    global _PROFILE_CACHE, _PROFILE_CACHE_TS
+    global _PROFILE_CACHE, _PROFILE_CACHE_TS, _RISK_RULES_CACHE, _RISK_RULES_CACHE_TS
     _PROFILE_CACHE    = None
     _PROFILE_CACHE_TS = 0.0
+    _RISK_RULES_CACHE = None
+    _RISK_RULES_CACHE_TS = 0.0
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -56,8 +56,23 @@ def tokenize(text: str) -> list[tuple[int, str]]:
     return tokens
 
 
+_STOREFRONT_BOILERPLATE_RE = re.compile(
+    r"закупка\s+малого\s+объ[её]ма\s*\(\s*(?:портал\s+поставщиков|"
+    r"еат\s*[«\"]?бер[её]зка|электронн\w*\s+магазин[^)]*)\s*\)",
+    re.I,
+)
+
+
 def build_tender_text(tender: dict[str, Any]) -> str:
-    parts = [str(tender.get("title") or ""), str(tender.get("primary_text") or "")]
+    """Текст предмета закупки без названий витрин.
+
+    Название площадки не является содержанием лота. В частности, служебная
+    строка «Портал поставщиков» раньше активировала плюс-фразу «портал» у каждой
+    московской закупки — от вентиляции до техосмотра автомобиля.
+    """
+    title = str(tender.get("title") or "")
+    primary = _STOREFRONT_BOILERPLATE_RE.sub(" ", str(tender.get("primary_text") or ""))
+    parts = [title, primary]
     return " ".join(p for p in parts if p)
 
 

@@ -299,7 +299,8 @@ def _process_stage1_tenders(
         if first_in_run:
             seen_this_run.add(pnum)
             newly_counted += 1
-            if primary_score >= config.MIN_PRIMARY_SCORE_FOR_DETAIL:
+            if (primary_score >= config.MIN_PRIMARY_SCORE_FOR_DETAIL
+                    and filter_result.decision != "NO-GO"):
                 primary_candidates += 1
 
         logger.info(
@@ -310,7 +311,9 @@ def _process_stage1_tenders(
             pnum,
         )
 
-        if dry_run and first_in_run and primary_score >= config.MIN_PRIMARY_SCORE_FOR_DETAIL:
+        if (dry_run and first_in_run
+                and primary_score >= config.MIN_PRIMARY_SCORE_FOR_DETAIL
+                and filter_result.decision != "NO-GO"):
             print("\n" + "─" * 50)
             print(f"PRIMARY SCORE: {primary_score}")
             print(re.sub(r"<[^>]+>", "", format_tender_message(tender, primary_score, primary_reasons, None)))
@@ -1167,6 +1170,7 @@ def run_stage2(
                 and page_html
                 and is_eis
                 and preliminary_result.total_score >= config.DOCUMENT_DOWNLOAD_MIN_SCORE
+                and preliminary_result.decision != "NO-GO"
             )
             if should_download_docs:
                 docs_url = to_documents_url(

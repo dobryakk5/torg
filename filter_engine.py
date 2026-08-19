@@ -361,14 +361,28 @@ def run_filters(tender: dict[str, Any], text: str = "", stage: str = "stage2") -
     # поисковых профилей, остаётся в БД, но получает штраф Ф1.
     if tender.get("profile_filter_rejected"):
         f0 = filters[0]
-        penalty = max(1, int(getattr(config, "PROFILE_MISS_SCORE_PENALTY", 2)))
-        filters[0] = FilterScore(
-            f0.number,
-            f0.name,
-            max(1, f0.score - penalty),
-            f0.signals + [f"⚠ не прошла порог поискового профиля: штраф −{penalty}"],
-            stop_factor=f0.stop_factor,
+        subject_confirmed = any(
+            "приоритет: заказная веб/по/api-разработка" in signal.lower()
+            or "вторичный профиль: типовая 1с" in signal.lower()
+            for signal in f0.signals
         )
+        if subject_confirmed:
+            filters[0] = FilterScore(
+                f0.number,
+                f0.name,
+                f0.score,
+                f0.signals + ["ℹ профиль подтверждён предметом закупки"],
+                stop_factor=f0.stop_factor,
+            )
+        else:
+            penalty = max(1, int(getattr(config, "PROFILE_MISS_SCORE_PENALTY", 2)))
+            filters[0] = FilterScore(
+                f0.number,
+                f0.name,
+                max(1, f0.score - penalty),
+                f0.signals + [f"⚠ не прошла порог поискового профиля: штраф −{penalty}"],
+                stop_factor=f0.stop_factor,
+            )
 
     # Мягкая интеграция LLM-триажа (Stage 1): вердикт корректирует ТОЛЬКО Ф1
     # (профиль) на ±1–2 балла. Итоговое решение по-прежнему считается по фильтрам.
@@ -535,16 +549,20 @@ def _sentence_around_span(text: str, start: int, end: int) -> str:
 
 def _filter_profile(tender: dict[str, Any], text: str, stage: str) -> FilterScore:
     name = "Профиль задачи"
-    strong = _match_bucket(text, 1, "strong")
-    medium = _match_bucket(text, 1, "medium")
-    bad = _match_bucket(text, 1, "bad")
-    offprofile = _offprofile_markers(text)
+    # Ф1 отвечает на вопрос «наш ли это предмет закупки», поэтому не должен
+    # собирать технологические слова из типового договора и инструкций площадки.
+    # Для остальных Ф2–Ф8 полный текст ТЗ по-прежнему используется целиком.
+    subject_text = _profile_subject_text(tender)
+    strong = _match_bucket(subject_text, 1, "strong")
+    medium = _match_bucket(subject_text, 1, "medium")
+    bad = _match_bucket(subject_text, 1, "bad")
+    offprofile = _offprofile_markers(subject_text)
 
     try:
         from knowledge_base import get_profile as _kb_profile
         kb = _kb_profile()
         kb_comps = kb.get("competencies", [])
-        kb_strong = [c for c in kb_comps if c in text.lower() and c not in strong + medium]
+        kb_strong = [c for c in kb_comps if c in subject_text and c not in strong + medium]
         if kb_strong:
             strong = strong + kb_strong[:3]
     except Exception:
@@ -578,6 +596,20 @@ def _filter_profile(tender: dict[str, Any], text: str, stage: str) -> FilterScor
 
     if bad and not (strong or medium):
         score = min(score, 2)
+
+    # Заказная разработка, хорошо выполняемая через Codex, важнее общих слов
+    # «сопровождение/программное обеспечение». Выделяем её по предмету закупки,
+    # а не по договорному приложению.
+    if _CODEX_DEV_RE.search(subject_text):
+        score = max(score, 4)
+        signals.insert(0, "✓ приоритет: заказная веб/ПО/API-разработка")
+
+    # Обычная 1С — допустимый запасной поток, но не равна по приоритету
+    # Битрикс/web/API и интеграциям. Она остаётся CAUTION-кандидатом, а не стопом.
+    if _GENERIC_1C_RE.search(title_norm := _normalize(str(tender.get("title") or ""))):
+        if not _PREFERRED_1C_RE.search(title_norm):
+            score = 3
+            signals.append("⚠ вторичный профиль: типовая 1С без web/API-интеграции")
 
     # Страж перекупа: «поставка/предоставление лицензий», поставка оборудования/
     # товара без работ по настройке/доработке/внедрению — это перекуп, не наш
@@ -934,7 +966,8 @@ _RESALE_LICENSE_RE = re.compile(
     r"\s*(?:\([^)]{0,40}\)\s*)?"                     # возможная вставка: (продлению)
     r"(?:\w+\s+){0,2}?"                              # до двух слов между: «прав на …»
     r"(?:лицензи|неисключительн|сертификат)"         # сертификаты техподдержки = тот же перекуп
-    r"|продлен\w*\s*(?:\([^)]{0,40}\)\s*)?(?:\w+\s+){0,2}?доступ",   # продление доступа/подписки
+    r"|продлен\w*\s*(?:\([^)]{0,40}\)\s*)?(?:\w+\s+){0,2}?доступ"   # продление доступа/подписки
+    r"|лицензи\w*(?:\s+\w+){0,3}\s+\(?продлен\w*\)?",               # «Лицензия Стандарт (продление)»
     re.I,
 )
 _RESALE_GOODS_RE = re.compile(
@@ -1027,6 +1060,34 @@ _OFFPROFILE_RE_LIST: list[tuple[re.Pattern, str]] = [
 # документов слова «разработка» встречаются случайно).
 _SUPPORT_ONLY_RE = re.compile(r"сопровожден|обслуживани|техническ\w*\s+поддержк|консультацион", re.I)
 _DEV_WORDS_RE = re.compile(r"разработ|доработ|развити|создани|внедрен|интеграц|модерниз|проектирован|редизайн|дизайн", re.I)
+
+# Сильный предмет именно заказной разработки: действие + ИТ-объект. Такая
+# связка не путает «разработку проектной документации» с разработкой ПО.
+_CODEX_DEV_RE = re.compile(
+    r"(?:разработ|доработ|создан|развити|модернизац|модификац|интеграц|"
+    r"программирован|автоматизац)\w*"
+    r"(?:\s+\w+){0,6}\s+"
+    r"(?:веб|web|сайт|портал|личн\w*\s+кабинет|программн\w*\s+обеспечен|"
+    r"информационн\w*\s+систем|автоматизированн\w*\s+систем|api|crm|"
+    r"баз\w*\s+данн|цифров\w*\s+платформ)",
+    re.I,
+)
+_GENERIC_1C_RE = re.compile(r"(?<![a-zа-я0-9])1[сc](?![a-zа-я0-9])|1[сc]:предприят", re.I)
+_PREFERRED_1C_RE = re.compile(r"битрикс|bitrix|интеграц|обмен\w*\s+данн|api|web|веб|сайт", re.I)
+
+
+def _profile_subject_text(tender: dict[str, Any]) -> str:
+    """Название и краткое описание без служебных названий площадок."""
+    title = str(tender.get("title") or "")
+    primary = str(tender.get("primary_text") or "")
+    primary = re.sub(
+        r"закупка\s+малого\s+объ[её]ма\s*\(\s*(?:портал\s+поставщиков|"
+        r"еат\s*[«\"]?бер[её]зка|электронн\w*\s+магазин[^)]*)\s*\)",
+        " ",
+        primary,
+        flags=re.I,
+    )
+    return _normalize("\n".join((title, primary)))
 
 
 def _resale_verdict(text: str) -> str:
@@ -1419,11 +1480,28 @@ def _decision(total: int, stop_factors: list[str], stage: str = "stage2", filter
         by_num = {f.number: f.score for f in filters}
         ev_sum = sum(by_num.get(n, 3) for n in (1, 2, 4, 7, 8))
         profile = by_num.get(1, 3)
+        if profile <= 2:
+            return "NO-GO"
+        secondary_1c = any(
+            "вторичный профиль: типовая 1с" in signal.lower()
+            for f in filters if f.number == 1
+            for signal in f.signals
+        )
         if ev_sum >= 20 and profile >= 3:
-            return "GO"
+            return "CAUTION" if secondary_1c else "GO"
         if ev_sum >= 15:
             return "CAUTION"
         return "NO-GO"
+    if filters:
+        profile = next((f.score for f in filters if f.number == 1), 3)
+        if profile <= 2:
+            return "NO-GO"
+        if total >= 32 and any(
+            "вторичный профиль: типовая 1с" in signal.lower()
+            for f in filters if f.number == 1
+            for signal in f.signals
+        ):
+            return "CAUTION"
     if total >= 32:
         return "GO"
     if total >= 24:
