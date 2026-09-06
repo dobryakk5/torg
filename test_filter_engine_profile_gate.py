@@ -82,7 +82,7 @@ def test_project_documentation_is_not_software_development():
     assert result.decision == "NO-GO"
 
 
-def test_generic_1c_is_secondary_caution_but_integration_is_preferred():
+def test_generic_1c_is_off_profile_nogo_but_integration_is_preferred():
     with _default_filter_rules():
         generic = fe.run_stage2_filters(
             {
@@ -92,10 +92,11 @@ def test_generic_1c_is_secondary_caution_but_integration_is_preferred():
         )
         integrated = fe.run_stage2_filters(_tender("Интеграция 1С с сайтом через API"))
 
-    assert generic.filters[0].score == 3
-    assert generic.decision == "CAUTION"
+    assert generic.filters[0].score == 1
+    assert generic.filters[0].stop_factor is True
+    assert generic.decision == "NO-GO"
     assert integrated.filters[0].score >= 4
-    assert not any("вторичный профиль" in s for s in integrated.filters[0].signals)
+    assert not any("типовая 1С" in s for s in integrated.filters[0].signals)
 
 
 def test_bitrix_license_renewal_is_resale_not_web_development():
